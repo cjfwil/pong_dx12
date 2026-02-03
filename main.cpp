@@ -30,16 +30,22 @@ bool PopulateCommandList()
     if (!HRAssert(pipeline_dx12.m_commandList->Reset(pipeline_dx12.m_commandAllocator, pipeline_dx12.m_pipelineState)))
         return false;
     // Indicate that the back buffer will be used as a render target.
-    pipeline_dx12.m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+    {   
+        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
+    }
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), sync_state.m_frameIndex, pipeline_dx12.m_rtvDescriptorSize);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), (INT)sync_state.m_frameIndex, pipeline_dx12.m_rtvDescriptorSize);
 
     // Record commands.
     const float clearColor[] = {0.0f, 0.2f, 0.4f, 1.0f};
     pipeline_dx12.m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
 
     // Indicate that the back buffer will now be used to present.
-    pipeline_dx12.m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+    {
+        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
+        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
+    }
 
     if (!HRAssert(pipeline_dx12.m_commandList->Close()))
         return false;
@@ -69,7 +75,7 @@ void WaitForPreviousFrame()
 }
 
 // Render the scene.
-void Render()
+void Render(bool vsync=true)
 {
     // Record all the commands we need to render the scene into the command list.
     if (!PopulateCommandList())
@@ -81,23 +87,73 @@ void Render()
     ID3D12CommandList *ppCommandLists[] = {pipeline_dx12.m_commandList};
     pipeline_dx12.m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
-    // Present the frame.
-    HRAssert(pipeline_dx12.m_swapChain->Present(1, 0));
+    // Present the frame.    
+    UINT syncInterval = (vsync) ? 1 : 0;
+    UINT syncFlags = (vsync) ? 0 : DXGI_PRESENT_ALLOW_TEARING;
+    HRAssert(pipeline_dx12.m_swapChain->Present(syncInterval, syncFlags));
     WaitForPreviousFrame();
 }
 
+struct timing_state
+{    
+    Uint64 lastCounter = 0;
+    double upTime = 0.0;
+    double deltaTime = 0.0;    
+    uint32_t frames = 0;
+
+    void InitTimer()
+    {
+        lastCounter = SDL_GetPerformanceCounter();
+    }
+
+    void UpdateTimer()
+    {
+        Uint64 now = SDL_GetPerformanceCounter();
+        deltaTime = (double)(now - lastCounter) / (double)SDL_GetPerformanceFrequency();
+        lastCounter = now;
+
+        upTime += deltaTime;
+        frames++;        
+    }
+};
+
 static struct
 {
+    timing_state timing;
+
     SDL_Window *window = nullptr;
     HWND hwnd = nullptr;
     bool isRunning = true;
 
+
+    void DisplayPerformanceInWindowTitle(double rate)
+    {
+        static double local_timer = 0.0;
+        if (local_timer >= rate)
+        {
+            double fps = 1.0 / timing.deltaTime;
+
+            char title[128];
+            snprintf(title, sizeof(title),
+                     "Performance  |  %.2f ms  |  %.1f FPS",
+                     timing.deltaTime * 1000.0, fps);
+
+            SDL_SetWindowTitle(window, title);
+
+            local_timer = 0.0;            
+        }
+        local_timer += timing.deltaTime;
+    }
+
     HWND GetWindowHWND()
     {
-        if (hwnd == nullptr && window != nullptr)
+        if (!hwnd && window)
         {
             SDL_PropertiesID props = SDL_GetWindowProperties(window);
-            hwnd = (HWND)SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
+            hwnd = (HWND)SDL_GetPointerProperty(
+                props,
+                SDL_PROP_WINDOW_WIN32_HWND_POINTER,
+                NULL);
             SDL_Log("SDL Retrieved HWND");
         }
         return hwnd;
@@ -107,6 +163,8 @@ static struct
 
 int main(void)
 {
+    program_state.timing.InitTimer();
+
     if (!SDL_Init(SDL_INIT_VIDEO))
     {
         log_sdl_error("Couldn't initialise SDL");
@@ -163,6 +221,9 @@ int main(void)
             break;
             }
         }
+
+        program_state.timing.UpdateTimer();
+        program_state.DisplayPerformanceInWindowTitle(0.1);
 
         Render();
     }
