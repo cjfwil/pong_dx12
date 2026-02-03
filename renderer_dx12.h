@@ -390,6 +390,68 @@ bool LoadAssets()
     return true;
 }
 
+bool OnResize(UINT width, UINT height)
+{
+    if (width == 0 || height == 0)
+        return true; // minimized
+    
+    WaitForPreviousFrame();
+
+    // Release old render targets
+    for (UINT i = 0; i < pipeline_dx12.FrameCount; ++i)
+    {
+        if (pipeline_dx12.m_renderTargets[i])
+        {
+            pipeline_dx12.m_renderTargets[i]->Release();
+            pipeline_dx12.m_renderTargets[i] = nullptr;
+        }
+    }
+
+    // Resize swap chain buffers
+    DXGI_SWAP_CHAIN_DESC desc = {};
+    pipeline_dx12.m_swapChain->GetDesc(&desc);
+
+    HRESULT hr = pipeline_dx12.m_swapChain->ResizeBuffers(
+        pipeline_dx12.FrameCount,
+        width,
+        height,
+        desc.BufferDesc.Format,
+        desc.Flags
+    );
+    if (FAILED(hr))
+        return false;
+
+    sync_state.m_frameIndex = pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
+
+    // Recreate RTVs
+    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(
+        pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart()
+    );
+
+    for (UINT i = 0; i < pipeline_dx12.FrameCount; ++i)
+    {
+        hr = pipeline_dx12.m_swapChain->GetBuffer(i, IID_PPV_ARGS(&pipeline_dx12.m_renderTargets[i]));
+        if (FAILED(hr))
+            return false;
+
+        pipeline_dx12.m_device->CreateRenderTargetView(
+            pipeline_dx12.m_renderTargets[i],
+            nullptr,
+            rtvHandle
+        );
+
+        rtvHandle.Offset(1, pipeline_dx12.m_rtvDescriptorSize);
+    }
+
+    // Update viewport
+    viewport_state.m_width = width;
+    viewport_state.m_height = height;
+    viewport_state.m_aspectRatio = float(width) / float(height);
+
+    return true;
+}
+
+
 void OnDestroy()
 {
     // Ensure that the GPU is no longer referencing resources that are about to be

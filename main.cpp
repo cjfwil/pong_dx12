@@ -55,7 +55,6 @@ bool PopulateCommandList()
     pipeline_dx12.m_commandList->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
     pipeline_dx12.m_commandList->DrawInstanced(3, 1, 0, 0);
 
-
     // Indicate that the back buffer will now be used to present.
     {
         auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
@@ -215,6 +214,14 @@ int main(void)
             case SDL_EVENT_QUIT:
             {
                 program_state.isRunning = false;
+            }
+            break;
+            case SDL_EVENT_WINDOW_RESIZED:
+            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
+            {
+                int w, h;
+                SDL_GetWindowSizeInPixels(program_state.window, &w, &h);
+                OnResize((UINT)w, (UINT)h);
             }
             break;
             }
