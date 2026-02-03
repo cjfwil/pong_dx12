@@ -6,23 +6,40 @@
 #include <dxgi1_6.h>
 #include <dxgi1_2.h>
 #include <directx/d3dx12.h>
+#include <d3dcompiler.h>
+#include <DirectXMath.h>
 #pragma warning(pop)
 
 #include "local_error.h"
 
+struct Vertex
+{
+    DirectX::XMFLOAT3 position;
+    DirectX::XMFLOAT4 color;
+};
+
 static struct
 {
-    static const UINT FrameCount = 2; // double, triple buffering etc...
+    CD3DX12_VIEWPORT m_viewport;
+    CD3DX12_RECT m_scissorRect;
     ID3D12Device *m_device;
     ID3D12CommandQueue *m_commandQueue;
     IDXGISwapChain3 *m_swapChain;
     ID3D12DescriptorHeap *m_rtvHeap;
+    static const UINT FrameCount = 2; // double, triple buffering etc...
     ID3D12Resource *m_renderTargets[FrameCount];
     ID3D12CommandAllocator *m_commandAllocator;
     ID3D12GraphicsCommandList *m_commandList;
-    ID3D12PipelineState* m_pipelineState;
+    ID3D12PipelineState *m_pipelineState;
+    ID3D12RootSignature *m_rootSignature;
     UINT m_rtvDescriptorSize;
 } pipeline_dx12;
+
+static struct
+{
+    ID3D12Resource *m_vertexBuffer;
+    D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
+} graphics_resources;
 
 static struct
 {
@@ -191,6 +208,9 @@ bool LoadPipeline(HWND hwnd)
         return false;
     sync_state.m_frameIndex = pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
 
+    pipeline_dx12.m_viewport = CD3DX12_VIEWPORT(0.0f, 0.0f, static_cast<float>(viewport_state.m_width), static_cast<float>(viewport_state.m_height));
+    pipeline_dx12.m_scissorRect = CD3DX12_RECT(0, 0, static_cast<LONG>(viewport_state.m_width), static_cast<LONG>(viewport_state.m_height));
+
     // Create descriptor heaps.
     {
         // Describe and create a render target view (RTV) descriptor heap.
@@ -224,17 +244,131 @@ bool LoadPipeline(HWND hwnd)
     return true;
 }
 
+void WaitForPreviousFrame()
+{
+    // WAITING FOR THE FRAME TO COMPLETE BEFORE CONTINUING IS NOT BEST PRACTICE.
+    // This is code implemented as such for simplicity. The D3D12HelloFrameBuffering
+    // sample illustrates how to use fences for efficient resource usage and to
+    // maximize GPU utilization.
+
+    // Signal and increment the fence value.
+    const UINT64 fence = sync_state.m_fenceValue;
+    HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, fence));
+    sync_state.m_fenceValue++;
+
+    // Wait until the previous frame is finished.
+    if (sync_state.m_fence->GetCompletedValue() < fence)
+    {
+        HRAssert(sync_state.m_fence->SetEventOnCompletion(fence, sync_state.m_fenceEvent));
+        WaitForSingleObject(sync_state.m_fenceEvent, INFINITE);
+    }
+
+    sync_state.m_frameIndex = pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
+}
+
 // Load the startup assets. Returns true on success, false on fail.
 bool LoadAssets()
 {
+    // Create an empty root signature.
+    {
+        CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
+        rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+        ID3DBlob *signature;
+        ID3DBlob *error;
+        if (!HRAssert(D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error)))
+            return false;
+        if (!HRAssert(pipeline_dx12.m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&pipeline_dx12.m_rootSignature))))
+            return false;
+    }
+
+    // Create the pipeline state, which includes compiling and loading shaders.
+    {
+        ID3DBlob *vertexShader;
+        ID3DBlob *pixelShader;
+
+#if defined(_DEBUG)
+        // Enable better shader debugging with the graphics debugging tools.
+        UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#else
+        UINT compileFlags = 0;
+#endif
+
+        if (!HRAssert(D3DCompileFromFile(L"shaders.hlsl", nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vertexShader, nullptr)))
+            return false;
+        if (!HRAssert(D3DCompileFromFile(L"shaders.hlsl", nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &pixelShader, nullptr)))
+            return false;
+        // Define the vertex input layout.
+        D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
+            {
+                {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+                {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}};
+
+        // Describe and create the graphics pipeline state object (PSO).
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+        psoDesc.InputLayout = {inputElementDescs, _countof(inputElementDescs)};
+        psoDesc.pRootSignature = pipeline_dx12.m_rootSignature;
+        psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader);
+        psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader);
+        psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+        psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+        psoDesc.DepthStencilState.DepthEnable = FALSE;
+        psoDesc.DepthStencilState.StencilEnable = FALSE;
+        psoDesc.SampleMask = UINT_MAX;
+        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        psoDesc.NumRenderTargets = 1;
+        psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+        psoDesc.SampleDesc.Count = 1;
+        if (!HRAssert(pipeline_dx12.m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipeline_dx12.m_pipelineState))))
+            return false;
+    }
+
     // Create the command list.
-    if (!HRAssert(pipeline_dx12.m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pipeline_dx12.m_commandAllocator, nullptr, IID_PPV_ARGS(&pipeline_dx12.m_commandList))))
+    if (!HRAssert(pipeline_dx12.m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pipeline_dx12.m_commandAllocator, pipeline_dx12.m_pipelineState, IID_PPV_ARGS(&pipeline_dx12.m_commandList))))
         return false;
     // Command lists are created in the recording state, but there is nothing
     // to record yet. The main loop expects it to be closed, so close it now.
     if (!HRAssert(pipeline_dx12.m_commandList->Close()))
         return false;
-    // Create synchronization objects.
+
+    // Create the vertex buffer.
+    {
+        // Define the geometry for a triangle.
+        Vertex triangleVertices[] =
+            {
+                {{0.0f, 0.25f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}},
+                {{0.25f, -0.25f, 0.0f}, {0.0f, 1.0f, 0.0f, 1.0f}},
+                {{-0.25f, -0.25f, 0.0f}, {0.0f, 0.0f, 1.0f, 1.0f}}};
+
+        const UINT vertexBufferSize = sizeof(triangleVertices);
+
+        // Note: using upload heaps to transfer static data like vert buffers is not
+        // recommended. Every time the GPU needs it, the upload heap will be marshalled
+        // over. Please read up on Default Heap usage. An upload heap is used here for
+        // code simplicity and because there are very few verts to actually transfer.
+        if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+                &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+                D3D12_HEAP_FLAG_NONE,
+                &CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(&graphics_resources.m_vertexBuffer))))
+            return false;
+        // Copy the triangle data to the vertex buffer.
+        UINT8 *pVertexDataBegin;
+        CD3DX12_RANGE readRange(0, 0); // We do not intend to read from this resource on the CPU.
+        if (!HRAssert(graphics_resources.m_vertexBuffer->Map(0, &readRange, reinterpret_cast<void **>(&pVertexDataBegin))))
+            return false;
+        memcpy(pVertexDataBegin, triangleVertices, sizeof(triangleVertices));
+        graphics_resources.m_vertexBuffer->Unmap(0, nullptr);
+
+        // Initialize the vertex buffer view.
+        graphics_resources.m_vertexBufferView.BufferLocation = graphics_resources.m_vertexBuffer->GetGPUVirtualAddress();
+        graphics_resources.m_vertexBufferView.StrideInBytes = sizeof(Vertex);
+        graphics_resources.m_vertexBufferView.SizeInBytes = vertexBufferSize;
+    }
+
+    // Create synchronization objects and wait until assets have been uploaded to the GPU.
     {
         if (!HRAssert(pipeline_dx12.m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&sync_state.m_fence))))
             return false;
@@ -247,6 +381,20 @@ bool LoadAssets()
             if (!HRAssert(HRESULT_FROM_WIN32(GetLastError())))
                 return false;
         }
+
+        // Wait for the command list to execute; we are reusing the same command
+        // list in our main loop but for now, we just want to wait for setup to
+        // complete before continuing.
+        WaitForPreviousFrame();
     }
     return true;
+}
+
+void OnDestroy()
+{
+    // Ensure that the GPU is no longer referencing resources that are about to be
+    // cleaned up by the destructor.
+    WaitForPreviousFrame();
+
+    CloseHandle(sync_state.m_fenceEvent);
 }

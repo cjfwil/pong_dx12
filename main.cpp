@@ -2,6 +2,9 @@
 #pragma comment(lib, "SDL3.lib")
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
+#pragma comment(lib, "d3dcompiler.lib")
+#pragma comment(lib, "dxcompiler.lib")
+#pragma comment(lib, "dxguid.lib")
 
 #pragma comment(lib, "user32.lib")
 
@@ -29,17 +32,29 @@ bool PopulateCommandList()
     // re-recording.
     if (!HRAssert(pipeline_dx12.m_commandList->Reset(pipeline_dx12.m_commandAllocator, pipeline_dx12.m_pipelineState)))
         return false;
+
+    // Set necessary state.
+    pipeline_dx12.m_commandList->SetGraphicsRootSignature(pipeline_dx12.m_rootSignature);
+    pipeline_dx12.m_commandList->RSSetViewports(1, &pipeline_dx12.m_viewport);
+    pipeline_dx12.m_commandList->RSSetScissorRects(1, &pipeline_dx12.m_scissorRect);
+
     // Indicate that the back buffer will be used as a render target.
-    {   
+    {
         auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
         pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
     }
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), (INT)sync_state.m_frameIndex, pipeline_dx12.m_rtvDescriptorSize);
 
+    pipeline_dx12.m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
+
     // Record commands.
     const float clearColor[] = {0.0f, 0.2f, 0.4f, 1.0f};
     pipeline_dx12.m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+    pipeline_dx12.m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    pipeline_dx12.m_commandList->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
+    pipeline_dx12.m_commandList->DrawInstanced(3, 1, 0, 0);
+
 
     // Indicate that the back buffer will now be used to present.
     {
@@ -52,30 +67,8 @@ bool PopulateCommandList()
     return true;
 }
 
-void WaitForPreviousFrame()
-{
-    // WAITING FOR THE FRAME TO COMPLETE BEFORE CONTINUING IS NOT BEST PRACTICE.
-    // This is code implemented as such for simplicity. The D3D12HelloFrameBuffering
-    // sample illustrates how to use fences for efficient resource usage and to
-    // maximize GPU utilization.
-
-    // Signal and increment the fence value.
-    const UINT64 fence = sync_state.m_fenceValue;
-    HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, fence));
-    sync_state.m_fenceValue++;
-
-    // Wait until the previous frame is finished.
-    if (sync_state.m_fence->GetCompletedValue() < fence)
-    {
-        HRAssert(sync_state.m_fence->SetEventOnCompletion(fence, sync_state.m_fenceEvent));
-        WaitForSingleObject(sync_state.m_fenceEvent, INFINITE);
-    }
-
-    sync_state.m_frameIndex = pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
-}
-
 // Render the scene.
-void Render(bool vsync=true)
+void Render(bool vsync = true)
 {
     // Record all the commands we need to render the scene into the command list.
     if (!PopulateCommandList())
@@ -87,7 +80,7 @@ void Render(bool vsync=true)
     ID3D12CommandList *ppCommandLists[] = {pipeline_dx12.m_commandList};
     pipeline_dx12.m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
-    // Present the frame.    
+    // Present the frame.
     UINT syncInterval = (vsync) ? 1 : 0;
     UINT syncFlags = (vsync) ? 0 : DXGI_PRESENT_ALLOW_TEARING;
     HRAssert(pipeline_dx12.m_swapChain->Present(syncInterval, syncFlags));
@@ -95,10 +88,10 @@ void Render(bool vsync=true)
 }
 
 struct timing_state
-{    
+{
     Uint64 lastCounter = 0;
     double upTime = 0.0;
-    double deltaTime = 0.0;    
+    double deltaTime = 0.0;
     uint32_t frames = 0;
 
     void InitTimer()
@@ -113,7 +106,7 @@ struct timing_state
         lastCounter = now;
 
         upTime += deltaTime;
-        frames++;        
+        frames++;
     }
 };
 
@@ -124,7 +117,6 @@ static struct
     SDL_Window *window = nullptr;
     HWND hwnd = nullptr;
     bool isRunning = true;
-
 
     void DisplayPerformanceInWindowTitle(double rate)
     {
@@ -140,7 +132,7 @@ static struct
 
             SDL_SetWindowTitle(window, title);
 
-            local_timer = 0.0;            
+            local_timer = 0.0;
         }
         local_timer += timing.deltaTime;
     }
@@ -185,6 +177,12 @@ int main(void)
     {
         SDL_Log("SDL Window created.");
         program_state.GetWindowHWND();
+
+        int w = 0, h = 0;
+        SDL_GetWindowSize(program_state.window, &w, &h);
+        viewport_state.m_width = (UINT)w;
+        viewport_state.m_height = (UINT)h;
+        viewport_state.m_aspectRatio = (float)w / (float)h;
     }
 
     if (!LoadPipeline(program_state.hwnd))
@@ -228,5 +226,6 @@ int main(void)
         Render();
     }
 
+    OnDestroy();
     return (0);
 }
