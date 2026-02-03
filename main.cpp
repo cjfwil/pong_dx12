@@ -73,11 +73,15 @@ static struct
     ID3D12DescriptorHeap *m_rtvHeap;
     ID3D12Resource *m_renderTargets[FrameCount];
     ID3D12CommandAllocator *m_commandAllocator;
+    ID3D12GraphicsCommandList *m_commandList;
     UINT m_rtvDescriptorSize;
 } pipeline_state;
 
 static struct
 {
+    UINT64 m_fenceValue;
+    ID3D12Fence *m_fence;
+    HANDLE m_fenceEvent;
     UINT m_frameIndex;
 } sync_state;
 
@@ -272,10 +276,37 @@ bool LoadPipeline(HWND hwnd)
     return true;
 }
 
+// Load the startup assets. Returns true on success, false on fail.
+bool LoadAssets()
+{
+    // Create the command list.
+    if (!HRAssert(pipeline_state.m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pipeline_state.m_commandAllocator, nullptr, IID_PPV_ARGS(&pipeline_state.m_commandList))))
+        return false;
+    // Command lists are created in the recording state, but there is nothing
+    // to record yet. The main loop expects it to be closed, so close it now.
+    if (!HRAssert(pipeline_state.m_commandList->Close()))
+        return false;
+    // Create synchronization objects.
+    {
+        if (!HRAssert(pipeline_state.m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&sync_state.m_fence))))
+            return false;
+        sync_state.m_fenceValue = 1;
+
+        // Create an event handle to use for frame synchronization.
+        sync_state.m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+        if (sync_state.m_fenceEvent == nullptr)
+        {
+            if (!HRAssert(HRESULT_FROM_WIN32(GetLastError())))
+                return false;
+        }
+    }
+    return true;
+}
+
 static struct
 {
     SDL_Window *window = nullptr;
-    HWND hwnd = nullptr; // << use this but call GetWindowHWND if it is nullptr
+    HWND hwnd = nullptr;
     bool isRunning = true;
 
     HWND GetWindowHWND()
@@ -284,6 +315,7 @@ static struct
         {
             SDL_PropertiesID props = SDL_GetWindowProperties(window);
             hwnd = (HWND)SDL_GetPointerProperty(props, SDL_PROP_WINDOW_WIN32_HWND_POINTER, NULL);
+            SDL_Log("SDL Retrieved HWND");
         }
         return hwnd;
     }
@@ -318,8 +350,20 @@ int main(void)
     {
         log_error("Could not load pipeline");
         return 1;
-    } else {
+    }
+    else
+    {
         SDL_Log("Pipeline loaded successfully.");
+    }
+
+    if (!LoadAssets())
+    {
+        log_error("Could not load startup assets");
+        return 1;
+    }
+    else
+    {
+        SDL_Log("Startup assets loaded successfully.");
     }
 
     while (program_state.isRunning)
