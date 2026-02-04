@@ -25,10 +25,10 @@ struct ConstantBuffer
 };
 static_assert((sizeof(ConstantBuffer) % 256) == 0, "Constant Buffer size must be 256-byte aligned");
 
-static const UINT FrameCount = 3; // double, triple buffering etc...
+static const UINT g_FrameCount = 3; // double, triple buffering etc...
 static struct
 {
-    UINT64 m_fenceValues[FrameCount];
+    UINT64 m_fenceValues[g_FrameCount];
     ID3D12Fence *m_fence;
     HANDLE m_fenceEvent;
     UINT m_frameIndex;
@@ -43,8 +43,8 @@ static struct
     IDXGISwapChain3 *m_swapChain;
     ID3D12DescriptorHeap *m_rtvHeap;
     ID3D12DescriptorHeap *m_mainHeap;
-    ID3D12Resource *m_renderTargets[FrameCount];
-    ID3D12CommandAllocator *m_commandAllocators[FrameCount];
+    ID3D12Resource *m_renderTargets[g_FrameCount];
+    ID3D12CommandAllocator *m_commandAllocators[g_FrameCount];
     ID3D12GraphicsCommandList *m_commandList;
     ID3D12PipelineState *m_pipelineState;
     ID3D12RootSignature *m_rootSignature;
@@ -76,8 +76,9 @@ static struct
     D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
     ID3D12Resource *m_vertexBuffer;
     ID3D12Resource *m_texture;
-    ID3D12Resource *m_constantBuffer;
-    UINT8 *m_pCbvDataBegin;
+
+    ID3D12Resource *m_constantBuffer[g_FrameCount];
+    UINT8 *m_pCbvDataBegin[g_FrameCount];
 } graphics_resources;
 
 // Wait for pending GPU work to complete.
@@ -246,7 +247,7 @@ bool LoadPipeline(HWND hwnd)
 
     // Describe and create the swap chain.
     DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
-    swapChainDesc.BufferCount = FrameCount;
+    swapChainDesc.BufferCount = g_FrameCount;
     swapChainDesc.Width = viewport_state.m_width;
     swapChainDesc.Height = viewport_state.m_height;
     swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -276,7 +277,7 @@ bool LoadPipeline(HWND hwnd)
     {
         // Describe and create a render target view (RTV) descriptor heap.
         D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-        rtvHeapDesc.NumDescriptors = FrameCount;
+        rtvHeapDesc.NumDescriptors = g_FrameCount;
         rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
         rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
         if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_rtvHeap))))
@@ -291,7 +292,7 @@ bool LoadPipeline(HWND hwnd)
 
         // Describe and create a shader resource view (SRV) heap for the texture.
         D3D12_DESCRIPTOR_HEAP_DESC mainHeapDesc = {};
-        mainHeapDesc.NumDescriptors = 2;
+        mainHeapDesc.NumDescriptors = 1 + g_FrameCount;
         mainHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         mainHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&mainHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_mainHeap))))
@@ -307,7 +308,7 @@ bool LoadPipeline(HWND hwnd)
         CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
 
         // Create a RTV and a command allocator for each frame.
-        for (UINT n = 0; n < FrameCount; n++)
+        for (UINT n = 0; n < g_FrameCount; n++)
         {
             if (!HRAssert(pipeline_dx12.m_swapChain->GetBuffer(n, IID_PPV_ARGS(&pipeline_dx12.m_renderTargets[n]))))
                 return false;
@@ -411,12 +412,19 @@ bool LoadAssets()
             featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
         }
 
-        CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
-        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
-        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+            
+        // CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
+        // ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+        // ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 
-        CD3DX12_ROOT_PARAMETER1 rootParameters[1];
-        rootParameters[0].InitAsDescriptorTable(_countof(ranges), ranges, D3D12_SHADER_VISIBILITY_ALL);
+        CD3DX12_DESCRIPTOR_RANGE1 cbvRange;
+        cbvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+        CD3DX12_DESCRIPTOR_RANGE1 srvRange;
+        srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+
+        CD3DX12_ROOT_PARAMETER1 rootParameters[2];
+        rootParameters[0].InitAsDescriptorTable(1, &cbvRange, D3D12_SHADER_VISIBILITY_ALL);
+        rootParameters[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
 
         D3D12_STATIC_SAMPLER_DESC sampler = {};
         sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
@@ -488,12 +496,9 @@ bool LoadAssets()
     // Create the command list.
     if (!HRAssert(pipeline_dx12.m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pipeline_dx12.m_commandAllocators[sync_state.m_frameIndex], pipeline_dx12.m_pipelineState, IID_PPV_ARGS(&pipeline_dx12.m_commandList))))
         return false;
-    // Command lists are created in the recording state, but there is nothing
-    // to record yet. The main loop expects it to be closed, so close it now.
-    if (!HRAssert(pipeline_dx12.m_commandList->Close()))
-        return false;
 
     // Create the vertex buffer.
+    ID3D12Resource *vertexBufferUpload;
     {
         // Define the geometry for a triangle.
         Vertex triangleVertices[] =
@@ -504,25 +509,42 @@ bool LoadAssets()
 
         const UINT vertexBufferSize = sizeof(triangleVertices);
 
-        // Note: using upload heaps to transfer static data like vert buffers is not
-        // recommended. Every time the GPU needs it, the upload heap will be marshalled
-        // over. Please read up on Default Heap usage. An upload heap is used here for
-        // code simplicity and because there are very few verts to actually transfer.
+        if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+                &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+                D3D12_HEAP_FLAG_NONE,
+                &CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
+                D3D12_RESOURCE_STATE_COPY_DEST,
+                nullptr,
+                IID_PPV_ARGS(&graphics_resources.m_vertexBuffer))))
+            return false;
+
+        // temp upload heap
+
         if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
                 &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
                 D3D12_HEAP_FLAG_NONE,
                 &CD3DX12_RESOURCE_DESC::Buffer(vertexBufferSize),
                 D3D12_RESOURCE_STATE_GENERIC_READ,
                 nullptr,
-                IID_PPV_ARGS(&graphics_resources.m_vertexBuffer))))
+                IID_PPV_ARGS(&vertexBufferUpload))))
             return false;
+
         // Copy the triangle data to the vertex buffer.
         UINT8 *pVertexDataBegin;
         CD3DX12_RANGE readRange(0, 0); // We do not intend to read from this resource on the CPU.
-        if (!HRAssert(graphics_resources.m_vertexBuffer->Map(0, &readRange, reinterpret_cast<void **>(&pVertexDataBegin))))
+        if (!HRAssert(vertexBufferUpload->Map(0, &readRange, reinterpret_cast<void **>(&pVertexDataBegin))))
             return false;
-        memcpy(pVertexDataBegin, triangleVertices, sizeof(triangleVertices));
-        graphics_resources.m_vertexBuffer->Unmap(0, nullptr);
+        memcpy(pVertexDataBegin, triangleVertices, vertexBufferSize);
+        vertexBufferUpload->Unmap(0, nullptr);
+
+        pipeline_dx12.m_commandList->CopyBufferRegion(graphics_resources.m_vertexBuffer, 0, vertexBufferUpload, 0, vertexBufferSize);
+
+        // transition to vertex buffer state
+        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+            graphics_resources.m_vertexBuffer,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
+        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
 
         // Initialize the vertex buffer view.
         graphics_resources.m_vertexBufferView.BufferLocation = graphics_resources.m_vertexBuffer->GetGPUVirtualAddress();
@@ -530,11 +552,10 @@ bool LoadAssets()
         graphics_resources.m_vertexBufferView.SizeInBytes = vertexBufferSize;
     }
 
-    // TODO: decide
-    pipeline_dx12.ResetCommandObjects();
-
     CD3DX12_CPU_DESCRIPTOR_HANDLE cpuStart(pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart());
-    // create constant buffer
+    UINT cbvSrvDescriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    // create constant buffer for each frame in the frame buffer
+    for (UINT i = 0; i < g_FrameCount; i++)
     {
         const UINT constantBufferSize = sizeof(ConstantBuffer); // CB size is required to be 256-byte aligned.
 
@@ -544,21 +565,26 @@ bool LoadAssets()
                 &CD3DX12_RESOURCE_DESC::Buffer(constantBufferSize),
                 D3D12_RESOURCE_STATE_GENERIC_READ,
                 nullptr,
-                IID_PPV_ARGS(&graphics_resources.m_constantBuffer))))
+                IID_PPV_ARGS(&graphics_resources.m_constantBuffer[i]))))
             return false;
 
         // Describe and create a constant buffer view.
         D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-        cbvDesc.BufferLocation = graphics_resources.m_constantBuffer->GetGPUVirtualAddress();
+        cbvDesc.BufferLocation = graphics_resources.m_constantBuffer[i]->GetGPUVirtualAddress();
         cbvDesc.SizeInBytes = constantBufferSize;
-        pipeline_dx12.m_device->CreateConstantBufferView(&cbvDesc, cpuStart);
+
+        CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(
+            cpuStart,
+            (INT)i,
+            cbvSrvDescriptorSize);
+        pipeline_dx12.m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);
 
         // Map and initialize the constant buffer. We don't unmap this until the
         // app closes. Keeping things mapped for the lifetime of the resource is okay.
         CD3DX12_RANGE readRange(0, 0); // We do not intend to read from this resource on the CPU.
-        if (!HRAssert(graphics_resources.m_constantBuffer->Map(0, &readRange, reinterpret_cast<void **>(&graphics_resources.m_pCbvDataBegin))))
+        if (!HRAssert(graphics_resources.m_constantBuffer[i]->Map(0, &readRange, reinterpret_cast<void **>(&graphics_resources.m_pCbvDataBegin[i]))))
             return false;
-        memcpy(graphics_resources.m_pCbvDataBegin, &graphics_resources.m_constantBufferData, sizeof(graphics_resources.m_constantBufferData));
+        memcpy(graphics_resources.m_pCbvDataBegin[i], &graphics_resources.m_constantBufferData, sizeof(graphics_resources.m_constantBufferData));
     }
 
     // Note: ComPtr's are CPU objects but this resource needs to stay in scope until
@@ -615,7 +641,7 @@ bool LoadAssets()
 
         UINT increment = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         CD3DX12_CPU_DESCRIPTOR_HANDLE cpuSrv(cpuStart);
-        cpuSrv.Offset(1, increment);
+        cpuSrv.Offset(g_FrameCount, increment);
 
         // Describe and create a SRV for the texture.
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
@@ -651,6 +677,7 @@ bool LoadAssets()
         // complete before continuing.
         WaitForGpu();
     }
+    vertexBufferUpload->Release();
     return true;
 }
 

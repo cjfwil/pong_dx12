@@ -32,7 +32,21 @@ bool PopulateCommandList()
     ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_mainHeap};
     pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-    pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(0, pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart());
+
+    UINT descriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(
+        pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
+        (INT)sync_state.m_frameIndex,
+        descriptorSize        
+    );
+    pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(0, cbvHandle);
+
+    CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(
+        pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
+        g_FrameCount,  // SRV is after all CBVs
+        descriptorSize
+    );
+    pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(1, srvHandle);
 
     pipeline_dx12.m_commandList->RSSetViewports(1, &pipeline_dx12.m_viewport);
     pipeline_dx12.m_commandList->RSSetScissorRects(1, &pipeline_dx12.m_scissorRect);
@@ -79,7 +93,9 @@ void Update()
     {
         graphics_resources.m_constantBufferData.offset.x = -offsetBounds;
     }
-    memcpy(graphics_resources.m_pCbvDataBegin, &graphics_resources.m_constantBufferData, sizeof(graphics_resources.m_constantBufferData));
+    memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex], 
+           &graphics_resources.m_constantBufferData, 
+           sizeof(graphics_resources.m_constantBufferData));
 }
 
 // Render the scene.
