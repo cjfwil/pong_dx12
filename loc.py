@@ -24,24 +24,20 @@ EXT_GROUPS = {
     ".hpp": "cpp",
     ".hh":  "cpp",
     ".hlsl":"hlsl",
-    ".fx":  "hlsl"
+    ".fx":  "hlsl",
+    ".py":  "python"   # ← NEW
 }
 
 DEFAULT_EXCLUDES = {"release", "build", "out", ".git", "__pycache__"}
 
 
 def count_file_lines(path: Path):
-    """
-    Return (total, blank, comment, code) for a single file.
-    Fast single-pass parser handling // and /* ... */ comments.
-    """
     total = blank = comment = code = 0
     in_block = False
     try:
         with path.open('r', encoding='utf-8', errors='ignore') as f:
             for raw in f:
                 total += 1
-                # strip only newline chars, preserve leading/trailing spaces for parsing
                 line = raw.rstrip('\n\r')
                 if not line.strip():
                     blank += 1
@@ -53,10 +49,8 @@ def count_file_lines(path: Path):
 
                 while i < n:
                     if in_block:
-                        # find end of block comment
                         j = line.find('*/', i)
                         if j == -1:
-                            # rest of line is inside block comment
                             i = n
                             break
                         else:
@@ -65,18 +59,15 @@ def count_file_lines(path: Path):
                             continue
 
                     ch = line[i]
-                    # line comment
+
                     if ch == '/' and i + 1 < n and line[i+1] == '/':
-                        # rest of line is comment
                         break
 
-                    # block comment start
                     if ch == '/' and i + 1 < n and line[i+1] == '*':
                         in_block = True
                         i += 2
                         continue
 
-                    # any non-whitespace outside comments is code
                     if not ch.isspace():
                         has_code = True
                         break
@@ -89,7 +80,6 @@ def count_file_lines(path: Path):
                     comment += 1
 
     except Exception as e:
-        # don't crash the whole run for one unreadable file
         print(f"Warning: failed to read {path}: {e}", file=sys.stderr)
 
     return total, blank, comment, code
@@ -103,15 +93,14 @@ def scan_folder(root: Path, excludes, verbose=False):
         "comment": 0,
         "code": 0,
         "cpp_code": 0,
-        "hlsl_code": 0
+        "hlsl_code": 0,
+        "python_code": 0   # ← NEW
     }
     per_file = []
 
-    # iterate deterministically
     for p in sorted(root.rglob('*')):
         if not p.is_file():
             continue
-        # skip excluded directories anywhere in the path
         if any(part in excludes for part in p.parts):
             continue
 
@@ -132,16 +121,17 @@ def scan_folder(root: Path, excludes, verbose=False):
             totals["cpp_code"] += co
         elif group == "hlsl":
             totals["hlsl_code"] += co
+        elif group == "python":     # ← NEW
+            totals["python_code"] += co
 
         per_file.append((p, group, t, b, c, co))
 
-    # print verbose table after collecting everything (so we can align columns)
+    # verbose table (unchanged)
     if verbose and per_file:
-        # compute column widths
         path_strs = [str(p) for (p, *_ ) in per_file]
         max_path = max(len(s) for s in path_strs)
         totals_cols = list(zip(*[(t, b, c, co) for (_, _, t, b, c, co) in per_file]))
-        # determine width for each numeric column based on largest number or header length
+
         def num_width(col_idx, header):
             if not totals_cols:
                 return len(header)
@@ -153,17 +143,16 @@ def scan_folder(root: Path, excludes, verbose=False):
         w_comment = num_width(2, "comment")
         w_code = num_width(3, "code")
 
-        # header
         header_path = "File"
         header_fmt = f"{{:<{max_path}}}  |  {{:>{w_total}}}  {{:>{w_blank}}}  {{:>{w_comment}}}  {{:>{w_code}}}"
         print(header_fmt.format(header_path, "total", "blank", "comment", "code"))
-        # separator
+
         sep = "-" * max_path + "  |  " + "-" * w_total + "  " + "-" * w_blank + "  " + "-" * w_comment + "  " + "-" * w_code
         print(sep)
-        # rows
+
         for p, group, t, b, c, co in per_file:
             print(header_fmt.format(str(p), t, b, c, co))
-        print()  # blank line after table
+        print()
 
     return totals, per_file
 
@@ -173,7 +162,7 @@ def main():
     ap.add_argument("path", nargs="?", default=".")
     ap.add_argument("--verbose", "-v", action="store_true", help="Show per-file breakdown")
     ap.add_argument("--exclude", "-e", default=",".join(sorted(DEFAULT_EXCLUDES)),
-                    help="Comma-separated directory names to exclude (default: release,build,out,.git,...)")
+                    help="Comma-separated directory names to exclude")
     args = ap.parse_args()
 
     root = Path(args.path)
@@ -184,14 +173,15 @@ def main():
     excludes = set(x.strip() for x in args.exclude.split(",") if x.strip())
     totals, per_file = scan_folder(root, excludes, verbose=args.verbose)
 
-    # summary
     print(f"Scanned files: {totals['files']}")
     print(f"Total lines:   {totals['total']}")
     print(f"Code lines:    {totals['code']}")
     print(f"Comment lines: {totals['comment']}")
     print(f"Blank lines:   {totals['blank']}")
     print()
-    print(f"C/C++: {totals['cpp_code']} LOC, HLSL: {totals['hlsl_code']} LOC")
+    print(f"C/C++:  {totals['cpp_code']} LOC")
+    print(f"HLSL:   {totals['hlsl_code']} LOC")
+    print(f"Python: {totals['python_code']} LOC")   # ← NEW
 
 
 if __name__ == '__main__':
