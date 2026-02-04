@@ -15,7 +15,7 @@
 struct Vertex
 {
     DirectX::XMFLOAT3 position;
-    DirectX::XMFLOAT4 color;
+    DirectX::XMFLOAT2 uv;
 };
 
 static struct
@@ -26,6 +26,7 @@ static struct
     ID3D12CommandQueue *m_commandQueue;
     IDXGISwapChain3 *m_swapChain;
     ID3D12DescriptorHeap *m_rtvHeap;
+    ID3D12DescriptorHeap *m_srvHeap;
     static const UINT FrameCount = 2; // double, triple buffering etc...
     ID3D12Resource *m_renderTargets[FrameCount];
     ID3D12CommandAllocator *m_commandAllocator;
@@ -33,12 +34,25 @@ static struct
     ID3D12PipelineState *m_pipelineState;
     ID3D12RootSignature *m_rootSignature;
     UINT m_rtvDescriptorSize;
+
+    void ResetCommandObjects()
+    {
+        // Command list allocators can only be reset when the associated
+        // command lists have finished execution on the GPU; apps should use
+        // fences to determine GPU execution progress.
+        HRAssert(pipeline_dx12.m_commandAllocator->Reset());
+        // However, when ExecuteCommandList() is called on a particular command
+        // list, that command list can then be reset at any time and must be before
+        // re-recording.
+        HRAssert(pipeline_dx12.m_commandList->Reset(pipeline_dx12.m_commandAllocator, pipeline_dx12.m_pipelineState));
+    }
 } pipeline_dx12;
 
 static struct
 {
-    ID3D12Resource *m_vertexBuffer;
     D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
+    ID3D12Resource *m_vertexBuffer;
+    ID3D12Resource *m_texture;
 } graphics_resources;
 
 static struct
@@ -48,6 +62,28 @@ static struct
     HANDLE m_fenceEvent;
     UINT m_frameIndex;
 } sync_state;
+
+void WaitForPreviousFrame()
+{
+    // WAITING FOR THE FRAME TO COMPLETE BEFORE CONTINUING IS NOT BEST PRACTICE.
+    // This is code implemented as such for simplicity. The D3D12HelloFrameBuffering
+    // sample illustrates how to use fences for efficient resource usage and to
+    // maximize GPU utilization.
+
+    // Signal and increment the fence value.
+    const UINT64 fence = sync_state.m_fenceValue;
+    HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, fence));
+    sync_state.m_fenceValue++;
+
+    // Wait until the previous frame is finished.
+    if (sync_state.m_fence->GetCompletedValue() < fence)
+    {
+        HRAssert(sync_state.m_fence->SetEventOnCompletion(fence, sync_state.m_fenceEvent));
+        WaitForSingleObject(sync_state.m_fenceEvent, INFINITE);
+    }
+
+    sync_state.m_frameIndex = pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
+}
 
 static struct
 {
@@ -208,6 +244,25 @@ bool LoadPipeline(HWND hwnd)
         return false;
     sync_state.m_frameIndex = pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
 
+    // Create descriptor heaps.
+    {
+        // Describe and create a render target view (RTV) descriptor heap.
+        D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
+        rtvHeapDesc.NumDescriptors = pipeline_dx12.FrameCount;
+        rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+        rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+        if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_rtvHeap))))
+            return false;
+        // Describe and create a shader resource view (SRV) heap for the texture.
+        D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
+        srvHeapDesc.NumDescriptors = 1;
+        srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_srvHeap))))
+            return false;
+        pipeline_dx12.m_rtvDescriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+    }
+
     pipeline_dx12.m_viewport = CD3DX12_VIEWPORT(0.0f, 0.0f, static_cast<float>(viewport_state.m_width), static_cast<float>(viewport_state.m_height));
     pipeline_dx12.m_scissorRect = CD3DX12_RECT(0, 0, static_cast<LONG>(viewport_state.m_width), static_cast<LONG>(viewport_state.m_height));
 
@@ -244,26 +299,44 @@ bool LoadPipeline(HWND hwnd)
     return true;
 }
 
-void WaitForPreviousFrame()
+// Generate a simple black and white checkerboard texture.
+static const UINT TextureWidth = 256;
+static const UINT TextureHeight = 256;
+static const UINT TexturePixelSize = 4;
+std::vector<UINT8> GenerateTextureData()
 {
-    // WAITING FOR THE FRAME TO COMPLETE BEFORE CONTINUING IS NOT BEST PRACTICE.
-    // This is code implemented as such for simplicity. The D3D12HelloFrameBuffering
-    // sample illustrates how to use fences for efficient resource usage and to
-    // maximize GPU utilization.
+    const UINT rowPitch = TextureWidth * TexturePixelSize;
+    const UINT cellPitch = rowPitch >> 3;      // The width of a cell in the checkboard texture.
+    const UINT cellHeight = TextureWidth >> 3; // The height of a cell in the checkerboard texture.
+    const UINT textureSize = rowPitch * TextureHeight;
 
-    // Signal and increment the fence value.
-    const UINT64 fence = sync_state.m_fenceValue;
-    HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, fence));
-    sync_state.m_fenceValue++;
+    std::vector<UINT8> data(textureSize);
+    UINT8 *pData = &data[0];
 
-    // Wait until the previous frame is finished.
-    if (sync_state.m_fence->GetCompletedValue() < fence)
+    for (UINT n = 0; n < textureSize; n += TexturePixelSize)
     {
-        HRAssert(sync_state.m_fence->SetEventOnCompletion(fence, sync_state.m_fenceEvent));
-        WaitForSingleObject(sync_state.m_fenceEvent, INFINITE);
+        UINT x = n % rowPitch;
+        UINT y = n / rowPitch;
+        UINT i = x / cellPitch;
+        UINT j = y / cellHeight;
+
+        if (i % 2 == j % 2)
+        {
+            pData[n] = 0x00;     // R
+            pData[n + 1] = 0x0f; // G
+            pData[n + 2] = 0xff; // B
+            pData[n + 3] = 0xff; // A
+        }
+        else
+        {
+            pData[n] = 0xff;     // R
+            pData[n + 1] = 0xf0; // G
+            pData[n + 2] = 0x00; // B
+            pData[n + 3] = 0xff; // A
+        }
     }
 
-    sync_state.m_frameIndex = pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
+    return data;
 }
 
 // Load the startup assets. Returns true on success, false on fail.
@@ -271,12 +344,43 @@ bool LoadAssets()
 {
     // Create an empty root signature.
     {
-        CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
-        rootSignatureDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+        D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
+
+        // This is the highest version the sample supports. If CheckFeatureSupport succeeds, the HighestVersion returned will not be greater than this.
+        featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
+
+        if (FAILED(pipeline_dx12.m_device->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &featureData, sizeof(featureData))))
+        {
+            featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
+        }
+
+        CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+
+        CD3DX12_ROOT_PARAMETER1 rootParameters[1];
+        rootParameters[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_PIXEL);
+
+        D3D12_STATIC_SAMPLER_DESC sampler = {};
+        sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+        sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+        sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+        sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+        sampler.MipLODBias = 0;
+        sampler.MaxAnisotropy = 0;
+        sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
+        sampler.BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
+        sampler.MinLOD = 0.0f;
+        sampler.MaxLOD = D3D12_FLOAT32_MAX;
+        sampler.ShaderRegister = 0;
+        sampler.RegisterSpace = 0;
+        sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+
+        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
+        rootSignatureDesc.Init_1_1(_countof(rootParameters), rootParameters, 1, &sampler, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
         ID3DBlob *signature;
         ID3DBlob *error;
-        if (!HRAssert(D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error)))
+        if (!HRAssert(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, featureData.HighestVersion, &signature, &error)))
             return false;
         if (!HRAssert(pipeline_dx12.m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&pipeline_dx12.m_rootSignature))))
             return false;
@@ -302,7 +406,7 @@ bool LoadAssets()
         D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
             {
                 {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-                {"COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}};
+                {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}};
 
         // Describe and create the graphics pipeline state object (PSO).
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
@@ -336,9 +440,9 @@ bool LoadAssets()
         // Define the geometry for a triangle.
         Vertex triangleVertices[] =
             {
-                {{0.0f, 0.25f, 0.0f}, {1.0f, 0.0f, 0.0f, 1.0f}},
-                {{0.25f, -0.25f, 0.0f}, {0.0f, 1.0f, 0.0f, 1.0f}},
-                {{-0.25f, -0.25f, 0.0f}, {0.0f, 0.0f, 1.0f, 1.0f}}};
+                {{0.0f, 0.25f, 0.0f}, {0.5f, 0.0f}},
+                {{0.25f, -0.25f, 0.0f}, {1.0f, 1.0f}},
+                {{-0.25f, -0.25f, 0.0f}, {0.0f, 1.0f}}};
 
         const UINT vertexBufferSize = sizeof(triangleVertices);
 
@@ -368,6 +472,76 @@ bool LoadAssets()
         graphics_resources.m_vertexBufferView.SizeInBytes = vertexBufferSize;
     }
 
+    //TODO: decide
+    pipeline_dx12.ResetCommandObjects();
+
+    // Note: ComPtr's are CPU objects but this resource needs to stay in scope until
+    // the command list that references it has finished executing on the GPU.
+    // We will flush the GPU at the end of this method to ensure the resource is not
+    // prematurely destroyed.
+    ID3D12Resource *textureUploadHeap;
+
+    // Create the texture.
+    {
+        // Describe and create a Texture2D.
+        D3D12_RESOURCE_DESC textureDesc = {};
+        textureDesc.MipLevels = 1;
+        textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        textureDesc.Width = TextureWidth;
+        textureDesc.Height = TextureHeight;
+        textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+        textureDesc.DepthOrArraySize = 1;
+        textureDesc.SampleDesc.Count = 1;
+        textureDesc.SampleDesc.Quality = 0;
+        textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+
+        if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+                &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+                D3D12_HEAP_FLAG_NONE,
+                &textureDesc,
+                D3D12_RESOURCE_STATE_COPY_DEST,
+                nullptr,
+                IID_PPV_ARGS(&graphics_resources.m_texture))))
+            return false;
+        const UINT64 uploadBufferSize = GetRequiredIntermediateSize(graphics_resources.m_texture, 0, 1);
+
+        // Create the GPU upload buffer.
+        if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+                &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+                D3D12_HEAP_FLAG_NONE,
+                &CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(&textureUploadHeap))))
+            return false;
+        // Copy data to the intermediate upload heap and then schedule a copy
+        // from the upload heap to the Texture2D.
+        std::vector<UINT8> texture = GenerateTextureData();
+
+        D3D12_SUBRESOURCE_DATA textureData = {};
+        textureData.pData = &texture[0];
+        textureData.RowPitch = TextureWidth * TexturePixelSize;
+        textureData.SlicePitch = textureData.RowPitch * TextureHeight;
+
+        UpdateSubresources(pipeline_dx12.m_commandList, graphics_resources.m_texture, textureUploadHeap, 0, 0, 1, &textureData);
+        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(graphics_resources.m_texture, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
+
+        // Describe and create a SRV for the texture.
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Format = textureDesc.Format;
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        srvDesc.Texture2D.MipLevels = 1;
+        pipeline_dx12.m_device->CreateShaderResourceView(graphics_resources.m_texture, &srvDesc, pipeline_dx12.m_srvHeap->GetCPUDescriptorHandleForHeapStart());
+    }
+
+    // Close the command list and execute it to begin the initial GPU setup.
+    if (!HRAssert(pipeline_dx12.m_commandList->Close()))
+        return false;
+    ID3D12CommandList *ppCommandLists[] = {pipeline_dx12.m_commandList};
+    pipeline_dx12.m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
     // Create synchronization objects and wait until assets have been uploaded to the GPU.
     {
         if (!HRAssert(pipeline_dx12.m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&sync_state.m_fence))))
@@ -394,7 +568,7 @@ bool OnResize(UINT width, UINT height)
 {
     if (width == 0 || height == 0)
         return true; // minimized
-    
+
     WaitForPreviousFrame();
 
     // Release old render targets
@@ -416,8 +590,7 @@ bool OnResize(UINT width, UINT height)
         width,
         height,
         desc.BufferDesc.Format,
-        desc.Flags
-    );
+        desc.Flags);
     if (FAILED(hr))
         return false;
 
@@ -425,8 +598,7 @@ bool OnResize(UINT width, UINT height)
 
     // Recreate RTVs
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(
-        pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart()
-    );
+        pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
 
     for (UINT i = 0; i < pipeline_dx12.FrameCount; ++i)
     {
@@ -437,8 +609,7 @@ bool OnResize(UINT width, UINT height)
         pipeline_dx12.m_device->CreateRenderTargetView(
             pipeline_dx12.m_renderTargets[i],
             nullptr,
-            rtvHandle
-        );
+            rtvHandle);
 
         rtvHandle.Offset(1, pipeline_dx12.m_rtvDescriptorSize);
     }
@@ -450,7 +621,6 @@ bool OnResize(UINT width, UINT height)
 
     return true;
 }
-
 
 void OnDestroy()
 {

@@ -22,19 +22,16 @@
 
 bool PopulateCommandList()
 {
-    // Command list allocators can only be reset when the associated
-    // command lists have finished execution on the GPU; apps should use
-    // fences to determine GPU execution progress.
-    if (!HRAssert(pipeline_dx12.m_commandAllocator->Reset()))
-        return false;
-    // However, when ExecuteCommandList() is called on a particular command
-    // list, that command list can then be reset at any time and must be before
-    // re-recording.
-    if (!HRAssert(pipeline_dx12.m_commandList->Reset(pipeline_dx12.m_commandAllocator, pipeline_dx12.m_pipelineState)))
-        return false;
+    pipeline_dx12.ResetCommandObjects();
 
     // Set necessary state.
     pipeline_dx12.m_commandList->SetGraphicsRootSignature(pipeline_dx12.m_rootSignature);
+
+    ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_srvHeap};
+    pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+    pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(0, pipeline_dx12.m_srvHeap->GetGPUDescriptorHandleForHeapStart());
+
     pipeline_dx12.m_commandList->RSSetViewports(1, &pipeline_dx12.m_viewport);
     pipeline_dx12.m_commandList->RSSetScissorRects(1, &pipeline_dx12.m_scissorRect);
 
