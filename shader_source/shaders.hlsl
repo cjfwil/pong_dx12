@@ -33,4 +33,3 @@ float4 PSMain(PSInput input) : SV_TARGET
 {
     return g_texture.Sample(g_sampler, input.uv);    
 }
-

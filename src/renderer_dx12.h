@@ -464,9 +464,9 @@ bool LoadAssets()
         UINT compileFlags = 0;
 #endif
 
-        if (!HRAssert(D3DCompileFromFile(L"shaders.hlsl", nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vertexShader, nullptr)))
+        if (!HRAssert(D3DCompileFromFile(L"shader_source\\shaders.hlsl", nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vertexShader, nullptr)))
             return false;
-        if (!HRAssert(D3DCompileFromFile(L"shaders.hlsl", nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &pixelShader, nullptr)))
+        if (!HRAssert(D3DCompileFromFile(L"shader_source\\shaders.hlsl", nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &pixelShader, nullptr)))
             return false;
         // Define the vertex input layout.
         D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =

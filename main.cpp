@@ -19,8 +19,8 @@
 #include <directx/d3dx12.h>
 #pragma warning(pop)
 
-#include "local_error.h"
-#include "renderer_dx12.h"
+#include "src/local_error.h"
+#include "src/renderer_dx12.h"
 
 bool PopulateCommandList()
 {
