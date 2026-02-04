@@ -27,10 +27,10 @@ bool PopulateCommandList()
     // Set necessary state.
     pipeline_dx12.m_commandList->SetGraphicsRootSignature(pipeline_dx12.m_rootSignature);
 
-    ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_srvHeap};
+    ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_mainHeap};
     pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-    pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(0, pipeline_dx12.m_srvHeap->GetGPUDescriptorHandleForHeapStart());
+    pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(0, pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart());
 
     pipeline_dx12.m_commandList->RSSetViewports(1, &pipeline_dx12.m_viewport);
     pipeline_dx12.m_commandList->RSSetScissorRects(1, &pipeline_dx12.m_scissorRect);
@@ -61,6 +61,20 @@ bool PopulateCommandList()
     if (!HRAssert(pipeline_dx12.m_commandList->Close()))
         return false;
     return true;
+}
+
+// Update frame-based values.
+void Update()
+{
+    const float translationSpeed = 0.005f;
+    const float offsetBounds = 1.25f;
+
+    graphics_resources.m_constantBufferData.offset.x += translationSpeed;
+    if (graphics_resources.m_constantBufferData.offset.x > offsetBounds)
+    {
+        graphics_resources.m_constantBufferData.offset.x = -offsetBounds;
+    }
+    memcpy(graphics_resources.m_pCbvDataBegin, &graphics_resources.m_constantBufferData, sizeof(graphics_resources.m_constantBufferData));
 }
 
 // Render the scene.
@@ -227,6 +241,7 @@ int main(void)
         program_state.timing.UpdateTimer();
         program_state.DisplayPerformanceInWindowTitle(0.1);
 
+        Update();
         Render();
     }
 

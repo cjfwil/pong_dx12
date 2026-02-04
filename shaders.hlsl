@@ -1,3 +1,9 @@
+cbuffer ConstantBuffer : register(b0)
+{
+    float4 offset;
+    float4 padding[15];
+};
+
 struct VSInput
 {
     float4 position : POSITION;
@@ -17,7 +23,7 @@ PSInput VSMain(VSInput input)
 {
     PSInput result;
 
-    result.position = input.position;
+    result.position = input.position + offset;
     result.uv = input.uv;
 
     return result;

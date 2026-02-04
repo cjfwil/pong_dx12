@@ -18,6 +18,13 @@ struct Vertex
     DirectX::XMFLOAT2 uv;
 };
 
+struct ConstantBuffer
+{
+    DirectX::XMFLOAT4 offset;
+    float padding[60]; // Padding so the constant buffer is 256-byte aligned.
+};
+static_assert((sizeof(ConstantBuffer) % 256) == 0, "Constant Buffer size must be 256-byte aligned");
+
 static struct
 {
     CD3DX12_VIEWPORT m_viewport;
@@ -26,7 +33,7 @@ static struct
     ID3D12CommandQueue *m_commandQueue;
     IDXGISwapChain3 *m_swapChain;
     ID3D12DescriptorHeap *m_rtvHeap;
-    ID3D12DescriptorHeap *m_srvHeap;
+    ID3D12DescriptorHeap *m_mainHeap;
     static const UINT FrameCount = 2; // double, triple buffering etc...
     ID3D12Resource *m_renderTargets[FrameCount];
     ID3D12CommandAllocator *m_commandAllocator;
@@ -50,9 +57,12 @@ static struct
 
 static struct
 {
+    ConstantBuffer m_constantBufferData;
     D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
     ID3D12Resource *m_vertexBuffer;
     ID3D12Resource *m_texture;
+    ID3D12Resource *m_constantBuffer;
+    UINT8 *m_pCbvDataBegin;
 } graphics_resources;
 
 static struct
@@ -254,30 +264,17 @@ bool LoadPipeline(HWND hwnd)
         if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_rtvHeap))))
             return false;
         // Describe and create a shader resource view (SRV) heap for the texture.
-        D3D12_DESCRIPTOR_HEAP_DESC srvHeapDesc = {};
-        srvHeapDesc.NumDescriptors = 1;
-        srvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-        srvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&srvHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_srvHeap))))
+        D3D12_DESCRIPTOR_HEAP_DESC mainHeapDesc = {};
+        mainHeapDesc.NumDescriptors = 2;
+        mainHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        mainHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&mainHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_mainHeap))))
             return false;
         pipeline_dx12.m_rtvDescriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
     }
 
     pipeline_dx12.m_viewport = CD3DX12_VIEWPORT(0.0f, 0.0f, static_cast<float>(viewport_state.m_width), static_cast<float>(viewport_state.m_height));
     pipeline_dx12.m_scissorRect = CD3DX12_RECT(0, 0, static_cast<LONG>(viewport_state.m_width), static_cast<LONG>(viewport_state.m_height));
-
-    // Create descriptor heaps.
-    {
-        // Describe and create a render target view (RTV) descriptor heap.
-        D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-        rtvHeapDesc.NumDescriptors = pipeline_dx12.FrameCount;
-        rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
-        rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-        if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_rtvHeap))))
-            return false;
-
-        pipeline_dx12.m_rtvDescriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
-    }
 
     // Create frame resources.
     {
@@ -342,7 +339,7 @@ std::vector<UINT8> GenerateTextureData()
 // Load the startup assets. Returns true on success, false on fail.
 bool LoadAssets()
 {
-    // Create an empty root signature.
+    // Create root signature.
     {
         D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
 
@@ -354,11 +351,12 @@ bool LoadAssets()
             featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
         }
 
-        CD3DX12_DESCRIPTOR_RANGE1 ranges[1];
-        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+        CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
+        ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+        ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 
         CD3DX12_ROOT_PARAMETER1 rootParameters[1];
-        rootParameters[0].InitAsDescriptorTable(1, &ranges[0], D3D12_SHADER_VISIBILITY_PIXEL);
+        rootParameters[0].InitAsDescriptorTable(_countof(ranges), ranges, D3D12_SHADER_VISIBILITY_ALL);
 
         D3D12_STATIC_SAMPLER_DESC sampler = {};
         sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
@@ -472,8 +470,36 @@ bool LoadAssets()
         graphics_resources.m_vertexBufferView.SizeInBytes = vertexBufferSize;
     }
 
-    //TODO: decide
+    // TODO: decide
     pipeline_dx12.ResetCommandObjects();
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuStart(pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart());
+    // create constant buffer
+    {
+        const UINT constantBufferSize = sizeof(ConstantBuffer); // CB size is required to be 256-byte aligned.
+
+        if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+                &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+                D3D12_HEAP_FLAG_NONE,
+                &CD3DX12_RESOURCE_DESC::Buffer(constantBufferSize),
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(&graphics_resources.m_constantBuffer))))
+            return false;
+
+        // Describe and create a constant buffer view.
+        D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+        cbvDesc.BufferLocation = graphics_resources.m_constantBuffer->GetGPUVirtualAddress();
+        cbvDesc.SizeInBytes = constantBufferSize;
+        pipeline_dx12.m_device->CreateConstantBufferView(&cbvDesc, cpuStart);
+
+        // Map and initialize the constant buffer. We don't unmap this until the
+        // app closes. Keeping things mapped for the lifetime of the resource is okay.
+        CD3DX12_RANGE readRange(0, 0); // We do not intend to read from this resource on the CPU.
+        if (!HRAssert(graphics_resources.m_constantBuffer->Map(0, &readRange, reinterpret_cast<void **>(&graphics_resources.m_pCbvDataBegin))))
+            return false;
+        memcpy(graphics_resources.m_pCbvDataBegin, &graphics_resources.m_constantBufferData, sizeof(graphics_resources.m_constantBufferData));
+    }
 
     // Note: ComPtr's are CPU objects but this resource needs to stay in scope until
     // the command list that references it has finished executing on the GPU.
@@ -527,13 +553,17 @@ bool LoadAssets()
         auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(graphics_resources.m_texture, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
 
+        UINT increment = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE cpuSrv(cpuStart);
+        cpuSrv.Offset(1, increment);
+
         // Describe and create a SRV for the texture.
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
         srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         srvDesc.Format = textureDesc.Format;
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         srvDesc.Texture2D.MipLevels = 1;
-        pipeline_dx12.m_device->CreateShaderResourceView(graphics_resources.m_texture, &srvDesc, pipeline_dx12.m_srvHeap->GetCPUDescriptorHandleForHeapStart());
+        pipeline_dx12.m_device->CreateShaderResourceView(graphics_resources.m_texture, &srvDesc, cpuSrv);
     }
 
     // Close the command list and execute it to begin the initial GPU setup.
