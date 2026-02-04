@@ -46,7 +46,7 @@ bool PopulateCommandList()
     pipeline_dx12.m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 
     // Record commands.
-    const float clearColor[] = {0.0f, 0.2f, 0.4f, 1.0f};
+    float clearColor[4] = {(sync_state.m_frameIndex & 1) ? 1.0f : 0.0f, (sync_state.m_frameIndex & 2) ? 1.0f : 0.0f, (sync_state.m_frameIndex & 3) ? 1.0f : 0.0f, 1.0f};
     pipeline_dx12.m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
     pipeline_dx12.m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     pipeline_dx12.m_commandList->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
@@ -94,7 +94,7 @@ void Render(bool vsync = true)
     UINT syncInterval = (vsync) ? 1 : 0;
     UINT syncFlags = (vsync) ? 0 : DXGI_PRESENT_ALLOW_TEARING;
     HRAssert(pipeline_dx12.m_swapChain->Present(syncInterval, syncFlags));
-    WaitForPreviousFrame();
+    MoveToNextFrame();
 }
 
 struct timing_state

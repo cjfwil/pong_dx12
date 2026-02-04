@@ -25,6 +25,15 @@ struct ConstantBuffer
 };
 static_assert((sizeof(ConstantBuffer) % 256) == 0, "Constant Buffer size must be 256-byte aligned");
 
+static const UINT FrameCount = 3; // double, triple buffering etc...
+static struct
+{
+    UINT64 m_fenceValues[FrameCount];
+    ID3D12Fence *m_fence;
+    HANDLE m_fenceEvent;
+    UINT m_frameIndex;
+} sync_state;
+
 static struct
 {
     CD3DX12_VIEWPORT m_viewport;
@@ -34,9 +43,8 @@ static struct
     IDXGISwapChain3 *m_swapChain;
     ID3D12DescriptorHeap *m_rtvHeap;
     ID3D12DescriptorHeap *m_mainHeap;
-    static const UINT FrameCount = 2; // double, triple buffering etc...
     ID3D12Resource *m_renderTargets[FrameCount];
-    ID3D12CommandAllocator *m_commandAllocator;
+    ID3D12CommandAllocator *m_commandAllocators[FrameCount];
     ID3D12GraphicsCommandList *m_commandList;
     ID3D12PipelineState *m_pipelineState;
     ID3D12RootSignature *m_rootSignature;
@@ -47,11 +55,11 @@ static struct
         // Command list allocators can only be reset when the associated
         // command lists have finished execution on the GPU; apps should use
         // fences to determine GPU execution progress.
-        HRAssert(pipeline_dx12.m_commandAllocator->Reset());
+        HRAssert(pipeline_dx12.m_commandAllocators[sync_state.m_frameIndex]->Reset());
         // However, when ExecuteCommandList() is called on a particular command
         // list, that command list can then be reset at any time and must be before
         // re-recording.
-        HRAssert(pipeline_dx12.m_commandList->Reset(pipeline_dx12.m_commandAllocator, pipeline_dx12.m_pipelineState));
+        HRAssert(pipeline_dx12.m_commandList->Reset(pipeline_dx12.m_commandAllocators[sync_state.m_frameIndex], pipeline_dx12.m_pipelineState));
     }
 } pipeline_dx12;
 
@@ -65,35 +73,60 @@ static struct
     UINT8 *m_pCbvDataBegin;
 } graphics_resources;
 
-static struct
+// Wait for pending GPU work to complete.
+void WaitForGpu()
 {
-    UINT64 m_fenceValue;
-    ID3D12Fence *m_fence;
-    HANDLE m_fenceEvent;
-    UINT m_frameIndex;
-} sync_state;
+    // Schedule a Signal command in the queue.
+    HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, sync_state.m_fenceValues[sync_state.m_frameIndex]));
+    // Wait until the fence has been processed.
+    HRAssert(sync_state.m_fence->SetEventOnCompletion(sync_state.m_fenceValues[sync_state.m_frameIndex], sync_state.m_fenceEvent));
+    WaitForSingleObjectEx(sync_state.m_fenceEvent, INFINITE, FALSE);
 
-void WaitForPreviousFrame()
+    // Increment the fence value for the current frame.
+    sync_state.m_fenceValues[sync_state.m_frameIndex]++;
+}
+
+// Prepare to render the next frame.
+void MoveToNextFrame()
 {
-    // WAITING FOR THE FRAME TO COMPLETE BEFORE CONTINUING IS NOT BEST PRACTICE.
-    // This is code implemented as such for simplicity. The D3D12HelloFrameBuffering
-    // sample illustrates how to use fences for efficient resource usage and to
-    // maximize GPU utilization.
+    // Schedule a Signal command in the queue.
+    const UINT64 currentFenceValue = sync_state.m_fenceValues[sync_state.m_frameIndex];
+    HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, currentFenceValue));
+    // Update the frame index.
+    sync_state.m_frameIndex = pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
 
-    // Signal and increment the fence value.
-    const UINT64 fence = sync_state.m_fenceValue;
-    HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, fence));
-    sync_state.m_fenceValue++;
-
-    // Wait until the previous frame is finished.
-    if (sync_state.m_fence->GetCompletedValue() < fence)
+    // If the next frame is not ready to be rendered yet, wait until it is ready.
+    if (sync_state.m_fence->GetCompletedValue() < sync_state.m_fenceValues[sync_state.m_frameIndex])
     {
-        HRAssert(sync_state.m_fence->SetEventOnCompletion(fence, sync_state.m_fenceEvent));
-        WaitForSingleObject(sync_state.m_fenceEvent, INFINITE);
+        HRAssert(sync_state.m_fence->SetEventOnCompletion(sync_state.m_fenceValues[sync_state.m_frameIndex], sync_state.m_fenceEvent));
+        WaitForSingleObjectEx(sync_state.m_fenceEvent, INFINITE, FALSE);
     }
 
-    sync_state.m_frameIndex = pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
+    // Set the fence value for the next frame.
+    sync_state.m_fenceValues[sync_state.m_frameIndex] = currentFenceValue + 1;
 }
+
+// void WaitForPreviousFrame()
+// {
+//     // WAITING FOR THE FRAME TO COMPLETE BEFORE CONTINUING IS NOT BEST PRACTICE.
+//     // This is code implemented as such for simplicity. The D3D12HelloFrameBuffering
+//     // sample illustrates how to use fences for efficient resource usage and to
+//     // maximize GPU utilization.
+
+//     // Signal and increment the fence value.
+//     const UINT64 fence = sync_state.m_fenceValue;
+//     HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, fence));
+//     sync_state.m_fenceValue++;
+
+//     // Wait until the previous frame is finished.
+//     if (sync_state.m_fence->GetCompletedValue() < fence)
+//     {
+//         HRAssert(sync_state.m_fence->SetEventOnCompletion(fence, sync_state.m_fenceEvent));
+//         WaitForSingleObject(sync_state.m_fenceEvent, INFINITE);
+//     }
+
+//     sync_state.m_frameIndex = pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
+// }
 
 static struct
 {
@@ -228,7 +261,7 @@ bool LoadPipeline(HWND hwnd)
 
     // Describe and create the swap chain.
     DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
-    swapChainDesc.BufferCount = pipeline_dx12.FrameCount;
+    swapChainDesc.BufferCount = FrameCount;
     swapChainDesc.Width = viewport_state.m_width;
     swapChainDesc.Height = viewport_state.m_height;
     swapChainDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -258,7 +291,7 @@ bool LoadPipeline(HWND hwnd)
     {
         // Describe and create a render target view (RTV) descriptor heap.
         D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-        rtvHeapDesc.NumDescriptors = pipeline_dx12.FrameCount;
+        rtvHeapDesc.NumDescriptors = FrameCount;
         rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
         rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
         if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_rtvHeap))))
@@ -280,18 +313,18 @@ bool LoadPipeline(HWND hwnd)
     {
         CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
 
-        // Create a RTV for each frame.
-        for (UINT n = 0; n < pipeline_dx12.FrameCount; n++)
+        // Create a RTV and a command allocator for each frame.
+        for (UINT n = 0; n < FrameCount; n++)
         {
             if (!HRAssert(pipeline_dx12.m_swapChain->GetBuffer(n, IID_PPV_ARGS(&pipeline_dx12.m_renderTargets[n]))))
                 return false;
             pipeline_dx12.m_device->CreateRenderTargetView(pipeline_dx12.m_renderTargets[n], nullptr, rtvHandle);
             rtvHandle.Offset(1, pipeline_dx12.m_rtvDescriptorSize);
+
+            if (!HRAssert(pipeline_dx12.m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&pipeline_dx12.m_commandAllocators[n]))))
+                return false;
         }
     }
-
-    if (!HRAssert(pipeline_dx12.m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&pipeline_dx12.m_commandAllocator))))
-        return false;
 
     return true;
 }
@@ -426,7 +459,7 @@ bool LoadAssets()
     }
 
     // Create the command list.
-    if (!HRAssert(pipeline_dx12.m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pipeline_dx12.m_commandAllocator, pipeline_dx12.m_pipelineState, IID_PPV_ARGS(&pipeline_dx12.m_commandList))))
+    if (!HRAssert(pipeline_dx12.m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pipeline_dx12.m_commandAllocators[sync_state.m_frameIndex], pipeline_dx12.m_pipelineState, IID_PPV_ARGS(&pipeline_dx12.m_commandList))))
         return false;
     // Command lists are created in the recording state, but there is nothing
     // to record yet. The main loop expects it to be closed, so close it now.
@@ -574,9 +607,9 @@ bool LoadAssets()
 
     // Create synchronization objects and wait until assets have been uploaded to the GPU.
     {
-        if (!HRAssert(pipeline_dx12.m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&sync_state.m_fence))))
+        if (!HRAssert(pipeline_dx12.m_device->CreateFence(sync_state.m_fenceValues[sync_state.m_frameIndex], D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&sync_state.m_fence))))
             return false;
-        sync_state.m_fenceValue = 1;
+        sync_state.m_fenceValues[sync_state.m_frameIndex]++;
 
         // Create an event handle to use for frame synchronization.
         sync_state.m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
@@ -589,7 +622,7 @@ bool LoadAssets()
         // Wait for the command list to execute; we are reusing the same command
         // list in our main loop but for now, we just want to wait for setup to
         // complete before continuing.
-        WaitForPreviousFrame();
+        WaitForGpu();
     }
     return true;
 }
@@ -599,10 +632,10 @@ bool OnResize(UINT width, UINT height)
     if (width == 0 || height == 0)
         return true; // minimized
 
-    WaitForPreviousFrame();
+    WaitForGpu();
 
     // Release old render targets
-    for (UINT i = 0; i < pipeline_dx12.FrameCount; ++i)
+    for (UINT i = 0; i < FrameCount; ++i)
     {
         if (pipeline_dx12.m_renderTargets[i])
         {
@@ -616,7 +649,7 @@ bool OnResize(UINT width, UINT height)
     pipeline_dx12.m_swapChain->GetDesc(&desc);
 
     HRESULT hr = pipeline_dx12.m_swapChain->ResizeBuffers(
-        pipeline_dx12.FrameCount,
+        FrameCount,
         width,
         height,
         desc.BufferDesc.Format,
@@ -630,7 +663,7 @@ bool OnResize(UINT width, UINT height)
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(
         pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
 
-    for (UINT i = 0; i < pipeline_dx12.FrameCount; ++i)
+    for (UINT i = 0; i < FrameCount; ++i)
     {
         hr = pipeline_dx12.m_swapChain->GetBuffer(i, IID_PPV_ARGS(&pipeline_dx12.m_renderTargets[i]));
         if (FAILED(hr))
@@ -656,7 +689,7 @@ void OnDestroy()
 {
     // Ensure that the GPU is no longer referencing resources that are about to be
     // cleaned up by the destructor.
-    WaitForPreviousFrame();
+    WaitForGpu();
 
     CloseHandle(sync_state.m_fenceEvent);
 }
