@@ -681,11 +681,15 @@ bool LoadAssets()
     return true;
 }
 
+#include "OnDestroy_generated.cpp"
+#ifndef ONDESTROY_GENERATED_CPP
 void OnDestroy()
 {
+
     // Ensure that the GPU is no longer referencing resources that are about to be
     // cleaned up by the destructor.
     WaitForGpu();
 
     CloseHandle(sync_state.m_fenceEvent);
 }
+#endif

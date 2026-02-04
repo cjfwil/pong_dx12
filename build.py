@@ -10,7 +10,6 @@ SOURCE_FILE = "main.cpp"
 OUTPUT_DIR = Path("release")
 SHADER_DIR = Path("shader_source")
 
-# DLLs you want to copy into the release folder
 DLLS_TO_COPY = [
     r"C:\WINDOWS\system32\SDL3.dll"
 ]
@@ -22,7 +21,7 @@ CL_FLAGS = [
     "/EHsc",        # C++ exceptions
     "/MD",          # Release runtime library
     "/nologo",      # No MSVC banner
-    "/Fe" + str(OUTPUT_DIR / "main.exe")  # Output executable
+    "/Fe" + str(OUTPUT_DIR / "pong_dx12.exe")
 ]
 
 # -----------------------------
