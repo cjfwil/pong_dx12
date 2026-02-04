@@ -48,6 +48,13 @@ static struct
     ID3D12GraphicsCommandList *m_commandList;
     ID3D12PipelineState *m_pipelineState;
     ID3D12RootSignature *m_rootSignature;
+
+    // depth buffer
+    ID3D12DescriptorHeap *m_dsvHeap;
+    ID3D12Resource *m_depthStencil;
+
+    // descriptor sizes
+    UINT m_dsvDescriptorSize;
     UINT m_rtvDescriptorSize;
 
     void ResetCommandObjects()
@@ -105,28 +112,6 @@ void MoveToNextFrame()
     // Set the fence value for the next frame.
     sync_state.m_fenceValues[sync_state.m_frameIndex] = currentFenceValue + 1;
 }
-
-// void WaitForPreviousFrame()
-// {
-//     // WAITING FOR THE FRAME TO COMPLETE BEFORE CONTINUING IS NOT BEST PRACTICE.
-//     // This is code implemented as such for simplicity. The D3D12HelloFrameBuffering
-//     // sample illustrates how to use fences for efficient resource usage and to
-//     // maximize GPU utilization.
-
-//     // Signal and increment the fence value.
-//     const UINT64 fence = sync_state.m_fenceValue;
-//     HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, fence));
-//     sync_state.m_fenceValue++;
-
-//     // Wait until the previous frame is finished.
-//     if (sync_state.m_fence->GetCompletedValue() < fence)
-//     {
-//         HRAssert(sync_state.m_fence->SetEventOnCompletion(fence, sync_state.m_fenceEvent));
-//         WaitForSingleObject(sync_state.m_fenceEvent, INFINITE);
-//     }
-
-//     sync_state.m_frameIndex = pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
-// }
 
 static struct
 {
@@ -296,6 +281,14 @@ bool LoadPipeline(HWND hwnd)
         rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
         if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_rtvHeap))))
             return false;
+
+        D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
+        dsvHeapDesc.NumDescriptors = 1;
+        dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+        dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+        if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_dsvHeap))))
+            return false;
+
         // Describe and create a shader resource view (SRV) heap for the texture.
         D3D12_DESCRIPTOR_HEAP_DESC mainHeapDesc = {};
         mainHeapDesc.NumDescriptors = 2;
@@ -324,6 +317,40 @@ bool LoadPipeline(HWND hwnd)
             if (!HRAssert(pipeline_dx12.m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&pipeline_dx12.m_commandAllocators[n]))))
                 return false;
         }
+
+        // create the depth buffer resource
+        D3D12_RESOURCE_DESC depthStencilDesc = {};
+        depthStencilDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        depthStencilDesc.Width = viewport_state.m_width;
+        depthStencilDesc.Height = viewport_state.m_height;
+        depthStencilDesc.DepthOrArraySize = 1;
+        depthStencilDesc.MipLevels = 1;
+        depthStencilDesc.Format = DXGI_FORMAT_D32_FLOAT;
+        depthStencilDesc.SampleDesc.Count = 1;
+        depthStencilDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+        D3D12_CLEAR_VALUE depthOptimizedClearValue = {};
+        depthOptimizedClearValue.Format = DXGI_FORMAT_D32_FLOAT;
+        depthOptimizedClearValue.DepthStencil.Depth = 1.0f;
+        depthOptimizedClearValue.DepthStencil.Stencil = 0;
+
+        pipeline_dx12.m_device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+            D3D12_HEAP_FLAG_NONE,
+            &depthStencilDesc,
+            D3D12_RESOURCE_STATE_DEPTH_WRITE,
+            &depthOptimizedClearValue,
+            IID_PPV_ARGS(&pipeline_dx12.m_depthStencil));
+
+        D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+        dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
+        dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+        dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
+
+        pipeline_dx12.m_device->CreateDepthStencilView(
+            pipeline_dx12.m_depthStencil,
+            &dsvDesc,
+            pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
     }
 
     return true;
@@ -447,8 +474,8 @@ bool LoadAssets()
         psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader);
         psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
         psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-        psoDesc.DepthStencilState.DepthEnable = FALSE;
-        psoDesc.DepthStencilState.StencilEnable = FALSE;
+        psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+        psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
         psoDesc.SampleMask = UINT_MAX;
         psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
         psoDesc.NumRenderTargets = 1;
@@ -624,64 +651,6 @@ bool LoadAssets()
         // complete before continuing.
         WaitForGpu();
     }
-    return true;
-}
-
-bool OnResize(UINT width, UINT height)
-{
-    if (width == 0 || height == 0)
-        return true; // minimized
-
-    WaitForGpu();
-
-    // Release old render targets
-    for (UINT i = 0; i < FrameCount; ++i)
-    {
-        if (pipeline_dx12.m_renderTargets[i])
-        {
-            pipeline_dx12.m_renderTargets[i]->Release();
-            pipeline_dx12.m_renderTargets[i] = nullptr;
-        }
-    }
-
-    // Resize swap chain buffers
-    DXGI_SWAP_CHAIN_DESC desc = {};
-    pipeline_dx12.m_swapChain->GetDesc(&desc);
-
-    HRESULT hr = pipeline_dx12.m_swapChain->ResizeBuffers(
-        FrameCount,
-        width,
-        height,
-        desc.BufferDesc.Format,
-        desc.Flags);
-    if (FAILED(hr))
-        return false;
-
-    sync_state.m_frameIndex = pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
-
-    // Recreate RTVs
-    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(
-        pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
-
-    for (UINT i = 0; i < FrameCount; ++i)
-    {
-        hr = pipeline_dx12.m_swapChain->GetBuffer(i, IID_PPV_ARGS(&pipeline_dx12.m_renderTargets[i]));
-        if (FAILED(hr))
-            return false;
-
-        pipeline_dx12.m_device->CreateRenderTargetView(
-            pipeline_dx12.m_renderTargets[i],
-            nullptr,
-            rtvHandle);
-
-        rtvHandle.Offset(1, pipeline_dx12.m_rtvDescriptorSize);
-    }
-
-    // Update viewport
-    viewport_state.m_width = width;
-    viewport_state.m_height = height;
-    viewport_state.m_aspectRatio = float(width) / float(height);
-
     return true;
 }
 

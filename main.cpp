@@ -1,4 +1,6 @@
 #pragma warning(disable : 5045) // disabling the spectre mitigation warning (not relevant because we are a game, no sensitive information should be in this program)
+#pragma warning(disable : 4238) // nonstandard lvalue as rvalue warning
+#pragma warning(disable : 4820) // padding warnings
 #pragma comment(lib, "SDL3.lib")
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -42,14 +44,17 @@ bool PopulateCommandList()
     }
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), (INT)sync_state.m_frameIndex, pipeline_dx12.m_rtvDescriptorSize);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
 
-    pipeline_dx12.m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
+    pipeline_dx12.m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
+    // pipeline_dx12.m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 
     // Record commands.
     const float clearColour[] = {0.0f, 0.2f, 0.4f, 1.0f};
     pipeline_dx12.m_commandList->ClearRenderTargetView(rtvHandle, clearColour, 0, nullptr);
+    pipeline_dx12.m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
     pipeline_dx12.m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    pipeline_dx12.m_commandList->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
+    pipeline_dx12.m_commandList->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);    
     pipeline_dx12.m_commandList->DrawInstanced(3, 1, 0, 0);
 
     // Indicate that the back buffer will now be used to present.
@@ -177,7 +182,7 @@ int main(void)
         SDL_Log("SDL Video initialised.");
     }
 
-    program_state.window = SDL_CreateWindow("Name", 640, 480, SDL_WINDOW_RESIZABLE);
+    program_state.window = SDL_CreateWindow("Name", 1920, 1080, SDL_WINDOW_BORDERLESS);
     if (program_state.window == nullptr)
     {
         log_sdl_error("Couldn't create SDL window");
@@ -225,14 +230,6 @@ int main(void)
             case SDL_EVENT_QUIT:
             {
                 program_state.isRunning = false;
-            }
-            break;
-            case SDL_EVENT_WINDOW_RESIZED:
-            case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
-            {
-                int w, h;
-                SDL_GetWindowSizeInPixels(program_state.window, &w, &h);
-                OnResize((UINT)w, (UINT)h);
             }
             break;
             }
