@@ -46,8 +46,8 @@ bool PopulateCommandList()
     pipeline_dx12.m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 
     // Record commands.
-    float clearColor[4] = {(sync_state.m_frameIndex & 1) ? 1.0f : 0.0f, (sync_state.m_frameIndex & 2) ? 1.0f : 0.0f, (sync_state.m_frameIndex & 3) ? 1.0f : 0.0f, 1.0f};
-    pipeline_dx12.m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
+    const float clearColour[] = {0.0f, 0.2f, 0.4f, 1.0f};
+    pipeline_dx12.m_commandList->ClearRenderTargetView(rtvHandle, clearColour, 0, nullptr);
     pipeline_dx12.m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     pipeline_dx12.m_commandList->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
     pipeline_dx12.m_commandList->DrawInstanced(3, 1, 0, 0);
