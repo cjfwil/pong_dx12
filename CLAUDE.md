@@ -154,3 +154,7 @@ SDL3.dll must be available at runtime (copied by build.py for release builds).
 - Error handling uses custom `HRAssert()` macro that logs HRESULT errors and breaks into debugger on debug builds
 - All errors logged via SDL_Log
 - Window title shows performance metrics (FPS, frame time)
+
+## Instructions to Claude
+
+Answer all questions concisely. Sacrifice grammar as much as you can get away with, so we can get our outputs as quickly readable as possible.

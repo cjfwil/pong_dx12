@@ -115,6 +115,13 @@ void OnDestroy()
         pipeline_dx12.m_device = nullptr;
     }
 
+    // Release other resources
+    if (pipeline_dx12.m_imguiHeap)
+    {
+        pipeline_dx12.m_imguiHeap->Release();
+        pipeline_dx12.m_imguiHeap = nullptr;
+    }
+
     // Close fence event handle
     if (sync_state.m_fenceEvent)
     {
