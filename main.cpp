@@ -7,6 +7,7 @@
 #pragma comment(lib, "d3dcompiler.lib")
 #pragma comment(lib, "dxcompiler.lib")
 #pragma comment(lib, "dxguid.lib")
+#pragma comment(lib, "imgui.lib")
 
 #pragma comment(lib, "user32.lib")
 
@@ -17,10 +18,58 @@
 #include <dxgi1_6.h>
 #include <dxgi1_2.h>
 #include <directx/d3dx12.h>
+
+#include <imgui.h>
+#include <backends/imgui_impl_sdl3.h>
+#include <backends/imgui_impl_dx12.h>
 #pragma warning(pop)
 
 #include "src/local_error.h"
 #include "src/renderer_dx12.h"
+
+static struct
+{
+    ID3D12DescriptorHeap *Heap = nullptr;
+    D3D12_DESCRIPTOR_HEAP_TYPE HeapType = D3D12_DESCRIPTOR_HEAP_TYPE_NUM_TYPES;
+    D3D12_CPU_DESCRIPTOR_HANDLE HeapStartCpu;
+    D3D12_GPU_DESCRIPTOR_HANDLE HeapStartGpu;
+    UINT HeapHandleIncrement;
+    ImVector<int> FreeIndices;
+
+    void Create(ID3D12Device *device, ID3D12DescriptorHeap *heap)
+    {
+        IM_ASSERT(Heap == nullptr && FreeIndices.empty());
+        Heap = heap;
+        D3D12_DESCRIPTOR_HEAP_DESC desc = heap->GetDesc();
+        HeapType = desc.Type;
+        HeapStartCpu = Heap->GetCPUDescriptorHandleForHeapStart();
+        HeapStartGpu = Heap->GetGPUDescriptorHandleForHeapStart();
+        HeapHandleIncrement = device->GetDescriptorHandleIncrementSize(HeapType);
+        FreeIndices.reserve((int)desc.NumDescriptors);
+        for (int n = desc.NumDescriptors; n > 0; n--)
+            FreeIndices.push_back(n - 1);
+    }
+    void Destroy()
+    {
+        Heap = nullptr;
+        FreeIndices.clear();
+    }
+    void Alloc(D3D12_CPU_DESCRIPTOR_HANDLE *out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE *out_gpu_desc_handle)
+    {
+        IM_ASSERT(FreeIndices.Size > 0);
+        int idx = FreeIndices.back();
+        FreeIndices.pop_back();
+        out_cpu_desc_handle->ptr = HeapStartCpu.ptr + (idx * HeapHandleIncrement);
+        out_gpu_desc_handle->ptr = HeapStartGpu.ptr + (idx * HeapHandleIncrement);
+    }
+    void Free(D3D12_CPU_DESCRIPTOR_HANDLE out_cpu_desc_handle, D3D12_GPU_DESCRIPTOR_HANDLE out_gpu_desc_handle)
+    {
+        int cpu_idx = (int)((out_cpu_desc_handle.ptr - HeapStartCpu.ptr) / HeapHandleIncrement);
+        int gpu_idx = (int)((out_gpu_desc_handle.ptr - HeapStartGpu.ptr) / HeapHandleIncrement);
+        IM_ASSERT(cpu_idx == gpu_idx);
+        FreeIndices.push_back(cpu_idx);
+    }
+} g_imguiHeap;
 
 bool PopulateCommandList()
 {
@@ -32,20 +81,17 @@ bool PopulateCommandList()
     ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_mainHeap};
     pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-
     UINT descriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(
         pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
         (INT)sync_state.m_frameIndex,
-        descriptorSize        
-    );
+        descriptorSize);
     pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(0, cbvHandle);
 
     CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(
         pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
-        g_FrameCount,  // SRV is after all CBVs
-        descriptorSize
-    );
+        g_FrameCount, // SRV is after all CBVs
+        descriptorSize);
     pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(1, srvHandle);
 
     pipeline_dx12.m_commandList->RSSetViewports(1, &pipeline_dx12.m_viewport);
@@ -68,8 +114,13 @@ bool PopulateCommandList()
     pipeline_dx12.m_commandList->ClearRenderTargetView(rtvHandle, clearColour, 0, nullptr);
     pipeline_dx12.m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
     pipeline_dx12.m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    pipeline_dx12.m_commandList->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);    
+    pipeline_dx12.m_commandList->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
     pipeline_dx12.m_commandList->DrawInstanced(3, 1, 0, 0);
+
+    ImGui::Render();
+    ID3D12DescriptorHeap *imguiHeaps[] = {g_imguiHeap.Heap};
+    pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(imguiHeaps), imguiHeaps);
+    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), pipeline_dx12.m_commandList);
 
     // Indicate that the back buffer will now be used to present.
     {
@@ -93,8 +144,8 @@ void Update()
     {
         graphics_resources.m_constantBufferData.offset.x = -offsetBounds;
     }
-    memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex], 
-           &graphics_resources.m_constantBufferData, 
+    memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex],
+           &graphics_resources.m_constantBufferData,
            sizeof(graphics_resources.m_constantBufferData));
 }
 
@@ -236,11 +287,39 @@ int main(void)
         SDL_Log("Startup assets loaded successfully.");
     }
 
+    {
+        // imgui setup
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGuiIO &io = ImGui::GetIO();
+        (void)io;
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
+        ImGui::StyleColorsDark();
+
+        ImGui_ImplSDL3_InitForD3D(program_state.window);
+
+        g_imguiHeap.Create(pipeline_dx12.m_device, pipeline_dx12.m_imguiHeap);
+        ImGui_ImplDX12_InitInfo init_info = {};
+        init_info.Device = pipeline_dx12.m_device;
+        init_info.CommandQueue = pipeline_dx12.m_commandQueue;
+        init_info.NumFramesInFlight = g_FrameCount;
+        init_info.RTVFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
+        init_info.DSVFormat = DXGI_FORMAT_UNKNOWN;
+        init_info.SrvDescriptorHeap = g_imguiHeap.Heap;
+        init_info.SrvDescriptorAllocFn = [](ImGui_ImplDX12_InitInfo *, D3D12_CPU_DESCRIPTOR_HANDLE *out_cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE *out_gpu_handle)
+        { return g_imguiHeap.Alloc(out_cpu_handle, out_gpu_handle); };
+        init_info.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo *, D3D12_CPU_DESCRIPTOR_HANDLE cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE gpu_handle)
+        { return g_imguiHeap.Free(cpu_handle, gpu_handle); };
+        ImGui_ImplDX12_Init(&init_info);
+    }
+
     while (program_state.isRunning)
     {
         SDL_Event sdlEvent;
         while (SDL_PollEvent(&sdlEvent))
         {
+            ImGui_ImplSDL3_ProcessEvent(&sdlEvent);
             switch (sdlEvent.type)
             {
             case SDL_EVENT_QUIT:
@@ -250,6 +329,12 @@ int main(void)
             break;
             }
         }
+        ImGui_ImplDX12_NewFrame();
+        ImGui_ImplSDL3_NewFrame();
+        ImGui::NewFrame();
+        static bool show_demo_window = false;
+        if (show_demo_window)
+            ImGui::ShowDemoWindow(&show_demo_window);
 
         program_state.timing.UpdateTimer();
         program_state.DisplayPerformanceInWindowTitle(0.1);

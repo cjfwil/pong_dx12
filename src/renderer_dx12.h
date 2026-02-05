@@ -43,6 +43,7 @@ static struct
     IDXGISwapChain3 *m_swapChain;
     ID3D12DescriptorHeap *m_rtvHeap;
     ID3D12DescriptorHeap *m_mainHeap;
+    ID3D12DescriptorHeap *m_imguiHeap;
     ID3D12Resource *m_renderTargets[g_FrameCount];
     ID3D12CommandAllocator *m_commandAllocators[g_FrameCount];
     ID3D12GraphicsCommandList *m_commandList;
@@ -298,6 +299,14 @@ bool LoadPipeline(HWND hwnd)
         if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&mainHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_mainHeap))))
             return false;
         pipeline_dx12.m_rtvDescriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+
+        // Create ImGui's descriptor heap
+        D3D12_DESCRIPTOR_HEAP_DESC imguiHeapDesc = {};
+        imguiHeapDesc.NumDescriptors = 10; // Enough for fonts and a few textures
+        imguiHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+        imguiHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+        if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&imguiHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_imguiHeap))))
+            return false;
     }
 
     pipeline_dx12.m_viewport = CD3DX12_VIEWPORT(0.0f, 0.0f, static_cast<float>(viewport_state.m_width), static_cast<float>(viewport_state.m_height));
@@ -412,7 +421,6 @@ bool LoadAssets()
             featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
         }
 
-            
         // CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
         // ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
         // ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
@@ -685,7 +693,6 @@ bool LoadAssets()
 #ifndef ONDESTROY_GENERATED_CPP
 void OnDestroy()
 {
-
     // Ensure that the GPU is no longer referencing resources that are about to be
     // cleaned up by the destructor.
     WaitForGpu();
