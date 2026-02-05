@@ -46,8 +46,8 @@ static struct
         HeapStartGpu = Heap->GetGPUDescriptorHandleForHeapStart();
         HeapHandleIncrement = device->GetDescriptorHandleIncrementSize(HeapType);
         FreeIndices.reserve((int)desc.NumDescriptors);
-        for (int n = desc.NumDescriptors; n > 0; n--)
-            FreeIndices.push_back(n - 1);
+        for (UINT n = desc.NumDescriptors; n > 0; n--)
+            FreeIndices.push_back((const int)(n - 1));
     }
     void Destroy()
     {
@@ -172,9 +172,9 @@ void Render(bool vsync = true)
 struct timing_state
 {
     Uint64 lastCounter = 0;
+    Uint64 ticksElapsed = 0;
     double upTime = 0.0;
     double deltaTime = 0.0;
-    uint32_t frames = 0;
 
     void InitTimer()
     {
@@ -188,7 +188,7 @@ struct timing_state
         lastCounter = now;
 
         upTime += deltaTime;
-        frames++;
+        ticksElapsed++;
     }
 };
 
@@ -332,9 +332,10 @@ int main(void)
         ImGui_ImplDX12_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
-        static bool show_demo_window = false;
-        if (show_demo_window)
-            ImGui::ShowDemoWindow(&show_demo_window);
+
+        ImGui::Text("Application average %.3f ms/frame (%.2f FPS)",
+                    1000.0f / ImGui::GetIO().Framerate,
+                    ImGui::GetIO().Framerate);
 
         program_state.timing.UpdateTimer();
         program_state.DisplayPerformanceInWindowTitle(0.1);
@@ -343,6 +344,7 @@ int main(void)
         Render();
     }
 
+    g_imguiHeap.Destroy();
     OnDestroy();
     return (0);
 }
