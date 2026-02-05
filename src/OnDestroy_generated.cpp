@@ -48,11 +48,6 @@ void OnDestroy()
         pipeline_dx12.m_commandList->Release();
         pipeline_dx12.m_commandList = nullptr;
     }
-    if (pipeline_dx12.m_pipelineState)
-    {
-        pipeline_dx12.m_pipelineState->Release();
-        pipeline_dx12.m_pipelineState = nullptr;
-    }
     if (pipeline_dx12.m_rootSignature)
     {
         pipeline_dx12.m_rootSignature->Release();

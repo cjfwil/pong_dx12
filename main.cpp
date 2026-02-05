@@ -400,6 +400,19 @@ int main(void)
 
         if (ImGui::Checkbox("Enable MSAA", &msaa_state.m_enabled))
         {
+            // When enabling MSAA, auto-select first supported sample count
+            if (msaa_state.m_enabled && msaa_state.m_currentSampleIndex == 0)
+            {
+                for (UINT i = 1; i < 4; i++)
+                {
+                    if (msaa_state.m_supported[i])
+                    {
+                        msaa_state.m_currentSampleIndex = i;
+                        msaa_state.m_currentSampleCount = msaa_state.m_sampleCounts[i];
+                        break;
+                    }
+                }
+            }
             msaaChanged = (oldEnabled != msaa_state.m_enabled);
         }
 

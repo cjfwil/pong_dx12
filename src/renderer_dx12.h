@@ -57,7 +57,6 @@ static struct
     ID3D12Resource *m_renderTargets[g_FrameCount];
     ID3D12CommandAllocator *m_commandAllocators[g_FrameCount];
     ID3D12GraphicsCommandList *m_commandList;
-    ID3D12PipelineState *m_pipelineState;
     ID3D12RootSignature *m_rootSignature;
 
     // depth buffer
@@ -623,13 +622,10 @@ bool LoadAssets()
             if (!HRAssert(pipeline_dx12.m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipeline_dx12.m_pipelineStates[i]))))
                 return false;
         }
-
-        // Set legacy pointer for compatibility
-        pipeline_dx12.m_pipelineState = pipeline_dx12.m_pipelineStates[0];
     }
 
     // Create the command list.
-    if (!HRAssert(pipeline_dx12.m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pipeline_dx12.m_commandAllocators[sync_state.m_frameIndex], pipeline_dx12.m_pipelineState, IID_PPV_ARGS(&pipeline_dx12.m_commandList))))
+    if (!HRAssert(pipeline_dx12.m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pipeline_dx12.m_commandAllocators[sync_state.m_frameIndex], pipeline_dx12.m_pipelineStates[0], IID_PPV_ARGS(&pipeline_dx12.m_commandList))))
         return false;
 
     // Create the vertex buffer.
@@ -818,7 +814,17 @@ bool LoadAssets()
 
 void RecreateMSAAResources()
 {
-    WaitForGpu();
+    // Wait for ALL frames to complete (triple buffering)
+    for (UINT i = 0; i < g_FrameCount; i++)
+    {
+        UINT64 fenceValue = sync_state.m_fenceValues[i];
+        HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, fenceValue));
+        if (sync_state.m_fence->GetCompletedValue() < fenceValue)
+        {
+            HRAssert(sync_state.m_fence->SetEventOnCompletion(fenceValue, sync_state.m_fenceEvent));
+            WaitForSingleObjectEx(sync_state.m_fenceEvent, INFINITE, FALSE);
+        }
+    }
 
     // Release old MSAA resources
     for (UINT n = 0; n < g_FrameCount; n++)

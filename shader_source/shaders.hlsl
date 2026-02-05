@@ -23,7 +23,7 @@ PSInput VSMain(VSInput input)
 {
     PSInput result;
 
-    result.position = input.position + offset;
+    result.position = input.position;
     result.uv = input.uv;
 
     return result;
