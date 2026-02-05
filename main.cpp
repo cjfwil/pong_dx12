@@ -97,25 +97,78 @@ bool PopulateCommandList()
     pipeline_dx12.m_commandList->RSSetViewports(1, &pipeline_dx12.m_viewport);
     pipeline_dx12.m_commandList->RSSetScissorRects(1, &pipeline_dx12.m_scissorRect);
 
-    // Indicate that the back buffer will be used as a render target.
+    const float clearColour[] = {0.0f, 0.2f, 0.4f, 1.0f};
+
+    if (msaa_state.m_enabled)
     {
-        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
-        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
+        // MSAA path: render to MSAA RT, then resolve to back buffer
+        CD3DX12_CPU_DESCRIPTOR_HANDLE msaaRtvHandle(pipeline_dx12.m_msaaRtvHeap->GetCPUDescriptorHandleForHeapStart(), (INT)sync_state.m_frameIndex, pipeline_dx12.m_rtvDescriptorSize);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE msaaDsvHandle(pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
+        msaaDsvHandle.Offset(1, pipeline_dx12.m_dsvDescriptorSize); // MSAA depth is at index 1
+
+        pipeline_dx12.m_commandList->OMSetRenderTargets(1, &msaaRtvHandle, FALSE, &msaaDsvHandle);
+        pipeline_dx12.m_commandList->ClearRenderTargetView(msaaRtvHandle, clearColour, 0, nullptr);
+        pipeline_dx12.m_commandList->ClearDepthStencilView(msaaDsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
+        // Draw geometry to MSAA RT
+        pipeline_dx12.m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        pipeline_dx12.m_commandList->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
+        pipeline_dx12.m_commandList->DrawInstanced(3, 1, 0, 0);
+
+        // Transition back buffer to render target for resolve
+        {
+            auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RESOLVE_DEST);
+            pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
+        }
+
+        // Transition MSAA RT to resolve source
+        {
+            auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
+            pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
+        }
+
+        // Resolve MSAA RT to back buffer
+        pipeline_dx12.m_commandList->ResolveSubresource(
+            pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], 0,
+            pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], 0,
+            DXGI_FORMAT_R8G8B8A8_UNORM);
+
+        // Transition back buffer to render target for ImGui
+        {
+            auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RESOLVE_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
+            pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
+        }
+
+        // Transition MSAA RT back to render target for next frame
+        {
+            auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RESOLVE_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+            pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
+        }
+    }
+    else
+    {
+        // Non-MSAA path: render directly to back buffer
+        {
+            auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
+            pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
+        }
+
+        CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), (INT)sync_state.m_frameIndex, pipeline_dx12.m_rtvDescriptorSize);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
+
+        pipeline_dx12.m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
+        pipeline_dx12.m_commandList->ClearRenderTargetView(rtvHandle, clearColour, 0, nullptr);
+        pipeline_dx12.m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
+        // Draw geometry
+        pipeline_dx12.m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+        pipeline_dx12.m_commandList->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
+        pipeline_dx12.m_commandList->DrawInstanced(3, 1, 0, 0);
     }
 
+    // ImGui always renders to back buffer (non-MSAA)
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), (INT)sync_state.m_frameIndex, pipeline_dx12.m_rtvDescriptorSize);
-    CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
-
-    pipeline_dx12.m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
-    // pipeline_dx12.m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
-
-    // Record commands.
-    const float clearColour[] = {0.0f, 0.2f, 0.4f, 1.0f};
-    pipeline_dx12.m_commandList->ClearRenderTargetView(rtvHandle, clearColour, 0, nullptr);
-    pipeline_dx12.m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-    pipeline_dx12.m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    pipeline_dx12.m_commandList->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
-    pipeline_dx12.m_commandList->DrawInstanced(3, 1, 0, 0);
+    pipeline_dx12.m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
 
     ImGui::Render();
     ID3D12DescriptorHeap *imguiHeaps[] = {g_imguiHeap.Heap};
@@ -336,6 +389,54 @@ int main(void)
         ImGui::Text("Application average %.3f ms/frame (%.2f FPS)",
                     1000.0f / ImGui::GetIO().Framerate,
                     ImGui::GetIO().Framerate);
+
+        // MSAA settings
+        ImGui::Separator();
+        ImGui::Text("MSAA Settings");
+
+        bool msaaChanged = false;
+        bool oldEnabled = msaa_state.m_enabled;
+        UINT oldIndex = msaa_state.m_currentSampleIndex;
+
+        if (ImGui::Checkbox("Enable MSAA", &msaa_state.m_enabled))
+        {
+            msaaChanged = (oldEnabled != msaa_state.m_enabled);
+        }
+
+        if (msaa_state.m_enabled)
+        {
+            ImGui::Text("Sample Count:");
+            for (UINT i = 1; i < 4; i++) // Skip 1x (index 0)
+            {
+                if (msaa_state.m_supported[i])
+                {
+                    char label[32];
+                    snprintf(label, sizeof(label), "%dx MSAA", msaa_state.m_sampleCounts[i]);
+                    if (ImGui::RadioButton(label, (int*)&msaa_state.m_currentSampleIndex, (int)i))
+                    {
+                        msaaChanged = (oldIndex != msaa_state.m_currentSampleIndex);
+                        msaa_state.m_currentSampleCount = msaa_state.m_sampleCounts[msaa_state.m_currentSampleIndex];
+                    }
+                }
+                else
+                {
+                    char label[32];
+                    snprintf(label, sizeof(label), "%dx MSAA (unsupported)", msaa_state.m_sampleCounts[i]);
+                    ImGui::TextDisabled("%s", label);
+                }
+            }
+        }
+
+        // Handle MSAA changes
+        if (msaaChanged)
+        {
+            SDL_Log("MSAA settings changed: %s, %dx",
+                    msaa_state.m_enabled ? "enabled" : "disabled",
+                    msaa_state.m_currentSampleCount);
+            RecreateMSAAResources();
+        }
+
+        ImGui::Separator();
 
         program_state.timing.UpdateTimer();
         program_state.DisplayPerformanceInWindowTitle(0.1);

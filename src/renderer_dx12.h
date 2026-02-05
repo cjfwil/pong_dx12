@@ -36,6 +36,16 @@ static struct
 
 static struct
 {
+    bool m_enabled = false;
+    UINT m_currentSampleCount = 1;
+    UINT m_currentSampleIndex = 0; // 0=1x, 1=2x, 2=4x, 3=8x
+    bool m_supported[4] = {true, false, false, false}; // 1x always supported
+    const UINT m_sampleCounts[4] = {1, 2, 4, 8};
+} msaa_state;
+
+
+static struct
+{
     CD3DX12_VIEWPORT m_viewport;
     CD3DX12_RECT m_scissorRect;
     ID3D12Device *m_device;
@@ -54,6 +64,12 @@ static struct
     ID3D12DescriptorHeap *m_dsvHeap;
     ID3D12Resource *m_depthStencil;
 
+    // MSAA resources
+    ID3D12PipelineState *m_pipelineStates[4]; // 1x, 2x, 4x, 8x
+    ID3D12DescriptorHeap *m_msaaRtvHeap;
+    ID3D12Resource *m_msaaRenderTargets[g_FrameCount];
+    ID3D12Resource *m_msaaDepthStencil;
+
     // descriptor sizes
     UINT m_dsvDescriptorSize;
     UINT m_rtvDescriptorSize;
@@ -67,7 +83,8 @@ static struct
         // However, when ExecuteCommandList() is called on a particular command
         // list, that command list can then be reset at any time and must be before
         // re-recording.
-        HRAssert(pipeline_dx12.m_commandList->Reset(pipeline_dx12.m_commandAllocators[sync_state.m_frameIndex], pipeline_dx12.m_pipelineState));
+        UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
+        HRAssert(pipeline_dx12.m_commandList->Reset(pipeline_dx12.m_commandAllocators[sync_state.m_frameIndex], pipeline_dx12.m_pipelineStates[psoIndex]));
     }
 } pipeline_dx12;
 
@@ -285,11 +302,12 @@ bool LoadPipeline(HWND hwnd)
             return false;
 
         D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
-        dsvHeapDesc.NumDescriptors = 1;
+        dsvHeapDesc.NumDescriptors = 2; // Regular depth + MSAA depth
         dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
         dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
         if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_dsvHeap))))
             return false;
+        pipeline_dx12.m_dsvDescriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 
         // Describe and create a shader resource view (SRV) heap for the texture.
         D3D12_DESCRIPTOR_HEAP_DESC mainHeapDesc = {};
@@ -306,6 +324,14 @@ bool LoadPipeline(HWND hwnd)
         imguiHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         imguiHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&imguiHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_imguiHeap))))
+            return false;
+
+        // Create MSAA RTV descriptor heap
+        D3D12_DESCRIPTOR_HEAP_DESC msaaRtvHeapDesc = {};
+        msaaRtvHeapDesc.NumDescriptors = g_FrameCount;
+        msaaRtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+        msaaRtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+        if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&msaaRtvHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_msaaRtvHeap))))
             return false;
     }
 
@@ -361,6 +387,78 @@ bool LoadPipeline(HWND hwnd)
             pipeline_dx12.m_depthStencil,
             &dsvDesc,
             pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
+
+        // Create MSAA render targets (allocate with max supported sample count)
+        UINT maxSampleCount = 1;
+        for (int i = 3; i >= 0; i--)
+        {
+            if (msaa_state.m_supported[i])
+            {
+                maxSampleCount = msaa_state.m_sampleCounts[i];
+                break;
+            }
+        }
+
+        D3D12_RESOURCE_DESC msaaRtDesc = {};
+        msaaRtDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        msaaRtDesc.Width = viewport_state.m_width;
+        msaaRtDesc.Height = viewport_state.m_height;
+        msaaRtDesc.DepthOrArraySize = 1;
+        msaaRtDesc.MipLevels = 1;
+        msaaRtDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        msaaRtDesc.SampleDesc.Count = maxSampleCount;
+        msaaRtDesc.SampleDesc.Quality = 0;
+        msaaRtDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+        D3D12_CLEAR_VALUE rtClearValue = {};
+        rtClearValue.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        rtClearValue.Color[0] = 0.0f;
+        rtClearValue.Color[1] = 0.2f;
+        rtClearValue.Color[2] = 0.4f;
+        rtClearValue.Color[3] = 1.0f;
+
+        CD3DX12_CPU_DESCRIPTOR_HANDLE msaaRtvHandle(pipeline_dx12.m_msaaRtvHeap->GetCPUDescriptorHandleForHeapStart());
+        for (UINT n = 0; n < g_FrameCount; n++)
+        {
+            if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+                &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+                D3D12_HEAP_FLAG_NONE,
+                &msaaRtDesc,
+                D3D12_RESOURCE_STATE_RENDER_TARGET,
+                &rtClearValue,
+                IID_PPV_ARGS(&pipeline_dx12.m_msaaRenderTargets[n]))))
+                return false;
+
+            pipeline_dx12.m_device->CreateRenderTargetView(pipeline_dx12.m_msaaRenderTargets[n], nullptr, msaaRtvHandle);
+            msaaRtvHandle.Offset(1, pipeline_dx12.m_rtvDescriptorSize);
+        }
+
+        // Create MSAA depth buffer
+        D3D12_RESOURCE_DESC msaaDepthDesc = depthStencilDesc;
+        msaaDepthDesc.SampleDesc.Count = maxSampleCount;
+        msaaDepthDesc.SampleDesc.Quality = 0;
+
+        if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+            D3D12_HEAP_FLAG_NONE,
+            &msaaDepthDesc,
+            D3D12_RESOURCE_STATE_DEPTH_WRITE,
+            &depthOptimizedClearValue,
+            IID_PPV_ARGS(&pipeline_dx12.m_msaaDepthStencil))))
+            return false;
+
+        // Create DSV for MSAA depth buffer (at index 1 in DSV heap)
+        D3D12_DEPTH_STENCIL_VIEW_DESC msaaDsvDesc = {};
+        msaaDsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
+        msaaDsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DMS;
+        msaaDsvDesc.Flags = D3D12_DSV_FLAG_NONE;
+
+        CD3DX12_CPU_DESCRIPTOR_HANDLE msaaDsvHandle(pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
+        msaaDsvHandle.Offset(1, pipeline_dx12.m_dsvDescriptorSize);
+        pipeline_dx12.m_device->CreateDepthStencilView(
+            pipeline_dx12.m_msaaDepthStencil,
+            &msaaDsvDesc,
+            msaaDsvHandle);
     }
 
     return true;
@@ -460,7 +558,22 @@ bool LoadAssets()
             return false;
     }
 
-    // Create the pipeline state, which includes compiling and loading shaders.
+    // Check MSAA support
+    for (UINT i = 0; i < 4; i++)
+    {
+        D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS msLevels = {};
+        msLevels.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+        msLevels.SampleCount = msaa_state.m_sampleCounts[i];
+        msLevels.Flags = D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE;
+
+        if (SUCCEEDED(pipeline_dx12.m_device->CheckFeatureSupport(
+            D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS, &msLevels, sizeof(msLevels))))
+        {
+            msaa_state.m_supported[i] = (msLevels.NumQualityLevels > 0);
+        }
+    }
+
+    // Create the pipeline states, which includes compiling and loading shaders.
     {
         ID3DBlob *vertexShader;
         ID3DBlob *pixelShader;
@@ -482,23 +595,37 @@ bool LoadAssets()
                 {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
                 {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}};
 
-        // Describe and create the graphics pipeline state object (PSO).
-        D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-        psoDesc.InputLayout = {inputElementDescs, _countof(inputElementDescs)};
-        psoDesc.pRootSignature = pipeline_dx12.m_rootSignature;
-        psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader);
-        psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader);
-        psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-        psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-        psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-        psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-        psoDesc.SampleMask = UINT_MAX;
-        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-        psoDesc.NumRenderTargets = 1;
-        psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
-        psoDesc.SampleDesc.Count = 1;
-        if (!HRAssert(pipeline_dx12.m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipeline_dx12.m_pipelineState))))
-            return false;
+        // Create PSO for each supported MSAA level
+        for (UINT i = 0; i < 4; i++)
+        {
+            if (!msaa_state.m_supported[i])
+            {
+                pipeline_dx12.m_pipelineStates[i] = nullptr;
+                continue;
+            }
+
+            // Describe and create the graphics pipeline state object (PSO).
+            D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+            psoDesc.InputLayout = {inputElementDescs, _countof(inputElementDescs)};
+            psoDesc.pRootSignature = pipeline_dx12.m_rootSignature;
+            psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader);
+            psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader);
+            psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+            psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+            psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+            psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+            psoDesc.SampleMask = UINT_MAX;
+            psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+            psoDesc.NumRenderTargets = 1;
+            psoDesc.RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
+            psoDesc.SampleDesc.Count = msaa_state.m_sampleCounts[i];
+            psoDesc.SampleDesc.Quality = 0;
+            if (!HRAssert(pipeline_dx12.m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipeline_dx12.m_pipelineStates[i]))))
+                return false;
+        }
+
+        // Set legacy pointer for compatibility
+        pipeline_dx12.m_pipelineState = pipeline_dx12.m_pipelineStates[0];
     }
 
     // Create the command list.
@@ -687,6 +814,103 @@ bool LoadAssets()
     }
     vertexBufferUpload->Release();
     return true;
+}
+
+void RecreateMSAAResources()
+{
+    WaitForGpu();
+
+    // Release old MSAA resources
+    for (UINT n = 0; n < g_FrameCount; n++)
+    {
+        if (pipeline_dx12.m_msaaRenderTargets[n])
+        {
+            pipeline_dx12.m_msaaRenderTargets[n]->Release();
+            pipeline_dx12.m_msaaRenderTargets[n] = nullptr;
+        }
+    }
+    if (pipeline_dx12.m_msaaDepthStencil)
+    {
+        pipeline_dx12.m_msaaDepthStencil->Release();
+        pipeline_dx12.m_msaaDepthStencil = nullptr;
+    }
+
+    if (!msaa_state.m_enabled)
+        return; // Don't recreate if MSAA is disabled
+
+    UINT sampleCount = msaa_state.m_currentSampleCount;
+
+    // Recreate MSAA render targets
+    D3D12_RESOURCE_DESC msaaRtDesc = {};
+    msaaRtDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    msaaRtDesc.Width = viewport_state.m_width;
+    msaaRtDesc.Height = viewport_state.m_height;
+    msaaRtDesc.DepthOrArraySize = 1;
+    msaaRtDesc.MipLevels = 1;
+    msaaRtDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    msaaRtDesc.SampleDesc.Count = sampleCount;
+    msaaRtDesc.SampleDesc.Quality = 0;
+    msaaRtDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+
+    D3D12_CLEAR_VALUE rtClearValue = {};
+    rtClearValue.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    rtClearValue.Color[0] = 0.0f;
+    rtClearValue.Color[1] = 0.2f;
+    rtClearValue.Color[2] = 0.4f;
+    rtClearValue.Color[3] = 1.0f;
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE msaaRtvHandle(pipeline_dx12.m_msaaRtvHeap->GetCPUDescriptorHandleForHeapStart());
+    for (UINT n = 0; n < g_FrameCount; n++)
+    {
+        HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+            D3D12_HEAP_FLAG_NONE,
+            &msaaRtDesc,
+            D3D12_RESOURCE_STATE_RENDER_TARGET,
+            &rtClearValue,
+            IID_PPV_ARGS(&pipeline_dx12.m_msaaRenderTargets[n])));
+
+        pipeline_dx12.m_device->CreateRenderTargetView(pipeline_dx12.m_msaaRenderTargets[n], nullptr, msaaRtvHandle);
+        msaaRtvHandle.Offset(1, pipeline_dx12.m_rtvDescriptorSize);
+    }
+
+    // Recreate MSAA depth buffer
+    D3D12_RESOURCE_DESC msaaDepthDesc = {};
+    msaaDepthDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    msaaDepthDesc.Width = viewport_state.m_width;
+    msaaDepthDesc.Height = viewport_state.m_height;
+    msaaDepthDesc.DepthOrArraySize = 1;
+    msaaDepthDesc.MipLevels = 1;
+    msaaDepthDesc.Format = DXGI_FORMAT_D32_FLOAT;
+    msaaDepthDesc.SampleDesc.Count = sampleCount;
+    msaaDepthDesc.SampleDesc.Quality = 0;
+    msaaDepthDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+    D3D12_CLEAR_VALUE depthOptimizedClearValue = {};
+    depthOptimizedClearValue.Format = DXGI_FORMAT_D32_FLOAT;
+    depthOptimizedClearValue.DepthStencil.Depth = 1.0f;
+    depthOptimizedClearValue.DepthStencil.Stencil = 0;
+
+    HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+        D3D12_HEAP_FLAG_NONE,
+        &msaaDepthDesc,
+        D3D12_RESOURCE_STATE_DEPTH_WRITE,
+        &depthOptimizedClearValue,
+        IID_PPV_ARGS(&pipeline_dx12.m_msaaDepthStencil)));
+
+    // Create DSV for MSAA depth buffer
+    D3D12_DEPTH_STENCIL_VIEW_DESC msaaDsvDesc = {};
+    msaaDsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
+    msaaDsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DMS;
+    msaaDsvDesc.Flags = D3D12_DSV_FLAG_NONE;
+
+    CD3DX12_CPU_DESCRIPTOR_HANDLE msaaDsvHandle(pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
+    msaaDsvHandle.Offset(1, pipeline_dx12.m_dsvDescriptorSize);
+    pipeline_dx12.m_device->CreateDepthStencilView(
+        pipeline_dx12.m_msaaDepthStencil,
+        &msaaDsvDesc,
+        msaaDsvHandle);
 }
 
 #include "OnDestroy_generated.cpp"

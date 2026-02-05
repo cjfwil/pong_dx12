@@ -121,6 +121,32 @@ void OnDestroy()
         pipeline_dx12.m_imguiHeap->Release();
         pipeline_dx12.m_imguiHeap = nullptr;
     }
+    for (UINT i = 0; i < 4; i++)
+    {
+        if (pipeline_dx12.m_pipelineStates[i])
+        {
+            pipeline_dx12.m_pipelineStates[i]->Release();
+            pipeline_dx12.m_pipelineStates[i] = nullptr;
+        }
+    }
+    if (pipeline_dx12.m_msaaRtvHeap)
+    {
+        pipeline_dx12.m_msaaRtvHeap->Release();
+        pipeline_dx12.m_msaaRtvHeap = nullptr;
+    }
+    for (UINT i = 0; i < g_FrameCount; i++)
+    {
+        if (pipeline_dx12.m_msaaRenderTargets[i])
+        {
+            pipeline_dx12.m_msaaRenderTargets[i]->Release();
+            pipeline_dx12.m_msaaRenderTargets[i] = nullptr;
+        }
+    }
+    if (pipeline_dx12.m_msaaDepthStencil)
+    {
+        pipeline_dx12.m_msaaDepthStencil->Release();
+        pipeline_dx12.m_msaaDepthStencil = nullptr;
+    }
 
     // Close fence event handle
     if (sync_state.m_fenceEvent)
