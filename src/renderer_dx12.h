@@ -38,11 +38,11 @@ static struct
 {
     bool m_enabled = false;
     UINT m_currentSampleCount = 1;
-    UINT m_currentSampleIndex = 0; // 0=1x, 1=2x, 2=4x, 3=8x
+    UINT m_currentSampleIndex = 0;                     // 0=1x, 1=2x, 2=4x, 3=8x
     bool m_supported[4] = {true, false, false, false}; // 1x always supported
     const UINT m_sampleCounts[4] = {1, 2, 4, 8};
-} msaa_state;
 
+} msaa_state;
 
 static struct
 {
@@ -109,6 +109,21 @@ void WaitForGpu()
 
     // Increment the fence value for the current frame.
     sync_state.m_fenceValues[sync_state.m_frameIndex]++;
+}
+
+void WaitForAllFrames()
+{
+    // Wait for ALL frames to complete (triple buffering)
+    for (UINT i = 0; i < g_FrameCount; i++)
+    {
+        UINT64 fenceValue = sync_state.m_fenceValues[i];
+        HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, fenceValue));
+        if (sync_state.m_fence->GetCompletedValue() < fenceValue)
+        {
+            HRAssert(sync_state.m_fence->SetEventOnCompletion(fenceValue, sync_state.m_fenceEvent));
+            WaitForSingleObjectEx(sync_state.m_fenceEvent, INFINITE, FALSE);
+        }
+    }
 }
 
 // Prepare to render the next frame.
@@ -420,12 +435,12 @@ bool LoadPipeline(HWND hwnd)
         for (UINT n = 0; n < g_FrameCount; n++)
         {
             if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
-                &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-                D3D12_HEAP_FLAG_NONE,
-                &msaaRtDesc,
-                D3D12_RESOURCE_STATE_RENDER_TARGET,
-                &rtClearValue,
-                IID_PPV_ARGS(&pipeline_dx12.m_msaaRenderTargets[n]))))
+                    &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+                    D3D12_HEAP_FLAG_NONE,
+                    &msaaRtDesc,
+                    D3D12_RESOURCE_STATE_RENDER_TARGET,
+                    &rtClearValue,
+                    IID_PPV_ARGS(&pipeline_dx12.m_msaaRenderTargets[n]))))
                 return false;
 
             pipeline_dx12.m_device->CreateRenderTargetView(pipeline_dx12.m_msaaRenderTargets[n], nullptr, msaaRtvHandle);
@@ -438,12 +453,12 @@ bool LoadPipeline(HWND hwnd)
         msaaDepthDesc.SampleDesc.Quality = 0;
 
         if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
-            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-            D3D12_HEAP_FLAG_NONE,
-            &msaaDepthDesc,
-            D3D12_RESOURCE_STATE_DEPTH_WRITE,
-            &depthOptimizedClearValue,
-            IID_PPV_ARGS(&pipeline_dx12.m_msaaDepthStencil))))
+                &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+                D3D12_HEAP_FLAG_NONE,
+                &msaaDepthDesc,
+                D3D12_RESOURCE_STATE_DEPTH_WRITE,
+                &depthOptimizedClearValue,
+                IID_PPV_ARGS(&pipeline_dx12.m_msaaDepthStencil))))
             return false;
 
         // Create DSV for MSAA depth buffer (at index 1 in DSV heap)
@@ -566,7 +581,7 @@ bool LoadAssets()
         msLevels.Flags = D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE;
 
         if (SUCCEEDED(pipeline_dx12.m_device->CheckFeatureSupport(
-            D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS, &msLevels, sizeof(msLevels))))
+                D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS, &msLevels, sizeof(msLevels))))
         {
             msaa_state.m_supported[i] = (msLevels.NumQualityLevels > 0);
         }
@@ -781,7 +796,7 @@ bool LoadAssets()
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         srvDesc.Texture2D.MipLevels = 1;
         pipeline_dx12.m_device->CreateShaderResourceView(graphics_resources.m_texture, &srvDesc, cpuSrv);
-    }    
+    }
 
     // Close the command list and execute it to begin the initial GPU setup.
     if (!HRAssert(pipeline_dx12.m_commandList->Close()))
@@ -815,17 +830,7 @@ bool LoadAssets()
 
 void RecreateMSAAResources()
 {
-    // Wait for ALL frames to complete (triple buffering)
-    for (UINT i = 0; i < g_FrameCount; i++)
-    {
-        UINT64 fenceValue = sync_state.m_fenceValues[i];
-        HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, fenceValue));
-        if (sync_state.m_fence->GetCompletedValue() < fenceValue)
-        {
-            HRAssert(sync_state.m_fence->SetEventOnCompletion(fenceValue, sync_state.m_fenceEvent));
-            WaitForSingleObjectEx(sync_state.m_fenceEvent, INFINITE, FALSE);
-        }
-    }
+    WaitForAllFrames();
 
     // Release old MSAA resources
     for (UINT n = 0; n < g_FrameCount; n++)

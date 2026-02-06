@@ -330,6 +330,69 @@ int main(void)
         SDL_Log("Pipeline loaded successfully.");
     }
 
+    // UINT displayModeCount = 0;
+    // IDXGIOutput *containingOutput = nullptr;
+    // DXGI_MODE_DESC *displayModes = nullptr;
+
+    // HRAssert(pipeline_dx12.m_swapChain->GetContainingOutput(&containingOutput));
+    // {
+    //     UINT nModes = 0;
+    //     HRESULT hr = containingOutput->GetDisplayModeList(
+    //         DXGI_FORMAT_R8G8B8A8_UNORM,
+    //         DXGI_ENUM_MODES_INTERLACED | DXGI_ENUM_MODES_SCALING,
+    //         &nModes,
+    //         nullptr);
+
+    //     if (SUCCEEDED(hr) && nModes > 0)
+    //     {
+    //         displayModes = (DXGI_MODE_DESC *)SDL_malloc(sizeof(DXGI_MODE_DESC) * nModes);
+    //         if (displayModes == nullptr)
+    //         {
+    //             // allocation failed
+    //             containingOutput->Release();
+    //             return 1;
+    //         }
+
+    //         // get full mode list
+    //         hr = containingOutput->GetDisplayModeList(
+    //             DXGI_FORMAT_R8G8B8A8_UNORM,
+    //             DXGI_ENUM_MODES_INTERLACED | DXGI_ENUM_MODES_SCALING,
+    //             &nModes,
+    //             displayModes);
+
+    //         if (FAILED(hr))
+    //         {
+    //             SDL_free(displayModes);
+    //             displayModes = nullptr;
+    //             containingOutput->Release();
+    //             return 1;
+    //         }
+    //         else
+    //         {
+    //             SDL_Log("Detected Display Modes:");
+    //             for (UINT i = 0; i < nModes; ++i)
+    //             {
+    //                 const DXGI_MODE_DESC &m = displayModes[i];
+    //                 double refreshHz = 0.0;
+    //                 if (m.RefreshRate.Denominator != 0)
+    //                     refreshHz = (double)m.RefreshRate.Numerator / (double)m.RefreshRate.Denominator;
+    //                 SDL_Log("Mode %u: %ux%u @ %.2f Hz Format=%u Scanline=%u Scaling=%u", i, m.Width, m.Height, refreshHz, static_cast<unsigned int>(m.Format), static_cast<unsigned int>(m.ScanlineOrdering), static_cast<unsigned int>(m.Scaling));
+    //             }
+    //         }
+
+    //         // success:
+    //         displayModeCount = nModes;
+
+    //         // ... process displayModes here ...
+
+    //         // free when done (or keep around for live changes?)
+    //         SDL_free(displayModes);
+    //         displayModes = nullptr;
+    //     }
+
+    //     containingOutput->Release();
+    // }
+
     if (!LoadAssets())
     {
         log_error("Could not load startup assets");
@@ -425,7 +488,7 @@ int main(void)
                 {
                     char label[32];
                     snprintf(label, sizeof(label), "%dx MSAA", msaa_state.m_sampleCounts[i]);
-                    if (ImGui::RadioButton(label, (int*)&msaa_state.m_currentSampleIndex, (int)i))
+                    if (ImGui::RadioButton(label, (int *)&msaa_state.m_currentSampleIndex, (int)i))
                     {
                         msaaChanged = (oldIndex != msaa_state.m_currentSampleIndex);
                         msaa_state.m_currentSampleCount = msaa_state.m_sampleCounts[msaa_state.m_currentSampleIndex];

@@ -260,7 +260,7 @@ def main():
     if not output_dir.exists():
         output_dir = Path('.')
     
-    output_path = output_dir / "OnDestroy_generated.cpp"
+    output_path = output_dir / "generated\\OnDestroy_generated.cpp"
     with open(output_path, 'w') as f:
         f.write(cleanup_code)
     

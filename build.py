@@ -18,9 +18,11 @@ CL_FLAGS = [
     "/O2",          # Full optimization
     "/DNDEBUG",     # Disable asserts
     "/DRELEASE",    # Define RELEASE
-    "/EHsc",        # C++ exceptions
+    "/EHsc",        # C++ exceptions    
     "/MD",          # Release runtime library
     "/nologo",      # No MSVC banner
+    "/I", "src", 
+    "/I", "src/generated",
     "/Fe" + str(OUTPUT_DIR / "pong_dx12.exe")
 ]
 

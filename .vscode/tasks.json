@@ -10,8 +10,10 @@
                 "/EHsc",
                 "/Wall",
                 "/external:W0",
-                "/nologo", 
-                "/MDd",               
+                "/nologo",
+                "/MDd",
+                "/Isrc",                                
+                "/Isrc/generated",
                 "/Fe${fileDirname}\\${fileBasenameNoExtension}.exe",
                 "${file}"
             ],
