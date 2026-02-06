@@ -223,6 +223,7 @@ _Use_decl_annotations_ void GetHardwareAdapter(
 struct
 {
     UINT m_flags = DXGI_ENUM_MODES_SCALING;
+    DXGI_FORMAT m_format = DXGI_FORMAT_R8G8B8A8_UNORM;
     UINT m_numDisplayModes = 0;
     DXGI_MODE_DESC *m_modes = NULL;
 
@@ -239,7 +240,7 @@ struct
             {
                 UINT nModes = 0;
                 HRESULT hr = output->GetDisplayModeList(
-                    DXGI_FORMAT_R8G8B8A8_UNORM,
+                    m_format,
                     m_flags,
                     &nModes,
                     nullptr);
@@ -283,7 +284,7 @@ struct
                     {
                         UINT nModes = 0;
                         HRESULT hr = output->GetDisplayModeList(
-                            DXGI_FORMAT_R8G8B8A8_UNORM,
+                            m_format,
                             m_flags,
                             &nModes,
                             nullptr);
@@ -291,7 +292,7 @@ struct
                         if (SUCCEEDED(hr) && nModes > 0)
                         {
                             hr = output->GetDisplayModeList(
-                                DXGI_FORMAT_R8G8B8A8_UNORM,
+                                m_format,
                                 m_flags,
                                 &nModes,
                                 m_modes + m_numDisplayModes);
