@@ -13,8 +13,9 @@ Uses the VS Code task configuration to build with debug symbols:
 ```bash
 # The default VS Code task builds with /Zi /MDd for debug
 # Press Ctrl+Shift+B in VS Code, or run:
-cl.exe /D_DEBUG /Zi /EHsc /Wall /external:W0 /nologo /MDd /Fe:main.exe main.cpp
+cl.exe /D_DEBUG /Zi /EHsc /Wall /external:W0 /nologo /MDd /Isrc /Isrc/generated /Fe:main.exe main.cpp
 ```
+Note: Include paths `/Isrc` and `/Isrc/generated` required for headers.
 
 ### Release Build
 Use the Python build script:
@@ -43,15 +44,16 @@ python loc.py --verbose
   - Contains `LoadPipeline()` and `LoadAssets()` functions
 - **src/local_error.h**: Error handling utilities for HRESULT, SDL errors
 - **shader_source/shaders.hlsl**: Vertex and pixel shaders
-- **src/OnDestroy_generated.cpp**: Auto-generated cleanup code (see Meta-Programming below)
+- **src/generated/OnDestroy_generated.cpp**: Auto-generated cleanup code (see Meta-Programming below)
 
 ### Global State Structures
 
 The rendering system uses several global struct instances defined in `src/renderer_dx12.h`:
 
-- **pipeline_dx12**: Core DX12 pipeline objects (device, command queue, swap chain, pipeline state, root signature, command list/allocators, descriptor heaps)
+- **pipeline_dx12**: Core DX12 pipeline objects (device, command queue, swap chain, multiple pipeline states for MSAA, root signature, command list/allocators, descriptor heaps, MSAA render targets)
 - **graphics_resources**: Per-frame constant buffers, vertex buffer, texture resources
 - **sync_state**: Frame synchronization (fence, fence values, fence event, frame index)
+- **msaa_state**: MSAA configuration (enabled flag, current sample count/index, supported levels, CalcSupportedMSAALevels helper)
 - **viewport_state**: Window dimensions and aspect ratio
 - **g_FrameCount**: Set to 3 for triple buffering
 
@@ -76,9 +78,17 @@ The project uses triple buffering (`g_FrameCount = 3`) for all per-frame resourc
 
 #### Descriptor Heaps
 - **m_rtvHeap**: Render target views (one per frame)
+- **m_msaaRtvHeap**: MSAA render target views (when MSAA enabled)
 - **m_dsvHeap**: Depth stencil view (single depth buffer)
 - **m_mainHeap**: CBV/SRV heap for constant buffers and texture (shader-visible)
 - **m_imguiHeap**: Separate heap for ImGui rendering
+
+#### MSAA Support
+Project supports 1x, 2x, 4x, 8x multisample anti-aliasing:
+- **pipeline_dx12.m_pipelineStates[4]**: Array of PSOs, one per MSAA level
+- **msaa_state.CalcSupportedMSAALevels()**: Queries device for supported sample counts
+- When MSAA enabled, renders to MSAA targets then resolves to back buffer
+- ResetCommandObjects() selects appropriate PSO based on current MSAA setting
 
 #### Command Recording Pattern
 Each frame in `PopulateCommandList()`:
@@ -100,7 +110,7 @@ Each frame in `PopulateCommandList()`:
 1. `meta_ondestroy.py` parses `src/renderer_dx12.h`
 2. Extracts all COM pointer declarations (ID3D12*, IDXGI*)
 3. Determines correct cleanup order based on D3D12 dependency rules
-4. Generates `src/OnDestroy_generated.cpp` with proper Release() calls
+4. Generates `src/generated/OnDestroy_generated.cpp` with proper Release() calls
 5. main.cpp includes this file with fallback if generation fails
 
 #### When to Regenerate
@@ -121,7 +131,17 @@ Resources are released in this priority order:
 8. Command queue
 9. Device (last)
 
-**Never manually modify** `src/OnDestroy_generated.cpp` - your changes will be overwritten.
+**Never manually modify** `src/generated/OnDestroy_generated.cpp` - your changes will be overwritten.
+
+## Known Issues
+
+### Window Mode Switching Hang (Bug #1)
+**When**: Introduced during window mode switching and swap chain recreation development (06/02/2026)
+**Symptoms**: Static hang (no crash/assert) when switching window modes. Visual transition completes but program becomes unresponsive - triangle stops moving, ImGui frozen, Alt+F4 unresponsive.
+**Timing dependency**: If <5 seconds between switches or since program start, hang occurs. Waiting 5+ seconds between switches works fine.
+**Reproduce**: Switch to window mode rapidly.
+
+See bugs.md for full bug tracking.
 
 ## Shader Compilation
 

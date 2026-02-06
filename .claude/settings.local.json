@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(python:*)",
-      "Bash(cl.exe:*)"
+      "Bash(cl.exe:*)",
+      "Bash(cmd /c \"cl.exe /D_DEBUG /Zi /EHsc /Wall /external:W0 /nologo /MDd /Isrc /Isrc\\\\generated /Fe:main.exe main.cpp\")",
+      "Bash(ls:*)"
     ]
   }
 }

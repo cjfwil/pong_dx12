@@ -133,15 +133,30 @@ void WaitForGpu()
 void WaitForAllFrames()
 {
     // Wait for ALL frames to complete (triple buffering)
+    UINT64 maxFenceValue = 0;
+    
+    // Find the maximum fence value among all frames
     for (UINT i = 0; i < g_FrameCount; i++)
     {
-        UINT64 fenceValue = sync_state.m_fenceValues[i];
-        HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, fenceValue));
-        if (sync_state.m_fence->GetCompletedValue() < fenceValue)
-        {
-            HRAssert(sync_state.m_fence->SetEventOnCompletion(fenceValue, sync_state.m_fenceEvent));
-            WaitForSingleObjectEx(sync_state.m_fenceEvent, INFINITE, FALSE);
-        }
+        if (sync_state.m_fenceValues[i] > maxFenceValue)
+            maxFenceValue = sync_state.m_fenceValues[i];
+    }
+    
+    // Signal the fence with a new value to ensure we wait for all pending work
+    const UINT64 currentFenceValue = maxFenceValue + 1;
+    HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, currentFenceValue));
+    
+    // Wait for the fence to reach the new value
+    if (sync_state.m_fence->GetCompletedValue() < currentFenceValue)
+    {
+        HRAssert(sync_state.m_fence->SetEventOnCompletion(currentFenceValue, sync_state.m_fenceEvent));
+        WaitForSingleObjectEx(sync_state.m_fenceEvent, INFINITE, FALSE);
+    }
+    
+    // Update all frame fence values to the new value
+    for (UINT i = 0; i < g_FrameCount; i++)
+    {
+        sync_state.m_fenceValues[i] = currentFenceValue;
     }
 }
 
