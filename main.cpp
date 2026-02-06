@@ -333,6 +333,8 @@ struct window_state
         {
             SDL_SetWindowPosition(window, displayBounds.x, displayBounds.y);
             SDL_SetWindowSize(window, displayBounds.w, displayBounds.h);
+        } else {
+            SDL_SetWindowSize(window, (int)m_windowWidth, (int)m_windowHeight);
         }
 
         // Update viewport state
@@ -346,6 +348,9 @@ struct window_state
         // m_modeChanged = false;
 
         SDL_Log("Window mode applied: %dx%d mode=%d", w, h, newMode);
+
+        RecreateSwapChain(hwnd);
+
         return true;
     }
 };

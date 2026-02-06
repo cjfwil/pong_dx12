@@ -1,7 +1,7 @@
-## bug 0:
+## bug 1:
 ### when:
-06/02/2026, introduced when developing window mode switching
+06/02/2026, introduced when developing window mode switching and integrating swap chain recreate
 ### description:
-assert pop when switching on MSAA from borderless mode after switching from a smaller windowed mode
+static hang (no crash or assert) when switching to borderless from windowed mode
 ### reproduce:
-start windowed mode (MSAA off or on)-> switch borderless -> turn on MSAA ->assert pop (on command list close)
+switch to borderless from windowed mode.

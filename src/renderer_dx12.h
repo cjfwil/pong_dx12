@@ -453,6 +453,126 @@ void RecreateMSAAResources()
     }
 }
 
+void RecreateSwapChain(HWND hwnd)
+{
+    SDL_Log("Recreating swap chain for new window size: %ux%u",
+            viewport_state.m_width, viewport_state.m_height);
+
+    // Wait for all GPU work to complete
+    WaitForAllFrames();
+
+    // Release old resources
+    for (UINT i = 0; i < g_FrameCount; i++)
+    {
+        if (pipeline_dx12.m_renderTargets[i])
+        {
+            pipeline_dx12.m_renderTargets[i]->Release();
+            pipeline_dx12.m_renderTargets[i] = nullptr;
+        }
+    }
+
+    if (pipeline_dx12.m_depthStencil)
+    {
+        pipeline_dx12.m_depthStencil->Release();
+        pipeline_dx12.m_depthStencil = nullptr;
+    }
+
+    ReleaseMSAAResources();
+
+    // Resize swap chain buffers
+    HRESULT hr = pipeline_dx12.m_swapChain->ResizeBuffers(
+        g_FrameCount,
+        viewport_state.m_width,
+        viewport_state.m_height,
+        g_screenFormat,
+        DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING);
+
+    if (FAILED(hr))
+    {
+        log_hr_error("Failed to resize swap chain buffers", hr);
+        return;
+    }
+
+    // Update frame index
+    sync_state.m_frameIndex = pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
+
+    // Recreate back buffer RTVs
+    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(
+        pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
+
+    for (UINT i = 0; i < g_FrameCount; i++)
+    {
+        hr = pipeline_dx12.m_swapChain->GetBuffer(i,
+                                                  IID_PPV_ARGS(&pipeline_dx12.m_renderTargets[i]));
+
+        if (FAILED(hr))
+        {
+            log_hr_error("Failed to get back buffer", hr);
+            return;
+        }
+
+        pipeline_dx12.m_device->CreateRenderTargetView(
+            pipeline_dx12.m_renderTargets[i],
+            nullptr,
+            rtvHandle);
+        rtvHandle.Offset(1, pipeline_dx12.m_rtvDescriptorSize);
+    }
+
+    // Recreate depth buffer
+    D3D12_RESOURCE_DESC depthStencilDesc = {};
+    depthStencilDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    depthStencilDesc.Width = viewport_state.m_width;
+    depthStencilDesc.Height = viewport_state.m_height;
+    depthStencilDesc.DepthOrArraySize = 1;
+    depthStencilDesc.MipLevels = 1;
+    depthStencilDesc.Format = DXGI_FORMAT_D32_FLOAT;
+    depthStencilDesc.SampleDesc.Count = 1;
+    depthStencilDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+
+    hr = pipeline_dx12.m_device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+        D3D12_HEAP_FLAG_NONE,
+        &depthStencilDesc,
+        D3D12_RESOURCE_STATE_DEPTH_WRITE,
+        &g_depthOptimizedClearValue,
+        IID_PPV_ARGS(&pipeline_dx12.m_depthStencil));
+
+    if (FAILED(hr))
+    {
+        log_hr_error("Failed to recreate depth buffer", hr);
+        return;
+    }
+
+    D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
+    dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
+    dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+    dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
+
+    pipeline_dx12.m_device->CreateDepthStencilView(
+        pipeline_dx12.m_depthStencil,
+        &dsvDesc,
+        pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
+
+    // Update viewport and scissor
+    pipeline_dx12.m_viewport = CD3DX12_VIEWPORT(
+        0.0f, 0.0f,
+        static_cast<float>(viewport_state.m_width),
+        static_cast<float>(viewport_state.m_height));
+
+    pipeline_dx12.m_scissorRect = CD3DX12_RECT(
+        0, 0,
+        static_cast<LONG>(viewport_state.m_width),
+        static_cast<LONG>(viewport_state.m_height));
+
+    // Recreate MSAA resources if enabled
+    if (msaa_state.m_enabled)
+    {
+        CreateMSAAResources(msaa_state.m_currentSampleCount);
+    }
+
+    SDL_Log("Swap chain successfully recreated");
+}
+
 // Load the rendering pipeline dependencies.
 bool LoadPipeline(HWND hwnd)
 {
@@ -630,8 +750,9 @@ bool LoadPipeline(HWND hwnd)
             &dsvDesc,
             pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
 
-        CreateMSAAResources(msaa_state.m_currentSampleCount);
         msaa_state.CalcSupportedMSAALevels(pipeline_dx12.m_device);
+        if (msaa_state.m_enabled)
+            CreateMSAAResources(msaa_state.m_currentSampleCount);
     }
 
     display_modes.FillDisplayModesFromFactory(factory);
