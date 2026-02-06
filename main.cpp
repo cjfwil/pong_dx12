@@ -333,7 +333,9 @@ struct window_state
         {
             SDL_SetWindowPosition(window, displayBounds.x, displayBounds.y);
             SDL_SetWindowSize(window, displayBounds.w, displayBounds.h);
-        } else {
+        }
+        else
+        {
             SDL_SetWindowSize(window, (int)m_windowWidth, (int)m_windowHeight);
         }
 
@@ -349,7 +351,7 @@ struct window_state
 
         SDL_Log("Window mode applied: %dx%d mode=%d", w, h, newMode);
 
-        RecreateSwapChain(hwnd);
+        RecreateSwapChain();
 
         return true;
     }
@@ -454,54 +456,76 @@ int main(void)
         ImGui::Separator();
         ImGui::Text("MSAA");
 
-        bool msaaChanged = false;
-        bool oldEnabled = msaa_state.m_enabled;
         UINT oldIndex = msaa_state.m_currentSampleIndex;
 
-        if (ImGui::Checkbox("Enable MSAA", &msaa_state.m_enabled))
+        // Build the current selection string
+        char currentSelection[32];
+        if (msaa_state.m_currentSampleIndex == 0)
         {
-            // When enabling MSAA, auto-select first supported sample count
-            if (msaa_state.m_enabled && msaa_state.m_currentSampleIndex == 0)
-            {
-                for (UINT i = 1; i < 4; i++)
-                {
-                    if (msaa_state.m_supported[i])
-                    {
-                        msaa_state.m_currentSampleIndex = i;
-                        msaa_state.m_currentSampleCount = msaa_state.m_sampleCounts[i];
-                        break;
-                    }
-                }
-            }
-            msaaChanged = (oldEnabled != msaa_state.m_enabled);
+            snprintf(currentSelection, sizeof(currentSelection), "Disabled (1x)");
+        }
+        else
+        {
+            snprintf(currentSelection, sizeof(currentSelection), "%dx MSAA",
+                     msaa_state.m_sampleCounts[msaa_state.m_currentSampleIndex]);
         }
 
-        if (msaa_state.m_enabled)
+        if (ImGui::BeginCombo("Anti-aliasing", currentSelection))
         {
-            ImGui::Text("Sample Count:");
-            for (UINT i = 1; i < 4; i++) // Skip 1x (index 0)
+            // Always show 1x (disabled) option
             {
-                if (msaa_state.m_supported[i])
+                bool isSelected = (msaa_state.m_currentSampleIndex == 0);
+                if (ImGui::Selectable("Disabled (1x)", isSelected))
                 {
-                    char label[32];
-                    snprintf(label, sizeof(label), "%dx MSAA", msaa_state.m_sampleCounts[i]);
-                    if (ImGui::RadioButton(label, (int *)&msaa_state.m_currentSampleIndex, (int)i))
-                    {
-                        msaaChanged = (oldIndex != msaa_state.m_currentSampleIndex);
-                        msaa_state.m_currentSampleCount = msaa_state.m_sampleCounts[msaa_state.m_currentSampleIndex];
-                    }
+                    msaa_state.m_currentSampleIndex = 0;
+                    msaa_state.m_currentSampleCount = 1;
+                    msaa_state.m_enabled = false;
+                }
+                if (isSelected)
+                {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+
+            // Show MSAA options
+            for (UINT i = 1; i < 4; i++) // Start from 1 to skip 1x
+            {
+                bool isSelected = (msaa_state.m_currentSampleIndex == i);
+                bool isSupported = msaa_state.m_supported[i];
+
+                char itemLabel[32];
+                if (isSupported)
+                {
+                    snprintf(itemLabel, sizeof(itemLabel), "%dx MSAA", msaa_state.m_sampleCounts[i]);
                 }
                 else
                 {
-                    char label[32];
-                    snprintf(label, sizeof(label), "%dx MSAA (unsupported)", msaa_state.m_sampleCounts[i]);
-                    ImGui::TextDisabled("%s", label);
+                    snprintf(itemLabel, sizeof(itemLabel), "%dx MSAA (unsupported)", msaa_state.m_sampleCounts[i]);
+                    ImGui::BeginDisabled();
+                }
+
+                if (ImGui::Selectable(itemLabel, isSelected) && isSupported)
+                {
+                    msaa_state.m_currentSampleIndex = i;
+                    msaa_state.m_currentSampleCount = msaa_state.m_sampleCounts[i];
+                    msaa_state.m_enabled = true;
+                }
+
+                if (!isSupported)
+                {
+                    ImGui::EndDisabled();
+                }
+
+                if (isSelected)
+                {
+                    ImGui::SetItemDefaultFocus();
                 }
             }
+            ImGui::EndCombo();
         }
 
         // Handle MSAA changes
-        if (msaaChanged)
+        if (oldIndex != msaa_state.m_currentSampleIndex)
         {
             SDL_Log("MSAA settings changed: %s, %dx",
                     msaa_state.m_enabled ? "enabled" : "disabled",

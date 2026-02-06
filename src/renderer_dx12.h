@@ -468,7 +468,7 @@ void RecreateMSAAResources()
     }
 }
 
-void RecreateSwapChain(HWND hwnd)
+void RecreateSwapChain()
 {
     SDL_Log("Recreating swap chain for new window size: %ux%u",
             viewport_state.m_width, viewport_state.m_height);
