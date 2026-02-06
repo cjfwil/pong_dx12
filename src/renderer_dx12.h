@@ -254,127 +254,6 @@ _Use_decl_annotations_ void GetHardwareAdapter(
     *ppAdapter = adapter;
 }
 
-struct
-{
-    UINT m_flags = DXGI_ENUM_MODES_SCALING;
-    DXGI_FORMAT m_format = g_screenFormat;
-    UINT m_numDisplayModes = 0;
-    DXGI_MODE_DESC *m_modes = NULL;
-
-    UINT CalcNumberDisplayModes(IDXGIFactory4 *factory)
-    {
-        UINT totalModes = 0;
-        UINT adapterIndex = 0;
-        IDXGIAdapter1 *adapter = nullptr;
-        while (factory->EnumAdapters1(adapterIndex, &adapter) == S_OK)
-        {
-            UINT outputIndex = 0;
-            IDXGIOutput *output = nullptr;
-            while (adapter->EnumOutputs(outputIndex, &output) == S_OK)
-            {
-                UINT nModes = 0;
-                HRESULT hr = output->GetDisplayModeList(
-                    m_format,
-                    m_flags,
-                    &nModes,
-                    nullptr);
-                HRAssert(hr);
-                if (SUCCEEDED(hr))
-                    totalModes += nModes;
-                output->Release();
-                ++outputIndex;
-            }
-            adapter->Release();
-            ++adapterIndex;
-        }
-        m_numDisplayModes = totalModes;
-        return m_numDisplayModes;
-    }
-
-    void FillDisplayModesFromFactory(IDXGIFactory4 *factory)
-    {
-        if (!factory)
-        {
-            log_error("FillDisplayModesFromFactory: factory is null");
-            HRAssert(E_UNEXPECTED);
-            return;
-        }
-
-        // Allocate memory for all modes
-        UINT adapterIndex = 0;
-        IDXGIAdapter1 *adapter = nullptr;
-        if (CalcNumberDisplayModes(factory) > 0)
-        {
-            m_modes = (DXGI_MODE_DESC *)SDL_malloc(sizeof(DXGI_MODE_DESC) * m_numDisplayModes);
-            if (m_modes)
-            {
-                m_numDisplayModes = 0;
-                adapterIndex = 0;
-                while (factory->EnumAdapters1(adapterIndex, &adapter) == S_OK)
-                {
-                    UINT outputIndex = 0;
-                    IDXGIOutput *output = nullptr;
-                    while (adapter->EnumOutputs(outputIndex, &output) == S_OK)
-                    {
-                        UINT nModes = 0;
-                        HRESULT hr = output->GetDisplayModeList(m_format, m_flags, &nModes, nullptr);
-                        HRAssert(hr);
-                        if (SUCCEEDED(hr) && nModes > 0)
-                        {
-                            hr = output->GetDisplayModeList(m_format, m_flags, &nModes, m_modes + m_numDisplayModes);
-                            HRAssert(hr);
-                            if (SUCCEEDED(hr))
-                            {
-                                m_numDisplayModes += nModes;
-                            }
-                        }
-                        output->Release();
-                        ++outputIndex;
-                    }
-                    adapter->Release();
-                    ++adapterIndex;
-                }
-            }
-            else
-            {
-                log_sdl_error("FillDisplayModesFromFactory: malloc failed");
-                m_numDisplayModes = 0;
-            }
-        }
-    }
-
-    void PrintDisplayModes()
-    {
-        SDL_Log("Display modes:");
-        for (UINT i = 0; i < m_numDisplayModes; ++i)
-        {
-            const DXGI_MODE_DESC &m = m_modes[i];
-            double hz = (m.RefreshRate.Denominator != 0)
-                            ? (double)m.RefreshRate.Numerator / (double)m.RefreshRate.Denominator
-                            : 0.0;
-            SDL_Log("    Mode %u: %ux%u @ %.2f Hz  Format=%u  Scanline=%u  Scaling=%u",
-                    i, m.Width, m.Height, hz,
-                    (unsigned)m.Format,
-                    (unsigned)m.ScanlineOrdering,
-                    (unsigned)m.Scaling);
-        }
-        if (m_numDisplayModes == 0)
-        {
-            SDL_Log("    No display modes available");
-        }
-    }
-
-    void CleanupDisplayModes()
-    {
-        if (m_modes)
-        {
-            SDL_free(m_modes);
-            m_modes = NULL;
-            m_numDisplayModes = 0;
-        }
-    }
-} display_modes;
-
 void CreateMSAAResources(UINT sampleCount)
 {
     // Recreate MSAA render targets
@@ -769,9 +648,6 @@ bool LoadPipeline(HWND hwnd)
         if (msaa_state.m_enabled)
             CreateMSAAResources(msaa_state.m_currentSampleCount);
     }
-
-    display_modes.FillDisplayModesFromFactory(factory);
-    display_modes.PrintDisplayModes();
     factory->Release();
     return true;
 }

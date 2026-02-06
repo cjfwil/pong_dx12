@@ -259,7 +259,7 @@ enum struct WindowMode
     NUM_WINDOW_MODES = 2
 };
 
-static WindowMode g_defaultWindowMode = WindowMode::WINDOWED;
+static WindowMode g_defaultWindowMode = WindowMode::BORDERLESS;
 
 struct window_state
 {
@@ -568,8 +568,6 @@ int main(void)
         Update();
         Render();
     }
-
-    display_modes.CleanupDisplayModes();
     g_imguiHeap.Destroy();
     OnDestroy();
     return (0);
