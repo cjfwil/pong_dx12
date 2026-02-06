@@ -75,13 +75,14 @@ bool PopulateCommandList()
 {
     pipeline_dx12.ResetCommandObjects();
 
-    // Set necessary state.
+    // Common setup (shared by both paths)
     pipeline_dx12.m_commandList->SetGraphicsRootSignature(pipeline_dx12.m_rootSignature);
 
     ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_mainHeap};
     pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-    UINT descriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    UINT descriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(
+        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(
         pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
         (INT)sync_state.m_frameIndex,
@@ -99,87 +100,93 @@ bool PopulateCommandList()
 
     const float clearColour[] = {0.0f, 0.2f, 0.4f, 1.0f};
 
+    // Choose RTV and DSV based on MSAA state
+    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle;
+    ID3D12Resource *renderTarget = nullptr;
+
     if (msaa_state.m_enabled)
     {
-        // MSAA path: render to MSAA RT, then resolve to back buffer
-        CD3DX12_CPU_DESCRIPTOR_HANDLE msaaRtvHandle(pipeline_dx12.m_msaaRtvHeap->GetCPUDescriptorHandleForHeapStart(), (INT)sync_state.m_frameIndex, pipeline_dx12.m_rtvDescriptorSize);
-        CD3DX12_CPU_DESCRIPTOR_HANDLE msaaDsvHandle(pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
-        msaaDsvHandle.Offset(1, pipeline_dx12.m_dsvDescriptorSize); // MSAA depth is at index 1
+        // MSAA path
+        rtvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+            pipeline_dx12.m_msaaRtvHeap->GetCPUDescriptorHandleForHeapStart(),
+            (INT)sync_state.m_frameIndex,
+            pipeline_dx12.m_rtvDescriptorSize);
+        dsvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+            pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
+        dsvHandle.Offset(1, pipeline_dx12.m_dsvDescriptorSize); // MSAA depth at index 1
+        renderTarget = pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex];
 
-        pipeline_dx12.m_commandList->OMSetRenderTargets(1, &msaaRtvHandle, FALSE, &msaaDsvHandle);
-        pipeline_dx12.m_commandList->ClearRenderTargetView(msaaRtvHandle, clearColour, 0, nullptr);
-        pipeline_dx12.m_commandList->ClearDepthStencilView(msaaDsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-
-        // Draw geometry to MSAA RT
-        pipeline_dx12.m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        pipeline_dx12.m_commandList->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
-        pipeline_dx12.m_commandList->DrawInstanced(3, 1, 0, 0);
-
-        // Transition back buffer to render target for resolve
-        {
-            auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RESOLVE_DEST);
-            pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
-        }
-
-        // Transition MSAA RT to resolve source
-        {
-            auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
-            pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
-        }
-
-        // Resolve MSAA RT to back buffer
-        pipeline_dx12.m_commandList->ResolveSubresource(
-            pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], 0,
-            pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], 0,
-            DXGI_FORMAT_R8G8B8A8_UNORM);
-
-        // Transition back buffer to render target for ImGui
-        {
-            auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RESOLVE_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
-            pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
-        }
-
-        // Transition MSAA RT back to render target for next frame
-        {
-            auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RESOLVE_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
-            pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
-        }
+        // Back buffer starts in PRESENT state for MSAA
+        auto barrier1 = CD3DX12_RESOURCE_BARRIER::Transition(
+            pipeline_dx12.m_renderTargets[sync_state.m_frameIndex],
+            D3D12_RESOURCE_STATE_PRESENT,
+            D3D12_RESOURCE_STATE_RESOLVE_DEST);
+        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier1);
     }
     else
     {
-        // Non-MSAA path: render directly to back buffer
-        {
-            auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET);
-            pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
-        }
+        // Non-MSAA path
+        rtvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+            pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(),
+            (INT)sync_state.m_frameIndex,
+            pipeline_dx12.m_rtvDescriptorSize);
+        dsvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+            pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart()); // Non-MSAA depth at index 0
+        renderTarget = pipeline_dx12.m_renderTargets[sync_state.m_frameIndex];
 
-        CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), (INT)sync_state.m_frameIndex, pipeline_dx12.m_rtvDescriptorSize);
-        CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
-
-        pipeline_dx12.m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
-        pipeline_dx12.m_commandList->ClearRenderTargetView(rtvHandle, clearColour, 0, nullptr);
-        pipeline_dx12.m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-
-        // Draw geometry
-        pipeline_dx12.m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-        pipeline_dx12.m_commandList->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
-        pipeline_dx12.m_commandList->DrawInstanced(3, 1, 0, 0);
+        // Transition back buffer to RENDER_TARGET
+        auto barrier1 = CD3DX12_RESOURCE_BARRIER::Transition(
+            renderTarget,
+            D3D12_RESOURCE_STATE_PRESENT,
+            D3D12_RESOURCE_STATE_RENDER_TARGET);
+        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier1);
     }
 
-    // ImGui always renders to back buffer (non-MSAA)
-    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), (INT)sync_state.m_frameIndex, pipeline_dx12.m_rtvDescriptorSize);
-    pipeline_dx12.m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, nullptr);
+    // Common rendering operations
+    pipeline_dx12.m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
+    pipeline_dx12.m_commandList->ClearRenderTargetView(rtvHandle, clearColour, 0, nullptr);
+    pipeline_dx12.m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
+    // Draw geometry (same for both)
+    pipeline_dx12.m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    pipeline_dx12.m_commandList->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
+    pipeline_dx12.m_commandList->DrawInstanced(3, 1, 0, 0);
+
+    // Post-draw operations
+    if (msaa_state.m_enabled)
+    {
+        // MSAA: Resolve to back buffer
+        auto barrier2 = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
+        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier2);
+
+        pipeline_dx12.m_commandList->ResolveSubresource(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], 0, pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], 0, DXGI_FORMAT_R8G8B8A8_UNORM);
+
+        auto barrier3 = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RESOLVE_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier3);
+
+        auto barrier4 = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RESOLVE_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier4);
+    }
+
+    // ImGui rendering (always to back buffer)
+    CD3DX12_CPU_DESCRIPTOR_HANDLE backBufferRtvHandle(
+        pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(),
+        (INT)sync_state.m_frameIndex,
+        pipeline_dx12.m_rtvDescriptorSize);
+    pipeline_dx12.m_commandList->OMSetRenderTargets(1, &backBufferRtvHandle, FALSE, nullptr);
 
     ImGui::Render();
     ID3D12DescriptorHeap *imguiHeaps[] = {g_imguiHeap.Heap};
     pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(imguiHeaps), imguiHeaps);
     ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), pipeline_dx12.m_commandList);
 
-    // Indicate that the back buffer will now be used to present.
-    {
-        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT);
-        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
-    }
+    // Final transition to PRESENT
+    auto finalBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        pipeline_dx12.m_renderTargets[sync_state.m_frameIndex],
+        D3D12_RESOURCE_STATE_RENDER_TARGET,
+        D3D12_RESOURCE_STATE_PRESENT);
+    pipeline_dx12.m_commandList->ResourceBarrier(1, &finalBarrier);
 
     if (!HRAssert(pipeline_dx12.m_commandList->Close()))
         return false;

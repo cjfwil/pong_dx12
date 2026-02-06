@@ -46,7 +46,7 @@ static struct
     bool m_supported[4] = {true, false, false, false}; // 1x always supported
     const UINT m_sampleCounts[4] = {1, 2, 4, 8};
 
-    void CalcSupportedMSAALevels(ID3D12Device* device)
+    void CalcSupportedMSAALevels(ID3D12Device *device)
     {
         for (UINT i = 0; i < 4; i++)
         {
@@ -302,19 +302,11 @@ struct
                     while (adapter->EnumOutputs(outputIndex, &output) == S_OK)
                     {
                         UINT nModes = 0;
-                        HRESULT hr = output->GetDisplayModeList(
-                            m_format,
-                            m_flags,
-                            &nModes,
-                            nullptr);
+                        HRESULT hr = output->GetDisplayModeList(m_format, m_flags, &nModes, nullptr);
                         HRAssert(hr);
                         if (SUCCEEDED(hr) && nModes > 0)
                         {
-                            hr = output->GetDisplayModeList(
-                                m_format,
-                                m_flags,
-                                &nModes,
-                                m_modes + m_numDisplayModes);
+                            hr = output->GetDisplayModeList(m_format, m_flags, &nModes, m_modes + m_numDisplayModes);
                             HRAssert(hr);
                             if (SUCCEEDED(hr))
                             {
@@ -370,9 +362,6 @@ struct
 
 void CreateMSAAResources(UINT sampleCount)
 {
-    // Check MSAA support
-    msaa_state.CalcSupportedMSAALevels(pipeline_dx12.m_device);
-
     // Recreate MSAA render targets
     D3D12_RESOURCE_DESC msaaRtDesc = {};
     msaaRtDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -434,10 +423,8 @@ void CreateMSAAResources(UINT sampleCount)
         msaaDsvHandle);
 }
 
-void RecreateMSAAResources()
+void ReleaseMSAAResources()
 {
-    WaitForAllFrames();
-
     // Release old MSAA resources
     for (UINT n = 0; n < g_FrameCount; n++)
     {
@@ -452,6 +439,13 @@ void RecreateMSAAResources()
         pipeline_dx12.m_msaaDepthStencil->Release();
         pipeline_dx12.m_msaaDepthStencil = nullptr;
     }
+}
+
+void RecreateMSAAResources()
+{
+    WaitForAllFrames();
+
+    ReleaseMSAAResources();
 
     if (msaa_state.m_enabled)
     {
@@ -637,6 +631,7 @@ bool LoadPipeline(HWND hwnd)
             pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
 
         CreateMSAAResources(msaa_state.m_currentSampleCount);
+        msaa_state.CalcSupportedMSAALevels(pipeline_dx12.m_device);
     }
 
     display_modes.FillDisplayModesFromFactory(factory);
@@ -737,7 +732,7 @@ bool LoadAssets()
             return false;
         if (!HRAssert(pipeline_dx12.m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&pipeline_dx12.m_rootSignature))))
             return false;
-    }    
+    }
 
     // Create the pipeline states, which includes compiling and loading shaders.
     {
