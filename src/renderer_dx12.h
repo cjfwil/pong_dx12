@@ -222,6 +222,7 @@ _Use_decl_annotations_ void GetHardwareAdapter(
 
 struct
 {
+    UINT m_flags = DXGI_ENUM_MODES_SCALING;
     UINT m_numDisplayModes = 0;
     DXGI_MODE_DESC *m_modes = NULL;
 
@@ -230,34 +231,27 @@ struct
         UINT totalModes = 0;
         UINT adapterIndex = 0;
         IDXGIAdapter1 *adapter = nullptr;
-
         while (factory->EnumAdapters1(adapterIndex, &adapter) == S_OK)
         {
             UINT outputIndex = 0;
             IDXGIOutput *output = nullptr;
-
             while (adapter->EnumOutputs(outputIndex, &output) == S_OK)
             {
                 UINT nModes = 0;
                 HRESULT hr = output->GetDisplayModeList(
                     DXGI_FORMAT_R8G8B8A8_UNORM,
-                    DXGI_ENUM_MODES_INTERLACED | DXGI_ENUM_MODES_SCALING,
+                    m_flags,
                     &nModes,
                     nullptr);
-
+                HRAssert(hr);
                 if (SUCCEEDED(hr))
-                {
                     totalModes += nModes;
-                }
-
                 output->Release();
                 ++outputIndex;
             }
-
             adapter->Release();
             ++adapterIndex;
         }
-
         m_numDisplayModes = totalModes;
         return m_numDisplayModes;
     }
@@ -266,9 +260,10 @@ struct
     {
         if (!factory)
         {
-            SDL_Log("FillDisplayModesFromFactory: factory is null");
+            log_error("FillDisplayModesFromFactory: factory is null");
+            HRAssert(E_UNEXPECTED);
             return;
-        }                
+        }
 
         // Allocate memory for all modes
         UINT adapterIndex = 0;
@@ -278,49 +273,44 @@ struct
             m_modes = (DXGI_MODE_DESC *)SDL_malloc(sizeof(DXGI_MODE_DESC) * m_numDisplayModes);
             if (m_modes)
             {
-                m_numDisplayModes = 0;
-
-                // Second pass: collect all modes
+                m_numDisplayModes = 0;                
                 adapterIndex = 0;
                 while (factory->EnumAdapters1(adapterIndex, &adapter) == S_OK)
                 {
                     UINT outputIndex = 0;
                     IDXGIOutput *output = nullptr;
-
                     while (adapter->EnumOutputs(outputIndex, &output) == S_OK)
                     {
                         UINT nModes = 0;
                         HRESULT hr = output->GetDisplayModeList(
                             DXGI_FORMAT_R8G8B8A8_UNORM,
-                            DXGI_ENUM_MODES_INTERLACED | DXGI_ENUM_MODES_SCALING,
+                            m_flags,
                             &nModes,
                             nullptr);
-
+                        HRAssert(hr);
                         if (SUCCEEDED(hr) && nModes > 0)
                         {
                             hr = output->GetDisplayModeList(
                                 DXGI_FORMAT_R8G8B8A8_UNORM,
-                                DXGI_ENUM_MODES_INTERLACED | DXGI_ENUM_MODES_SCALING,
+                                m_flags,
                                 &nModes,
                                 m_modes + m_numDisplayModes);
-
+                            HRAssert(hr);
                             if (SUCCEEDED(hr))
                             {
                                 m_numDisplayModes += nModes;
                             }
                         }
-
                         output->Release();
                         ++outputIndex;
                     }
-
                     adapter->Release();
                     ++adapterIndex;
                 }
             }
             else
             {
-                SDL_Log("FillDisplayModesFromFactory: malloc failed for %u modes", m_numDisplayModes);
+                log_sdl_error("FillDisplayModesFromFactory: malloc failed");
                 m_numDisplayModes = 0;
             }
         }
@@ -329,7 +319,6 @@ struct
     void PrintDisplayModes()
     {
         SDL_Log("Display modes:");
-
         for (UINT i = 0; i < m_numDisplayModes; ++i)
         {
             const DXGI_MODE_DESC &m = m_modes[i];
@@ -342,7 +331,6 @@ struct
                     (unsigned)m.ScanlineOrdering,
                     (unsigned)m.Scaling);
         }
-
         if (m_numDisplayModes == 0)
         {
             SDL_Log("    No display modes available");
