@@ -459,7 +459,7 @@ bool LoadPipeline(HWND hwnd)
             &msaaDsvDesc,
             msaaDsvHandle);
     }
-
+    factory->Release();
     return true;
 }
 
@@ -781,7 +781,7 @@ bool LoadAssets()
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         srvDesc.Texture2D.MipLevels = 1;
         pipeline_dx12.m_device->CreateShaderResourceView(graphics_resources.m_texture, &srvDesc, cpuSrv);
-    }
+    }    
 
     // Close the command list and execute it to begin the initial GPU setup.
     if (!HRAssert(pipeline_dx12.m_commandList->Close()))
@@ -809,6 +809,7 @@ bool LoadAssets()
         WaitForGpu();
     }
     vertexBufferUpload->Release();
+    textureUploadHeap->Release();
     return true;
 }
 
