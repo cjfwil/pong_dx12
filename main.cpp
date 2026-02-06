@@ -24,8 +24,8 @@
 #include <backends/imgui_impl_dx12.h>
 #pragma warning(pop)
 
-#include "src/local_error.h"
-#include "src/renderer_dx12.h"
+#include "local_error.h"
+#include "renderer_dx12.h"
 
 static struct
 {
