@@ -252,32 +252,24 @@ struct timing_state
     }
 };
 
-static struct
+enum struct WindowMode
 {
-    timing_state timing;
+    WINDOWED = 0,
+    BORDERLESS = 1,
+    NUM_WINDOW_MODES = 2
+};
 
+static WindowMode g_defaultWindowMode = WindowMode::WINDOWED;
+
+struct window_state
+{
+    uint32_t m_windowWidth = 1280;
+    uint32_t m_windowHeight = 720;
+    WindowMode m_currentMode = g_defaultWindowMode;
+    WindowMode m_desiredMode = g_defaultWindowMode;
     SDL_Window *window = nullptr;
     HWND hwnd = nullptr;
-    bool isRunning = true;
-
-    void DisplayPerformanceInWindowTitle(double rate)
-    {
-        static double local_timer = 0.0;
-        if (local_timer >= rate)
-        {
-            double fps = 1.0 / timing.deltaTime;
-
-            char title[128];
-            snprintf(title, sizeof(title),
-                     "Performance  |  %.2f ms  |  %.1f FPS",
-                     timing.deltaTime * 1000.0, fps);
-
-            SDL_SetWindowTitle(window, title);
-
-            local_timer = 0.0;
-        }
-        local_timer += timing.deltaTime;
-    }
+    char *windowName = "window_name_todo_change";
 
     HWND GetWindowHWND()
     {
@@ -293,6 +285,77 @@ static struct
         return hwnd;
     }
 
+    inline Uint64 CalcWindowFlags(WindowMode mode)
+    {
+        Uint64 windowFlags = 0;
+        if (mode == WindowMode::BORDERLESS)
+            windowFlags |= SDL_WINDOW_BORDERLESS;
+        return windowFlags;
+    }
+
+    void Create()
+    {
+        Uint64 windowFlags = CalcWindowFlags(m_currentMode);
+        window = SDL_CreateWindow(windowName, (int)m_windowWidth, (int)m_windowHeight, windowFlags);
+        if (window)
+        {
+            SDL_Log("SDL Window created.");
+            GetWindowHWND();
+
+            int w = 0, h = 0;
+            SDL_GetWindowSize(window, &w, &h);
+            viewport_state.m_width = (UINT)w;
+            viewport_state.m_height = (UINT)h;
+            viewport_state.m_aspectRatio = (float)w / (float)h;
+        }
+        else
+        {
+            log_sdl_error("Couldn't create SDL window");
+            HRAssert(E_UNEXPECTED);
+        }
+    }
+
+    // Window mode management functions
+    bool ApplyWindowMode()
+    {
+        WindowMode newMode = m_desiredMode;
+        SDL_Log("Applying window mode: %d", newMode);
+
+        // Get current display bounds
+        SDL_DisplayID display = SDL_GetDisplayForWindow(window);
+        SDL_Rect displayBounds;
+        SDL_GetDisplayBounds(display, &displayBounds);
+
+        SDL_SetWindowFullscreen(window, (m_desiredMode != WindowMode::WINDOWED));
+        SDL_SetWindowResizable(window, false);
+        SDL_SetWindowBordered(window, (m_desiredMode == WindowMode::WINDOWED));
+        if (newMode == WindowMode::BORDERLESS)
+        {
+            SDL_SetWindowPosition(window, displayBounds.x, displayBounds.y);
+            SDL_SetWindowSize(window, displayBounds.w, displayBounds.h);
+        }
+
+        // Update viewport state
+        int w, h;
+        SDL_GetWindowSize(window, &w, &h);
+        viewport_state.m_width = (UINT)w;
+        viewport_state.m_height = (UINT)h;
+        viewport_state.m_aspectRatio = (float)w / (float)h;
+
+        m_currentMode = newMode;
+        // m_modeChanged = false;
+
+        SDL_Log("Window mode applied: %dx%d mode=%d", w, h, newMode);
+        return true;
+    }
+};
+
+static struct
+{
+    timing_state timing;
+    window_state window;
+
+    bool isRunning = true;
 } program_state;
 
 int main(void)
@@ -309,25 +372,9 @@ int main(void)
         SDL_Log("SDL Video initialised.");
     }
 
-    program_state.window = SDL_CreateWindow("Name", 1920, 1080, SDL_WINDOW_BORDERLESS);
-    if (program_state.window == nullptr)
-    {
-        log_sdl_error("Couldn't create SDL window");
-        return 1;
-    }
-    else
-    {
-        SDL_Log("SDL Window created.");
-        program_state.GetWindowHWND();
+    program_state.window.Create();
 
-        int w = 0, h = 0;
-        SDL_GetWindowSize(program_state.window, &w, &h);
-        viewport_state.m_width = (UINT)w;
-        viewport_state.m_height = (UINT)h;
-        viewport_state.m_aspectRatio = (float)w / (float)h;
-    }
-
-    if (!LoadPipeline(program_state.hwnd))
+    if (!LoadPipeline(program_state.window.hwnd))
     {
         log_error("Could not load pipeline");
         return 1;
@@ -357,7 +404,7 @@ int main(void)
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
         ImGui::StyleColorsDark();
 
-        ImGui_ImplSDL3_InitForD3D(program_state.window);
+        ImGui_ImplSDL3_InitForD3D(program_state.window.window);
 
         g_imguiHeap.Create(pipeline_dx12.m_device, pipeline_dx12.m_imguiHeap);
         ImGui_ImplDX12_InitInfo init_info = {};
@@ -393,13 +440,14 @@ int main(void)
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
 
+        ImGui::Begin("Settings");
         ImGui::Text("Application average %.3f ms/frame (%.2f FPS)",
                     1000.0f / ImGui::GetIO().Framerate,
                     ImGui::GetIO().Framerate);
 
         // MSAA settings
         ImGui::Separator();
-        ImGui::Text("MSAA Settings");
+        ImGui::Text("MSAA");
 
         bool msaaChanged = false;
         bool oldEnabled = msaa_state.m_enabled;
@@ -458,8 +506,35 @@ int main(void)
 
         ImGui::Separator();
 
+        ImGui::Text("Window Mode");
+
+        static const char *windowModeNames[(const uint32_t)WindowMode::NUM_WINDOW_MODES] = {"Windowed", "Borderless"};
+        if (ImGui::BeginCombo("Mode", windowModeNames[(UINT)program_state.window.m_desiredMode]))
+        {
+            for (int i = 0; i < (const uint32_t)WindowMode::NUM_WINDOW_MODES; i++)
+            {
+                bool isSelected = (program_state.window.m_desiredMode == (WindowMode)i);
+                if (ImGui::Selectable(windowModeNames[i], isSelected))
+                {
+                    program_state.window.m_desiredMode = (WindowMode)i;
+                    // window_state.m_modeChanged = (window_state.m_pendingMode != window_state.m_currentMode);
+                }
+                if (isSelected)
+                {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+
+        ImGui::End();
+
         program_state.timing.UpdateTimer();
-        program_state.DisplayPerformanceInWindowTitle(0.1);
+
+        if (program_state.window.m_currentMode != program_state.window.m_desiredMode)
+        {
+            program_state.window.ApplyWindowMode();
+        }
 
         Update();
         Render();
