@@ -472,9 +472,14 @@ int main(void)
         ImGui::NewFrame();
 
         ImGui::Begin("Settings");
-        ImGui::Text("Application average %.3f ms/frame (%.2f FPS)",
+        ImGui::Text("Frametime %.3f ms (%.2f FPS)",
                     1000.0f / ImGui::GetIO().Framerate,
                     ImGui::GetIO().Framerate);
+
+        if (ImGui::Button("Exit"))
+        {
+            program_state.isRunning = false;
+        }
 
         // MSAA settings
         ImGui::Separator();
@@ -628,11 +633,6 @@ int main(void)
                 }
             }
             ImGui::EndCombo();
-        }
-
-        if (ImGui::Button("Exit"))
-        {
-            program_state.isRunning = false;
         }
 
         ImGui::End();
