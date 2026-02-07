@@ -600,15 +600,14 @@ int main(void)
 
         static int currentResItem = -1;
         static const int numSupportedResolutions = 5;
-        struct
+        static struct
         {
             char *resNames[numSupportedResolutions] = {"1280x720", "1920x1080", "640x480", "1024x768", "1680x720"};
             uint32_t w[numSupportedResolutions] = {1280, 1920, 640, 1024, 1680};
             uint32_t h[numSupportedResolutions] = {720, 1080, 480, 768, 720};
-        } supported_window_dimensions;        
-        if (program_state.window.m_currentMode==WindowMode::WINDOWED 
-            && ImGui::BeginCombo("Res", 
-                (currentResItem == -1) ? "." : supported_window_dimensions.resNames[currentResItem]))
+        } supported_window_dimensions;
+        if (program_state.window.m_currentMode == WindowMode::WINDOWED && 
+            ImGui::BeginCombo("Res", (currentResItem == -1) ? "." : supported_window_dimensions.resNames[currentResItem]))
         {
             for (int i = 0; i < numSupportedResolutions; i++)
             {
@@ -636,7 +635,7 @@ int main(void)
         program_state.timing.UpdateTimer();
 
         if (program_state.window.m_currentMode != program_state.window.m_desiredMode || window_request.applyWindowRequest)
-        {            
+        {
             program_state.window.ApplyWindowMode();
             window_request.applyWindowRequest = false;
         }
