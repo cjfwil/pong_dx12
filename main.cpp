@@ -559,17 +559,16 @@ int main(void)
             SDL_Log("MSAA settings changed: %s, %dx",
                     msaa_state.m_enabled ? "enabled" : "disabled",
                     msaa_state.m_currentSampleCount);
-            RecreateMSAAResources();
-            ConfigData currentConfig = LoadConfig();
+            RecreateMSAAResources();            
             if (msaa_state.m_enabled)
             {
-                currentConfig.GraphicsSettings.msaa_level = (int)msaa_state.m_currentSampleCount;
+                g_liveConfigData.GraphicsSettings.msaa_level = (int)msaa_state.m_currentSampleCount;
             }
             else
             {
-                currentConfig.GraphicsSettings.msaa_level = 1;
+                g_liveConfigData.GraphicsSettings.msaa_level = 1;
             }
-            SaveConfig(&currentConfig);
+            SaveConfig(&g_liveConfigData);
         }
 
         ImGui::Separator();
