@@ -20,8 +20,10 @@ struct Vertex
 
 struct ConstantBuffer
 {
-    DirectX::XMFLOAT4 offset;
-    float padding[60]; // Padding so the constant buffer is 256-byte aligned.
+    DirectX::XMFLOAT4X4 world;
+    DirectX::XMFLOAT4X4 view;
+    DirectX::XMFLOAT4X4 projection;
+    float padding[16]; // Padding so the constant buffer is 256-byte aligned.
 };
 static_assert((sizeof(ConstantBuffer) % 256) == 0, "Constant Buffer size must be 256-byte aligned");
 
@@ -134,25 +136,25 @@ void WaitForAllFrames()
 {
     // Wait for ALL frames to complete (triple buffering)
     UINT64 maxFenceValue = 0;
-    
+
     // Find the maximum fence value among all frames
     for (UINT i = 0; i < g_FrameCount; i++)
     {
         if (sync_state.m_fenceValues[i] > maxFenceValue)
             maxFenceValue = sync_state.m_fenceValues[i];
     }
-    
+
     // Signal the fence with a new value to ensure we wait for all pending work
     const UINT64 currentFenceValue = maxFenceValue + 1;
     HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, currentFenceValue));
-    
+
     // Wait for the fence to reach the new value
     if (sync_state.m_fence->GetCompletedValue() < currentFenceValue)
     {
         HRAssert(sync_state.m_fence->SetEventOnCompletion(currentFenceValue, sync_state.m_fenceEvent));
         WaitForSingleObjectEx(sync_state.m_fenceEvent, INFINITE, FALSE);
     }
-    
+
     // Update all frame fence values to the new value
     for (UINT i = 0; i < g_FrameCount; i++)
     {
@@ -784,8 +786,13 @@ bool LoadAssets()
             psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader);
             psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShader);
             psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+            psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+            // psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
             psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
             psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+            // psoDesc.DepthStencilState.DepthEnable = true;
+            // psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+            // psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
             psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
             psoDesc.SampleMask = UINT_MAX;
             psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;

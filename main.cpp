@@ -196,22 +196,6 @@ bool PopulateCommandList()
     return true;
 }
 
-// Update frame-based values.
-void Update()
-{
-    const float translationSpeed = 0.005f;
-    const float offsetBounds = 1.25f;
-
-    graphics_resources.m_constantBufferData.offset.x += translationSpeed;
-    if (graphics_resources.m_constantBufferData.offset.x > offsetBounds)
-    {
-        graphics_resources.m_constantBufferData.offset.x = -offsetBounds;
-    }
-    memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex],
-           &graphics_resources.m_constantBufferData,
-           sizeof(graphics_resources.m_constantBufferData));
-}
-
 // Render the scene.
 void Render(bool vsync = true)
 {
@@ -275,7 +259,6 @@ struct window_state
     uint32_t m_windowWidth;
     uint32_t m_windowHeight;
     WindowMode m_currentMode;
-    WindowMode _m_desiredMode;
     SDL_Window *window = nullptr;
     HWND hwnd = nullptr;
     char *windowName = "window_name_todo_change";
@@ -384,6 +367,36 @@ static struct
     bool isRunning = true;
 } program_state;
 
+static float g_x = 0.0f;
+static float g_y = 0.0f;
+static float g_z = 0.0f;
+
+// Update frame-based values.
+void Update()
+{
+    DirectX::XMMATRIX world = DirectX::XMMatrixIdentity();
+    
+    DirectX::XMVECTOR eye = DirectX::XMVectorSet(5.0f*sinf(program_state.timing.upTime), g_y, 5.0f*cosf(program_state.timing.upTime), 0.0f);
+    DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+    DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+    DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(eye, at, up);
+    
+    DirectX::XMMATRIX projection = DirectX::XMMatrixPerspectiveFovLH(
+        DirectX::XMConvertToRadians(60.0f), 
+        viewport_state.m_aspectRatio, 
+        0.01f, 
+        1000.0f);
+    
+    // TRANSPOSE before storing!
+    DirectX::XMStoreFloat4x4(&graphics_resources.m_constantBufferData.world, DirectX::XMMatrixTranspose(world));
+    DirectX::XMStoreFloat4x4(&graphics_resources.m_constantBufferData.view, DirectX::XMMatrixTranspose(view));
+    DirectX::XMStoreFloat4x4(&graphics_resources.m_constantBufferData.projection, DirectX::XMMatrixTranspose(projection));
+    
+    memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex],
+           &graphics_resources.m_constantBufferData,
+           sizeof(graphics_resources.m_constantBufferData));
+}
+
 int main(void)
 {
     program_state.timing.InitTimer();
@@ -480,6 +493,8 @@ int main(void)
         ImGui::NewFrame();
 
         ImGui::Begin("Settings");
+        // float test;        
+        ImGui::SliderFloat("y", &g_y, -10.0f, 10.0f);        
         ImGui::Text("Frametime %.3f ms (%.2f FPS)",
                     1000.0f / ImGui::GetIO().Framerate,
                     ImGui::GetIO().Framerate);
