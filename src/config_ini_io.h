@@ -1,27 +1,27 @@
 #pragma once
 #include <SDL3/SDL.h>
 
+
 #define CONFIG_FILE_NAME "config.ini"
 
 typedef struct {
-    int width, height, mode;
-} WindowConfig;
+    int m_width, height, mode;
+} ConfigData;
+#include "generated/config_functions.h"
 
-void SaveConfig(WindowConfig* config) {
+void SaveConfig(ConfigData* config) {
     SDL_IOStream* file = SDL_IOFromFile(CONFIG_FILE_NAME, "wb");
     if (!file) return;
     
     char buffer[256];
-    SDL_snprintf(buffer, sizeof(buffer), 
-                 "width=%d\nheight=%d\nmode=%d\n", 
-                 config->width, config->height, config->mode);
+    Generated_SaveConfigToString(config, buffer, 256);
     
     SDL_WriteIO(file, buffer, SDL_strlen(buffer));
     SDL_CloseIO(file);
 }
 
-WindowConfig LoadConfig() {
-    WindowConfig config = {640, 480, 0}; // default settings here
+ConfigData LoadConfig() {
+    ConfigData config = {640, 480, 0}; // default settings here
     
     SDL_IOStream* file = SDL_IOFromFile(CONFIG_FILE_NAME, "rb");
     if (!file) {
@@ -35,25 +35,9 @@ WindowConfig LoadConfig() {
     data[size] = 0;
     SDL_CloseIO(file);
         
-    char* line = data;
-    while (*line) {
-        if (SDL_strncmp(line, "width=", 6) == 0) {
-            config.width = SDL_atoi(line + 6);
-        } else if (SDL_strncmp(line, "height=", 7) == 0) {
-            config.height = SDL_atoi(line + 7);
-        } else if (SDL_strncmp(line, "mode=", 5) == 0) {
-            config.mode = SDL_atoi(line + 5);
-        }
-                
-        while (*line && *line != '\n') line++;
-        if (*line == '\n') line++;
-    }
+    Generated_LoadConfigFromString(&config, data);
     
     SDL_free(data);
-        
-    if (config.width < 640) config.width = 640;
-    if (config.height < 480) config.height = 480;
-    if (config.mode > 2) config.mode = 1;
     
     return config;
 }

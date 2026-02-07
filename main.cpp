@@ -301,8 +301,8 @@ struct window_state
         // m_windowHeight = load from config;
         // m_currentMode = load from config;
 
-        WindowConfig winConf = LoadConfig();
-        m_windowWidth = (uint32_t)winConf.width;
+        ConfigData winConf = LoadConfig();
+        m_windowWidth = (uint32_t)winConf.m_width;
         m_windowHeight = (uint32_t)winConf.height;
         m_currentMode = (WindowMode)winConf.mode;
 
@@ -364,8 +364,8 @@ struct window_state
 
         RecreateSwapChain();
 
-        WindowConfig config = {};
-        config.width = w;
+        ConfigData config = {};
+        config.m_width = w;
         config.height = h;
         config.mode = (int)newMode;
         SaveConfig(&config);
