@@ -295,7 +295,7 @@ struct window_state
     }
 
     void Create()
-    {        
+    {
         m_windowWidth = (uint32_t)g_liveConfigData.DisplaySettings.window_width;
         m_windowHeight = (uint32_t)g_liveConfigData.DisplaySettings.window_height;
         m_currentMode = (WindowMode)g_liveConfigData.DisplaySettings.window_mode;
@@ -342,6 +342,7 @@ struct window_state
         else
         {
             SDL_SetWindowSize(window, (int)m_windowWidth, (int)m_windowHeight);
+            SDL_SetWindowPosition(window, SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED);
         }
 
         // Update viewport state
@@ -357,7 +358,7 @@ struct window_state
         SDL_Log("Window mode applied: %dx%d mode=%d", w, h, newMode);
 
         RecreateSwapChain();
-        
+
         g_liveConfigData.DisplaySettings.window_width = w;
         g_liveConfigData.DisplaySettings.window_height = h;
         g_liveConfigData.DisplaySettings.window_mode = (int)newMode;
@@ -557,7 +558,7 @@ int main(void)
             ConfigData currentConfig = LoadConfig();
             if (msaa_state.m_enabled)
             {
-                currentConfig.GraphicsSettings.msaa_level = msaa_state.m_currentSampleCount;
+                currentConfig.GraphicsSettings.msaa_level = (int)msaa_state.m_currentSampleCount;
             }
             else
             {
@@ -579,7 +580,48 @@ int main(void)
                 if (ImGui::Selectable(windowModeNames[i], isSelected))
                 {
                     program_state.window.m_desiredMode = (WindowMode)i;
-                    // window_state.m_modeChanged = (window_state.m_pendingMode != window_state.m_currentMode);
+                }
+                if (isSelected)
+                {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+
+        ImGui::Separator();
+
+        static struct
+        {
+            bool applyWindowRequest = false;
+            int requestedWidth;
+            int requestedHeight;
+        } window_request;
+
+        static int currentResItem = -1;
+        static const int numSupportedResolutions = 5;
+        struct
+        {
+            char *resNames[numSupportedResolutions] = {"1280x720", "1920x1080", "640x480", "1024x768", "1680x720"};
+            uint32_t w[numSupportedResolutions] = {1280, 1920, 640, 1024, 1680};
+            uint32_t h[numSupportedResolutions] = {720, 1080, 480, 768, 720};
+        } supported_window_dimensions;        
+        if (program_state.window.m_currentMode==WindowMode::WINDOWED 
+            && ImGui::BeginCombo("Res", 
+                (currentResItem == -1) ? "." : supported_window_dimensions.resNames[currentResItem]))
+        {
+            for (int i = 0; i < numSupportedResolutions; i++)
+            {
+                bool isSelected = (i == currentResItem);
+                if (ImGui::Selectable(supported_window_dimensions.resNames[i], isSelected))
+                {
+                    if (currentResItem != i)
+                    {
+                        window_request.applyWindowRequest = true;
+                        program_state.window.m_windowWidth = supported_window_dimensions.w[i];
+                        program_state.window.m_windowHeight = supported_window_dimensions.h[i];
+                    }
+                    currentResItem = i;
                 }
                 if (isSelected)
                 {
@@ -593,9 +635,10 @@ int main(void)
 
         program_state.timing.UpdateTimer();
 
-        if (program_state.window.m_currentMode != program_state.window.m_desiredMode)
-        {
+        if (program_state.window.m_currentMode != program_state.window.m_desiredMode || window_request.applyWindowRequest)
+        {            
             program_state.window.ApplyWindowMode();
+            window_request.applyWindowRequest = false;
         }
 
         Update();
