@@ -25,6 +25,7 @@
 #pragma warning(pop)
 
 #include "local_error.h"
+#include "config_ini_io.h"
 #include "renderer_dx12.h"
 
 static struct
@@ -259,12 +260,12 @@ enum struct WindowMode
     NUM_WINDOW_MODES = 2
 };
 
-static WindowMode g_defaultWindowMode = WindowMode::BORDERLESS;
+static WindowMode g_defaultWindowMode = WindowMode::WINDOWED;
 
 struct window_state
 {
-    uint32_t m_windowWidth = 1280;
-    uint32_t m_windowHeight = 720;
+    uint32_t m_windowWidth = 640;
+    uint32_t m_windowHeight = 480;
     WindowMode m_currentMode = g_defaultWindowMode;
     WindowMode m_desiredMode = g_defaultWindowMode;
     SDL_Window *window = nullptr;
@@ -295,6 +296,16 @@ struct window_state
 
     void Create()
     {
+        // todo load saved settings from config file
+        // m_windowWidth = load from config;
+        // m_windowHeight = load from config;
+        // m_currentMode = load from config;
+
+        WindowConfig winConf = LoadConfig();
+        m_windowWidth = winConf.width;
+        m_windowHeight = winConf.height;
+        m_currentMode = (WindowMode)winConf.mode;
+
         Uint64 windowFlags = CalcWindowFlags(m_currentMode);
         window = SDL_CreateWindow(windowName, (int)m_windowWidth, (int)m_windowHeight, windowFlags);
         if (window)
@@ -352,6 +363,12 @@ struct window_state
         SDL_Log("Window mode applied: %dx%d mode=%d", w, h, newMode);
 
         RecreateSwapChain();
+
+        WindowConfig config = {};
+        config.width = w;
+        config.height = h;
+        config.mode = (int)newMode;
+        SaveConfig(&config);
 
         return true;
     }
