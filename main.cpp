@@ -28,6 +28,8 @@
 #include "config_ini_io.h"
 #include "renderer_dx12.h"
 
+static ConfigData g_liveConfigData = {};
+
 static struct
 {
     ID3D12DescriptorHeap *Heap = nullptr;
@@ -260,14 +262,12 @@ enum struct WindowMode
     NUM_WINDOW_MODES = 2
 };
 
-static WindowMode g_defaultWindowMode = WindowMode::WINDOWED;
-
 struct window_state
 {
-    uint32_t m_windowWidth = 640;
-    uint32_t m_windowHeight = 480;
-    WindowMode m_currentMode = g_defaultWindowMode;
-    WindowMode m_desiredMode = g_defaultWindowMode;
+    uint32_t m_windowWidth;
+    uint32_t m_windowHeight;
+    WindowMode m_currentMode;
+    WindowMode m_desiredMode;
     SDL_Window *window = nullptr;
     HWND hwnd = nullptr;
     char *windowName = "window_name_todo_change";
@@ -295,16 +295,10 @@ struct window_state
     }
 
     void Create()
-    {
-        // todo load saved settings from config file
-        // m_windowWidth = load from config;
-        // m_windowHeight = load from config;
-        // m_currentMode = load from config;
-
-        ConfigData winConf = LoadConfig();
-        m_windowWidth = (uint32_t)winConf.m_width;
-        m_windowHeight = (uint32_t)winConf.height;
-        m_currentMode = (WindowMode)winConf.mode;
+    {        
+        m_windowWidth = (uint32_t)g_liveConfigData.DisplaySettings.window_width;
+        m_windowHeight = (uint32_t)g_liveConfigData.DisplaySettings.window_height;
+        m_currentMode = (WindowMode)g_liveConfigData.DisplaySettings.window_mode;
 
         Uint64 windowFlags = CalcWindowFlags(m_currentMode);
         window = SDL_CreateWindow(windowName, (int)m_windowWidth, (int)m_windowHeight, windowFlags);
@@ -363,12 +357,11 @@ struct window_state
         SDL_Log("Window mode applied: %dx%d mode=%d", w, h, newMode);
 
         RecreateSwapChain();
-
-        ConfigData config = {};
-        config.m_width = w;
-        config.height = h;
-        config.mode = (int)newMode;
-        SaveConfig(&config);
+        
+        g_liveConfigData.DisplaySettings.window_width = w;
+        g_liveConfigData.DisplaySettings.window_height = h;
+        g_liveConfigData.DisplaySettings.window_mode = (int)newMode;
+        SaveConfig(&g_liveConfigData);
 
         return true;
     }
@@ -396,7 +389,20 @@ int main(void)
         SDL_Log("SDL Video initialised.");
     }
 
+    g_liveConfigData = LoadConfig();
     program_state.window.Create();
+
+    if (g_liveConfigData.GraphicsSettings.msaa_level > 1)
+    {
+        msaa_state.m_enabled = true;
+        msaa_state.m_currentSampleCount = (UINT)g_liveConfigData.GraphicsSettings.msaa_level;
+        if (msaa_state.m_currentSampleCount == 2)
+            msaa_state.m_currentSampleIndex = 1;
+        else if (msaa_state.m_currentSampleCount == 4)
+            msaa_state.m_currentSampleIndex = 2;
+        else if (msaa_state.m_currentSampleCount = 8)
+            msaa_state.m_currentSampleIndex = 3;
+    }
 
     if (!LoadPipeline(program_state.window.hwnd))
     {
@@ -548,6 +554,16 @@ int main(void)
                     msaa_state.m_enabled ? "enabled" : "disabled",
                     msaa_state.m_currentSampleCount);
             RecreateMSAAResources();
+            ConfigData currentConfig = LoadConfig();
+            if (msaa_state.m_enabled)
+            {
+                currentConfig.GraphicsSettings.msaa_level = msaa_state.m_currentSampleCount;
+            }
+            else
+            {
+                currentConfig.GraphicsSettings.msaa_level = 1;
+            }
+            SaveConfig(&currentConfig);
         }
 
         ImGui::Separator();
