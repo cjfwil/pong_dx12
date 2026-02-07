@@ -401,7 +401,7 @@ int main(void)
             msaa_state.m_currentSampleIndex = 1;
         else if (msaa_state.m_currentSampleCount == 4)
             msaa_state.m_currentSampleIndex = 2;
-        else if (msaa_state.m_currentSampleCount = 8)
+        else if (msaa_state.m_currentSampleCount == 8)
             msaa_state.m_currentSampleIndex = 3;
     }
 
@@ -606,7 +606,7 @@ int main(void)
             uint32_t w[numSupportedResolutions] = {1280, 1920, 640, 1024, 1680};
             uint32_t h[numSupportedResolutions] = {720, 1080, 480, 768, 720};
         } supported_window_dimensions;
-        if (program_state.window.m_currentMode == WindowMode::WINDOWED && 
+        if (program_state.window.m_currentMode == WindowMode::WINDOWED &&
             ImGui::BeginCombo("Res", (currentResItem == -1) ? "." : supported_window_dimensions.resNames[currentResItem]))
         {
             for (int i = 0; i < numSupportedResolutions; i++)
@@ -628,6 +628,11 @@ int main(void)
                 }
             }
             ImGui::EndCombo();
+        }
+
+        if (ImGui::Button("Exit"))
+        {
+            program_state.isRunning = false;
         }
 
         ImGui::End();

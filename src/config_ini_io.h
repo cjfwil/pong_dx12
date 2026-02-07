@@ -14,7 +14,9 @@ typedef struct
         int msaa_level;
     } GraphicsSettings;
 } ConfigData;
+#pragma warning(push, 0)
 #include "generated/config_functions.h"
+#pragma warning(pop)
 
 void SaveConfig(ConfigData *config)
 {
