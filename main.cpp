@@ -302,8 +302,8 @@ struct window_state
         // m_currentMode = load from config;
 
         WindowConfig winConf = LoadConfig();
-        m_windowWidth = winConf.width;
-        m_windowHeight = winConf.height;
+        m_windowWidth = (uint32_t)winConf.width;
+        m_windowHeight = (uint32_t)winConf.height;
         m_currentMode = (WindowMode)winConf.mode;
 
         Uint64 windowFlags = CalcWindowFlags(m_currentMode);

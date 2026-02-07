@@ -30,8 +30,8 @@ WindowConfig LoadConfig() {
     }
         
     Sint64 size = SDL_GetIOSize(file);
-    char* data = (char*)SDL_malloc(size + 1);
-    SDL_ReadIO(file, data, size);
+    char* data = (char*)SDL_malloc((size_t)(size + 1));
+    SDL_ReadIO(file, data, (size_t)size);
     data[size] = 0;
     SDL_CloseIO(file);
         
