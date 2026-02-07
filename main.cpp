@@ -262,12 +262,20 @@ enum struct WindowMode
     NUM_WINDOW_MODES = 2
 };
 
+static struct
+{
+    bool applyWindowRequest = false;
+    int requestedWidth;
+    int requestedHeight;
+    WindowMode requestedMode;
+} window_request;
+
 struct window_state
 {
     uint32_t m_windowWidth;
     uint32_t m_windowHeight;
     WindowMode m_currentMode;
-    WindowMode m_desiredMode;
+    WindowMode _m_desiredMode;
     SDL_Window *window = nullptr;
     HWND hwnd = nullptr;
     char *windowName = "window_name_todo_change";
@@ -323,7 +331,7 @@ struct window_state
     // Window mode management functions
     bool ApplyWindowMode()
     {
-        WindowMode newMode = m_desiredMode;
+        WindowMode newMode = window_request.requestedMode;
         SDL_Log("Applying window mode: %d", newMode);
 
         // Get current display bounds
@@ -331,9 +339,9 @@ struct window_state
         SDL_Rect displayBounds;
         SDL_GetDisplayBounds(display, &displayBounds);
 
-        SDL_SetWindowFullscreen(window, (m_desiredMode != WindowMode::WINDOWED));
+        SDL_SetWindowFullscreen(window, (newMode != WindowMode::WINDOWED));
         SDL_SetWindowResizable(window, false);
-        SDL_SetWindowBordered(window, (m_desiredMode == WindowMode::WINDOWED));
+        SDL_SetWindowBordered(window, (newMode == WindowMode::WINDOWED));
         if (newMode == WindowMode::BORDERLESS)
         {
             SDL_SetWindowPosition(window, displayBounds.x, displayBounds.y);
@@ -361,7 +369,7 @@ struct window_state
 
         g_liveConfigData.DisplaySettings.window_width = w;
         g_liveConfigData.DisplaySettings.window_height = h;
-        g_liveConfigData.DisplaySettings.window_mode = (int)newMode;
+        g_liveConfigData.DisplaySettings.window_mode = (int)m_currentMode;
         SaveConfig(&g_liveConfigData);
 
         return true;
@@ -559,7 +567,7 @@ int main(void)
             SDL_Log("MSAA settings changed: %s, %dx",
                     msaa_state.m_enabled ? "enabled" : "disabled",
                     msaa_state.m_currentSampleCount);
-            RecreateMSAAResources();            
+            RecreateMSAAResources();
             if (msaa_state.m_enabled)
             {
                 g_liveConfigData.GraphicsSettings.msaa_level = (int)msaa_state.m_currentSampleCount;
@@ -576,14 +584,15 @@ int main(void)
         ImGui::Text("Window Mode");
 
         static const char *windowModeNames[(const uint32_t)WindowMode::NUM_WINDOW_MODES] = {"Windowed", "Borderless"};
-        if (ImGui::BeginCombo("Mode", windowModeNames[(UINT)program_state.window.m_desiredMode]))
+        if (ImGui::BeginCombo("Mode", windowModeNames[(UINT)program_state.window.m_currentMode]))
         {
             for (int i = 0; i < (const uint32_t)WindowMode::NUM_WINDOW_MODES; i++)
             {
-                bool isSelected = (program_state.window.m_desiredMode == (WindowMode)i);
+                bool isSelected = (program_state.window.m_currentMode == (WindowMode)i);
                 if (ImGui::Selectable(windowModeNames[i], isSelected))
                 {
-                    program_state.window.m_desiredMode = (WindowMode)i;
+                    window_request.requestedMode = (WindowMode)i;
+                    window_request.applyWindowRequest = true;
                 }
                 if (isSelected)
                 {
@@ -594,13 +603,6 @@ int main(void)
         }
 
         ImGui::Separator();
-
-        static struct
-        {
-            bool applyWindowRequest = false;
-            int requestedWidth;
-            int requestedHeight;
-        } window_request;
 
         static int currentResItem = -1;
         static const int numSupportedResolutions = 5;
@@ -638,7 +640,7 @@ int main(void)
 
         program_state.timing.UpdateTimer();
 
-        if (program_state.window.m_currentMode != program_state.window.m_desiredMode || window_request.applyWindowRequest)
+        if (window_request.applyWindowRequest)
         {
             program_state.window.ApplyWindowMode();
             window_request.applyWindowRequest = false;
