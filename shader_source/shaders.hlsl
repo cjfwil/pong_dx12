@@ -1,9 +1,9 @@
 cbuffer ConstantBuffer : register(b0)
 {
-    float4x4 world;
+    // float4x4 world;
     float4x4 view;
     float4x4 projection;
-    float padding[16];
+    float padding[16+16];
 };
 
 struct VSInput
@@ -26,7 +26,7 @@ PSInput VSMain(VSInput input)
     PSInput result;
 
     float4 position = input.position;
-    position = mul(position, world);
+    // position = mul(position, world);
     position = mul(position, view);
     position = mul(position, projection);
 

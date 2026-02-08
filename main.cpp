@@ -84,14 +84,18 @@ bool PopulateCommandList()
     ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_mainHeap};
     pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-    UINT descriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(
-        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(
-        pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
-        (INT)sync_state.m_frameIndex,
-        descriptorSize);
-    pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(0, cbvHandle);
+    // D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    // CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(
+    //     pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
+    //     (INT)sync_state.m_frameIndex,
+    //     descriptorSize);
+    //     pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(0, cbvHandle);
 
+    D3D12_GPU_VIRTUAL_ADDRESS cbvAddress = graphics_resources.m_PerFrameConstantBuffer[sync_state.m_frameIndex]->GetGPUVirtualAddress();
+    pipeline_dx12.m_commandList->SetGraphicsRootConstantBufferView(1, cbvAddress);
+        
+    // texture handle
+    UINT descriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(
         pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
         g_FrameCount, // SRV is after all CBVs
@@ -386,13 +390,13 @@ void Update()
         1000.0f);
     
     // TRANSPOSE before storing!
-    DirectX::XMStoreFloat4x4(&graphics_resources.m_constantBufferData.world, DirectX::XMMatrixTranspose(world));
-    DirectX::XMStoreFloat4x4(&graphics_resources.m_constantBufferData.view, DirectX::XMMatrixTranspose(view));
-    DirectX::XMStoreFloat4x4(&graphics_resources.m_constantBufferData.projection, DirectX::XMMatrixTranspose(projection));
+    // DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData.world, DirectX::XMMatrixTranspose(world));
+    DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData.view, DirectX::XMMatrixTranspose(view));
+    DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData.projection, DirectX::XMMatrixTranspose(projection));
     
     memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex],
-           &graphics_resources.m_constantBufferData,
-           sizeof(graphics_resources.m_constantBufferData));
+           &graphics_resources.m_PerFrameConstantBufferData,
+           sizeof(graphics_resources.m_PerFrameConstantBufferData));
 }
 
 int main(void)

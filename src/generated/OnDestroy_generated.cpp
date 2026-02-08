@@ -18,10 +18,10 @@ void OnDestroy()
     // Release other resources
     for (UINT i = 0; i < g_FrameCount; i++)
     {
-        if (graphics_resources.m_constantBuffer[i])
+        if (graphics_resources.m_PerFrameConstantBuffer[i])
         {
-            graphics_resources.m_constantBuffer[i]->Release();
-            graphics_resources.m_constantBuffer[i] = nullptr;
+            graphics_resources.m_PerFrameConstantBuffer[i]->Release();
+            graphics_resources.m_PerFrameConstantBuffer[i] = nullptr;
         }
     }
 

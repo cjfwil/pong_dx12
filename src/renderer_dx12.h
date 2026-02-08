@@ -18,14 +18,14 @@ struct Vertex
     DirectX::XMFLOAT2 uv;
 };
 
-struct ConstantBuffer
+struct PerFrameConstantBuffer
 {
-    DirectX::XMFLOAT4X4 world;
+    // DirectX::XMFLOAT4X4 world;
     DirectX::XMFLOAT4X4 view;
     DirectX::XMFLOAT4X4 projection;
-    float padding[16]; // Padding so the constant buffer is 256-byte aligned.
+    float padding[16+16]; // Padding so the constant buffer is 256-byte aligned.
 };
-static_assert((sizeof(ConstantBuffer) % 256) == 0, "Constant Buffer size must be 256-byte aligned");
+static_assert((sizeof(PerFrameConstantBuffer) % 256) == 0, "Constant Buffer size must be 256-byte aligned");
 
 static DXGI_FORMAT g_screenFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 static D3D12_CLEAR_VALUE g_rtClearValue = {g_screenFormat, {0.0f, 0.2f, 0.4f, 1.0f}};
@@ -110,12 +110,12 @@ static struct
 
 static struct
 {
-    ConstantBuffer m_constantBufferData;
+    PerFrameConstantBuffer m_PerFrameConstantBufferData;
     D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
     ID3D12Resource *m_vertexBuffer;
     ID3D12Resource *m_texture;
 
-    ID3D12Resource *m_constantBuffer[g_FrameCount];
+    ID3D12Resource *m_PerFrameConstantBuffer[g_FrameCount];
     UINT8 *m_pCbvDataBegin[g_FrameCount];
 } graphics_resources;
 
@@ -719,7 +719,8 @@ bool LoadAssets()
         srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 
         CD3DX12_ROOT_PARAMETER1 rootParameters[2];
-        rootParameters[0].InitAsDescriptorTable(1, &cbvRange, D3D12_SHADER_VISIBILITY_ALL);
+        // rootParameters[0].InitAsDescriptorTable(1, &cbvRange, D3D12_SHADER_VISIBILITY_ALL);
+        rootParameters[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL); // inline CBV
         rootParameters[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
 
         D3D12_STATIC_SAMPLER_DESC sampler = {};
@@ -869,21 +870,21 @@ bool LoadAssets()
     // create constant buffer for each frame in the frame buffer
     for (UINT i = 0; i < g_FrameCount; i++)
     {
-        const UINT constantBufferSize = sizeof(ConstantBuffer); // CB size is required to be 256-byte aligned.
+        const UINT PerFrameConstantBufferSize = sizeof(PerFrameConstantBuffer); // CB size is required to be 256-byte aligned.
 
         if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
                 &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
                 D3D12_HEAP_FLAG_NONE,
-                &CD3DX12_RESOURCE_DESC::Buffer(constantBufferSize),
+                &CD3DX12_RESOURCE_DESC::Buffer(PerFrameConstantBufferSize),
                 D3D12_RESOURCE_STATE_GENERIC_READ,
                 nullptr,
-                IID_PPV_ARGS(&graphics_resources.m_constantBuffer[i]))))
+                IID_PPV_ARGS(&graphics_resources.m_PerFrameConstantBuffer[i]))))
             return false;
 
         // Describe and create a constant buffer view.
         D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-        cbvDesc.BufferLocation = graphics_resources.m_constantBuffer[i]->GetGPUVirtualAddress();
-        cbvDesc.SizeInBytes = constantBufferSize;
+        cbvDesc.BufferLocation = graphics_resources.m_PerFrameConstantBuffer[i]->GetGPUVirtualAddress();
+        cbvDesc.SizeInBytes = PerFrameConstantBufferSize;
 
         CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(
             cpuStart,
@@ -894,9 +895,9 @@ bool LoadAssets()
         // Map and initialize the constant buffer. We don't unmap this until the
         // app closes. Keeping things mapped for the lifetime of the resource is okay.
         CD3DX12_RANGE readRange(0, 0); // We do not intend to read from this resource on the CPU.
-        if (!HRAssert(graphics_resources.m_constantBuffer[i]->Map(0, &readRange, reinterpret_cast<void **>(&graphics_resources.m_pCbvDataBegin[i]))))
+        if (!HRAssert(graphics_resources.m_PerFrameConstantBuffer[i]->Map(0, &readRange, reinterpret_cast<void **>(&graphics_resources.m_pCbvDataBegin[i]))))
             return false;
-        memcpy(graphics_resources.m_pCbvDataBegin[i], &graphics_resources.m_constantBufferData, sizeof(graphics_resources.m_constantBufferData));
+        memcpy(graphics_resources.m_pCbvDataBegin[i], &graphics_resources.m_PerFrameConstantBufferData, sizeof(graphics_resources.m_PerFrameConstantBufferData));
     }
 
     // Note: ComPtr's are CPU objects but this resource needs to stay in scope until
