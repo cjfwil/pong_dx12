@@ -39,6 +39,15 @@ static D3D12_CLEAR_VALUE g_rtClearValue = {g_screenFormat, {0.0f, 0.2f, 0.4f, 1.
 static D3D12_CLEAR_VALUE g_depthOptimizedClearValue = {DXGI_FORMAT_D32_FLOAT, {1.0f, 0}};
 
 static const UINT g_FrameCount = 3; // double, triple buffering etc...
+
+namespace DescriptorIndices {    
+    constexpr UINT PER_FRAME_CBV_START = 0;        
+    constexpr UINT PER_SCENE_CBV = g_FrameCount;  // index after all per-frame CBVs        
+    constexpr UINT TEXTURE_SRV = PER_SCENE_CBV + 1;  // SRV for texture: after all CBVs    
+    
+    constexpr UINT NUM_DESCRIPTORS = TEXTURE_SRV + 1;    
+}
+
 static struct
 {
     UINT64 m_fenceValues[g_FrameCount];
@@ -584,7 +593,7 @@ bool LoadPipeline(HWND hwnd)
 
         // Describe and create a shader resource view (SRV) heap for the texture.
         D3D12_DESCRIPTOR_HEAP_DESC mainHeapDesc = {};
-        mainHeapDesc.NumDescriptors = 1 + g_FrameCount + 1; // Texture + per-frame CBVs + per-scene CBV
+        mainHeapDesc.NumDescriptors = DescriptorIndices::NUM_DESCRIPTORS; // Texture + per-frame CBVs + per-scene CBV
         mainHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         mainHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&mainHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_mainHeap))))
@@ -945,7 +954,7 @@ bool LoadAssets()
         // Per-scene CBV goes at descriptor index g_FrameCount + 1 (after per-frame CBVs)
         CD3DX12_CPU_DESCRIPTOR_HANDLE perSceneCbvHandle(
             cpuStart,
-            (INT)(g_FrameCount),
+            (INT)(DescriptorIndices::PER_SCENE_CBV),
             cbvSrvDescriptorSize);
         pipeline_dx12.m_device->CreateConstantBufferView(&perSceneCbvDesc, perSceneCbvHandle);
 
@@ -1016,7 +1025,7 @@ bool LoadAssets()
 
         UINT increment = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         CD3DX12_CPU_DESCRIPTOR_HANDLE cpuSrv(cpuStart);
-        cpuSrv.Offset(g_FrameCount+1, increment);
+        cpuSrv.Offset(DescriptorIndices::TEXTURE_SRV, increment);
 
         // Describe and create a SRV for the texture.
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};

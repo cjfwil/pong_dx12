@@ -249,7 +249,7 @@ bool PopulateCommandList()
         &world,
         DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationAxis(
             axis,
-            program_state.timing.upTime)));
+            (float)program_state.timing.upTime)));
     DirectX::XMFLOAT3X4 partial_world;
     for (int j = 0; j < 3; ++j)
         for (int i = 0; i < 4; ++i)
@@ -264,7 +264,7 @@ bool PopulateCommandList()
     UINT descriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     CD3DX12_GPU_DESCRIPTOR_HANDLE perSceneCbvHandle(
         pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
-        g_FrameCount, // Per-scene CBV is after all per-frame CBVs
+        DescriptorIndices::PER_SCENE_CBV, // Per-scene CBV is after all per-frame CBVs
         descriptorSize);
     pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(2, perSceneCbvHandle);
 
@@ -272,7 +272,7 @@ bool PopulateCommandList()
     // UINT descriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(
         pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
-        g_FrameCount+1, // SRV is after all CBVs
+        DescriptorIndices::TEXTURE_SRV, // SRV is after all CBVs
         descriptorSize);
     pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(3, srvHandle);
 
@@ -392,7 +392,7 @@ void Render(bool vsync = true)
     MoveToNextFrame();
 }
 
-static float g_r = 5.0f;
+static float g_r = 0.7f;
 static float g_y = 0.0f;
 static float g_fov_deg = 60.0f;
 

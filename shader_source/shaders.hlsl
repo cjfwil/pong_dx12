@@ -13,7 +13,8 @@ cbuffer PerFrameConstantBuffer : register(b1)
     float per_frame_padding[16+16];
 };
 
-// todo per scene constant buffer, updated in human scale time, like between levels, contains static numbers that change rarely
+// per scene constant buffer, updated in human scale time, like between levels, contains static numbers that change rarely
+// do not update too frequently
 cbuffer PerSceneConstantBuffer : register(b2)
 {
     float4 some_vector;
