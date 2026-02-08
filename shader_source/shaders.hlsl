@@ -14,7 +14,7 @@ cbuffer PerFrameConstantBuffer : register(b1)
 };
 
 // per scene constant buffer, updated in human scale time, like between levels, contains static numbers that change rarely
-// do not update too frequently
+// NOTE: do not update too frequently (multiple times per frame or once per frame) or cause performance penalty
 cbuffer PerSceneConstantBuffer : register(b2)
 {
     float4 some_vector;

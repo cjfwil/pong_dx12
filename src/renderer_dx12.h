@@ -8,6 +8,7 @@
 #include <directx/d3dx12.h>
 #include <d3dcompiler.h>
 #include <DirectXMath.h>
+#include <DirectXTex.h>
 #pragma warning(pop)
 
 #include "local_error.h"
@@ -40,12 +41,13 @@ static D3D12_CLEAR_VALUE g_depthOptimizedClearValue = {DXGI_FORMAT_D32_FLOAT, {1
 
 static const UINT g_FrameCount = 3; // double, triple buffering etc...
 
-namespace DescriptorIndices {    
-    constexpr UINT PER_FRAME_CBV_START = 0;        
-    constexpr UINT PER_SCENE_CBV = g_FrameCount;  // index after all per-frame CBVs        
-    constexpr UINT TEXTURE_SRV = PER_SCENE_CBV + 1;  // SRV for texture: after all CBVs    
-    
-    constexpr UINT NUM_DESCRIPTORS = TEXTURE_SRV + 1;    
+namespace DescriptorIndices
+{
+    constexpr UINT PER_FRAME_CBV_START = 0;
+    constexpr UINT PER_SCENE_CBV = g_FrameCount;    // index after all per-frame CBVs
+    constexpr UINT TEXTURE_SRV = PER_SCENE_CBV + 1; // SRV for texture: after all CBVs
+
+    constexpr UINT NUM_DESCRIPTORS = TEXTURE_SRV + 1;
 }
 
 static struct
@@ -699,14 +701,14 @@ std::vector<UINT8> GenerateTextureData()
             pData[n] = 0x11;     // R
             pData[n + 1] = 0x1c; // G
             pData[n + 2] = 0xcc; // B
-            pData[n + 3] = 0xcc; // A
+            pData[n + 3] = 0xff; // A
         }
         else
         {
             pData[n] = 0xcc;     // R
             pData[n + 1] = 0xc1; // G
             pData[n + 2] = 0x11; // B
-            pData[n + 3] = 0xcc; // A
+            pData[n + 3] = 0xff; // A
         }
     }
 
@@ -744,7 +746,8 @@ bool LoadAssets()
         rootParameters[3].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
 
         D3D12_STATIC_SAMPLER_DESC sampler = {};
-        sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+        sampler.Filter = D3D12_FILTER_ANISOTROPIC;
+        sampler.MaxAnisotropy = 16;
         sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
         sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
         sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
@@ -783,23 +786,27 @@ bool LoadAssets()
         ID3DBlob *shader_error_blob = nullptr;
 
         // todo print the shader error on fail
-        if (FAILED(D3DCompileFromFile(L"shader_source\\shaders.hlsl", nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vertexShader, &shader_error_blob))) {
-            if (shader_error_blob) {
-                SDL_Log((const char*)shader_error_blob->GetBufferPointer());
+        if (FAILED(D3DCompileFromFile(L"shader_source\\shaders.hlsl", nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vertexShader, &shader_error_blob)))
+        {
+            if (shader_error_blob)
+            {
+                SDL_Log((const char *)shader_error_blob->GetBufferPointer());
                 shader_error_blob->Release();
             }
             HRAssert(E_FAIL);
             return false;
         }
-        if (!HRAssert(D3DCompileFromFile(L"shader_source\\shaders.hlsl", nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &pixelShader, &shader_error_blob))) {
-            if (shader_error_blob) {
-                SDL_Log((const char*)shader_error_blob->GetBufferPointer());
+        if (!HRAssert(D3DCompileFromFile(L"shader_source\\shaders.hlsl", nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &pixelShader, &shader_error_blob)))
+        {
+            if (shader_error_blob)
+            {
+                SDL_Log((const char *)shader_error_blob->GetBufferPointer());
                 shader_error_blob->Release();
             }
             HRAssert(E_FAIL);
             return false;
         }
-            
+
         // Define the vertex input layout.
         D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
             {
@@ -979,12 +986,105 @@ bool LoadAssets()
 
     // Create the texture.
     {
-        // Describe and create a Texture2D.
+// First: Generate the texture data using your existing function
+
+// Save it as DDS (one-time operation)
+#if defined(_DEBUG)
+        {
+            std::vector<UINT8> texture = GenerateTextureData();
+            // Create ScratchImage from your generated data
+            DirectX::ScratchImage image;
+
+            // Correct API: Initialize without data first
+            HRESULT hr = image.Initialize2D(
+                DXGI_FORMAT_R8G8B8A8_UNORM,
+                TextureWidth,
+                TextureHeight,
+                1, // arraySize
+                1  // mipLevels (just base level for now)
+            );
+
+            if (SUCCEEDED(hr))
+            {
+                // Get the image and copy data
+                const DirectX::Image *firstImage = image.GetImage(0, 0, 0);
+                if (firstImage)
+                {
+                    // Check if rowPitch matches expected
+                    if (firstImage->rowPitch == TextureWidth * TexturePixelSize)
+                    {
+                        memcpy(firstImage->pixels, texture.data(), texture.size());
+                    }
+                    else
+                    {
+                        // Copy row by row if pitch differs
+                        const UINT8 *src = texture.data();
+                        UINT8 *dest = firstImage->pixels;
+                        for (UINT row = 0; row < TextureHeight; ++row)
+                        {
+                            memcpy(dest, src, TextureWidth * TexturePixelSize);
+                            dest += firstImage->rowPitch;
+                            src += TextureWidth * TexturePixelSize;
+                        }
+                    }
+                }
+
+                // Generate mipmaps
+                DirectX::ScratchImage mipChain;
+                if (SUCCEEDED(GenerateMipMaps(
+                        *image.GetImage(0, 0, 0),
+                        DirectX::TEX_FILTER_BOX,
+                        0, // Generate all mip levels
+                        mipChain)))
+                {
+                    // Save to DDS file
+                    hr = DirectX::SaveToDDSFile(
+                        mipChain.GetImages(),
+                        mipChain.GetImageCount(),
+                        mipChain.GetMetadata(),
+                        DirectX::DDS_FLAGS_NONE,
+                        L"assets/checkerboard.dds");
+
+                    if (SUCCEEDED(hr))
+                    {
+                        SDL_Log("Saved texture to checkerboard.dds with %zu mip levels",
+                                mipChain.GetImageCount());
+                    }
+                }
+            }
+        }
+#endif
+
+        // Now load from DDS file
+        DirectX::ScratchImage loadedImage;
+        HRESULT hr = DirectX::LoadFromDDSFile(
+            L"assets/checkerboard.dds",
+            DirectX::DDS_FLAGS_NONE,
+            nullptr,
+            loadedImage);
+
+        if (!HRAssert(hr, "Failed to load checkerboard.dds"))
+            return false;
+
+        const DirectX::TexMetadata &metadata = loadedImage.GetMetadata();
+        const DirectX::Image *images = loadedImage.GetImages();
+        size_t imageCount = loadedImage.GetImageCount();
+
+        SDL_Log("Loaded DDS with %zu mip levels, %zu x %zu",
+                metadata.mipLevels, metadata.width, metadata.height);
+
+        // Cast to avoid conversion warnings
+        UINT mipLevelsUINT = static_cast<UINT>(metadata.mipLevels);
+        UINT widthUINT = static_cast<UINT>(metadata.width);
+        UINT heightUINT = static_cast<UINT>(metadata.height);
+        UINT imageCountUINT = static_cast<UINT>(imageCount);
+
+        // Describe and create a Texture2D WITH MIP LEVELS
         D3D12_RESOURCE_DESC textureDesc = {};
-        textureDesc.MipLevels = 1;
-        textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-        textureDesc.Width = TextureWidth;
-        textureDesc.Height = TextureHeight;
+        textureDesc.MipLevels = static_cast<UINT16>(mipLevelsUINT); // Use loaded mip levels!
+        textureDesc.Format = metadata.format;
+        textureDesc.Width = widthUINT;
+        textureDesc.Height = heightUINT;
         textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
         textureDesc.DepthOrArraySize = 1;
         textureDesc.SampleDesc.Count = 1;
@@ -999,7 +1099,13 @@ bool LoadAssets()
                 nullptr,
                 IID_PPV_ARGS(&graphics_resources.m_texture))))
             return false;
-        const UINT64 uploadBufferSize = GetRequiredIntermediateSize(graphics_resources.m_texture, 0, 1);
+
+        // Calculate upload buffer size for ALL mip levels
+        const UINT64 uploadBufferSize = GetRequiredIntermediateSize(
+            graphics_resources.m_texture,
+            0,
+            imageCountUINT // Already cast to UINT
+        );
 
         // Create the GPU upload buffer.
         if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
@@ -1010,29 +1116,43 @@ bool LoadAssets()
                 nullptr,
                 IID_PPV_ARGS(&textureUploadHeap))))
             return false;
-        // Copy data to the intermediate upload heap and then schedule a copy
-        // from the upload heap to the Texture2D.
-        std::vector<UINT8> texture = GenerateTextureData();
 
-        D3D12_SUBRESOURCE_DATA textureData = {};
-        textureData.pData = &texture[0];
-        textureData.RowPitch = TextureWidth * TexturePixelSize;
-        textureData.SlicePitch = textureData.RowPitch * TextureHeight;
+        // Prepare subresource data for ALL mip levels
+        std::vector<D3D12_SUBRESOURCE_DATA> subresources(imageCount);
+        for (size_t i = 0; i < imageCount; ++i)
+        {
+            subresources[i].pData = images[i].pixels;
+            subresources[i].RowPitch = static_cast<LONG_PTR>(images[i].rowPitch);
+            subresources[i].SlicePitch = static_cast<LONG_PTR>(images[i].slicePitch);
+        }
 
-        UpdateSubresources(pipeline_dx12.m_commandList, graphics_resources.m_texture, textureUploadHeap, 0, 0, 1, &textureData);
-        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(graphics_resources.m_texture, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        // Copy ALL mip levels to the GPU
+        UpdateSubresources(pipeline_dx12.m_commandList,
+                           graphics_resources.m_texture,
+                           textureUploadHeap,
+                           0, 0,
+                           imageCountUINT, // Already cast to UINT
+                           subresources.data());
+
+        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+            graphics_resources.m_texture,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
 
-        UINT increment = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        UINT increment = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(
+            D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         CD3DX12_CPU_DESCRIPTOR_HANDLE cpuSrv(cpuStart);
         cpuSrv.Offset(DescriptorIndices::TEXTURE_SRV, increment);
 
-        // Describe and create a SRV for the texture.
+        // Describe and create a SRV for the texture WITH ALL MIP LEVELS
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
         srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
         srvDesc.Format = textureDesc.Format;
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-        srvDesc.Texture2D.MipLevels = 1;
+        srvDesc.Texture2D.MostDetailedMip = 0;
+        srvDesc.Texture2D.MipLevels = mipLevelsUINT; // ALL mips!
+        srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
         pipeline_dx12.m_device->CreateShaderResourceView(graphics_resources.m_texture, &srvDesc, cpuSrv);
     }
 

@@ -9,6 +9,7 @@ from pathlib import Path
 SOURCE_FILE = "main.cpp"
 OUTPUT_DIR = Path("release")
 SHADER_DIR = Path("shader_source")
+ASSET_DIR = Path("assets")
 
 DLLS_TO_COPY = [
     r"C:\WINDOWS\system32\SDL3.dll"
@@ -57,6 +58,18 @@ def build():
         print(f"✔ Copied shaders → {dest}")
     else:
         print("⚠ shader_source folder not found")
+        
+    # -----------------------------
+    # Copy assets folder
+    # -----------------------------
+    if ASSET_DIR.exists():
+        dest = OUTPUT_DIR / ASSET_DIR.name
+        if dest.exists():
+            shutil.rmtree(dest)
+        shutil.copytree(ASSET_DIR, dest)
+        print(f"✔ Copied assets → {dest}")
+    else:
+        print("⚠ assets folder not found")
 
     # -----------------------------
     # Copy required DLLs

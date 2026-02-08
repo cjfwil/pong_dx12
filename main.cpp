@@ -8,8 +8,14 @@
 #pragma comment(lib, "dxcompiler.lib")
 #pragma comment(lib, "dxguid.lib")
 #pragma comment(lib, "imgui.lib")
-
 #pragma comment(lib, "user32.lib")
+#pragma comment(lib, "ole32.lib")
+
+#if defined(_DEBUG)
+#pragma comment(lib, "DirectXTex.lib")
+#else
+#pragma comment(lib, "DirectXTex_release.lib")
+#endif
 
 #pragma warning(push, 0)
 #include <SDL3/SDL.h>
@@ -18,6 +24,7 @@
 #include <dxgi1_6.h>
 #include <dxgi1_2.h>
 #include <directx/d3dx12.h>
+#include <DirectXTex.h>
 
 #include <imgui.h>
 #include <backends/imgui_impl_sdl3.h>
@@ -228,19 +235,11 @@ static struct
 bool PopulateCommandList()
 {
     pipeline_dx12.ResetCommandObjects();
-
-    // Common setup (shared by both paths)
+    
     pipeline_dx12.m_commandList->SetGraphicsRootSignature(pipeline_dx12.m_rootSignature);
 
     ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_mainHeap};
     pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-
-    // D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    // CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(
-    //     pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
-    //     (INT)sync_state.m_frameIndex,
-    //     descriptorSize);
-    //     pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(0, cbvHandle);
 
     DirectX::XMFLOAT4X4 world;
 
@@ -262,14 +261,14 @@ bool PopulateCommandList()
 
     // Set per - scene CBV(root parameter 2 - descriptor table)
     UINT descriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
     CD3DX12_GPU_DESCRIPTOR_HANDLE perSceneCbvHandle(
         pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
         DescriptorIndices::PER_SCENE_CBV, // Per-scene CBV is after all per-frame CBVs
         descriptorSize);
     pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(2, perSceneCbvHandle);
 
-    // texture handle
-    // UINT descriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    // texture handle    
     CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(
         pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
         DescriptorIndices::TEXTURE_SRV, // SRV is after all CBVs
