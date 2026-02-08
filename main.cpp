@@ -249,7 +249,16 @@ bool PopulateCommandList()
         DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationAxis(
             axis,
             program_state.timing.upTime)));
-    pipeline_dx12.m_commandList->SetGraphicsRoot32BitConstants(0, 16, &world, 0);
+
+    DirectX::XMFLOAT3X4 partial_world;
+    for (int j = 0; j < 3; ++j)
+    {
+        for (int i = 0; i < 4; ++i)
+        {
+            partial_world.m[j][i] = world.m[j][i];
+        }
+    }
+    pipeline_dx12.m_commandList->SetGraphicsRoot32BitConstants(0, 12, &partial_world, 0);
 
     D3D12_GPU_VIRTUAL_ADDRESS cbvAddress = graphics_resources.m_PerFrameConstantBuffer[sync_state.m_frameIndex]->GetGPUVirtualAddress();
     pipeline_dx12.m_commandList->SetGraphicsRootConstantBufferView(1, cbvAddress);

@@ -1,7 +1,7 @@
 // Root constants - register(b0) - per-draw world matrix
 cbuffer PerDrawRootConstants : register(b0)
 {
-    float4x4 world;
+    float3x4 partial_world;
 };
 
 cbuffer PerFrameConstantBuffer : register(b1)
@@ -30,8 +30,15 @@ SamplerState g_sampler : register(s0);
 PSInput VSMain(VSInput input)
 {
     PSInput result;
-
     float4 position = input.position;
+
+    float4x4 world = float4x4(
+        partial_world._11_12_13_14,
+        partial_world._21_22_23_24,
+        partial_world._31_32_33_34,
+        float4(0, 0, 0, 1)
+    );
+
     position = mul(position, world);
     position = mul(position, view);
     position = mul(position, projection);
