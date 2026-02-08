@@ -178,7 +178,7 @@ struct window_state
         // Get current display bounds
         SDL_DisplayID display = SDL_GetDisplayForWindow(window);
         SDL_Rect displayBounds;
-        SDL_GetDisplayBounds(display, &displayBounds);        
+        SDL_GetDisplayBounds(display, &displayBounds);
 
         SDL_SetWindowFullscreen(window, (newMode != WindowMode::WINDOWED));
         SDL_SetWindowResizable(window, false);
@@ -260,13 +260,21 @@ bool PopulateCommandList()
     D3D12_GPU_VIRTUAL_ADDRESS cbvAddress = graphics_resources.m_PerFrameConstantBuffer[sync_state.m_frameIndex]->GetGPUVirtualAddress();
     pipeline_dx12.m_commandList->SetGraphicsRootConstantBufferView(1, cbvAddress);
 
-    // texture handle
+    // Set per - scene CBV(root parameter 2 - descriptor table)
     UINT descriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    CD3DX12_GPU_DESCRIPTOR_HANDLE perSceneCbvHandle(
+        pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
+        g_FrameCount, // Per-scene CBV is after all per-frame CBVs
+        descriptorSize);
+    pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(2, perSceneCbvHandle);
+
+    // texture handle
+    // UINT descriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(
         pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
-        g_FrameCount, // SRV is after all CBVs
+        g_FrameCount+1, // SRV is after all CBVs
         descriptorSize);
-    pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(2, srvHandle);
+    pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(3, srvHandle);
 
     pipeline_dx12.m_commandList->RSSetViewports(1, &pipeline_dx12.m_viewport);
     pipeline_dx12.m_commandList->RSSetScissorRects(1, &pipeline_dx12.m_scissorRect);

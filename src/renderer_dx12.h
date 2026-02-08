@@ -771,12 +771,26 @@ bool LoadAssets()
 #else
         UINT compileFlags = 0;
 #endif
+        ID3DBlob *shader_error_blob = nullptr;
 
         // todo print the shader error on fail
-        if (!HRAssert(D3DCompileFromFile(L"shader_source\\shaders.hlsl", nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vertexShader, nullptr)))
+        if (FAILED(D3DCompileFromFile(L"shader_source\\shaders.hlsl", nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vertexShader, &shader_error_blob))) {
+            if (shader_error_blob) {
+                SDL_Log((const char*)shader_error_blob->GetBufferPointer());
+                shader_error_blob->Release();
+            }
+            HRAssert(E_FAIL);
             return false;
-        if (!HRAssert(D3DCompileFromFile(L"shader_source\\shaders.hlsl", nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &pixelShader, nullptr)))
+        }
+        if (!HRAssert(D3DCompileFromFile(L"shader_source\\shaders.hlsl", nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &pixelShader, &shader_error_blob))) {
+            if (shader_error_blob) {
+                SDL_Log((const char*)shader_error_blob->GetBufferPointer());
+                shader_error_blob->Release();
+            }
+            HRAssert(E_FAIL);
             return false;
+        }
+            
         // Define the vertex input layout.
         D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
             {
@@ -931,7 +945,7 @@ bool LoadAssets()
         // Per-scene CBV goes at descriptor index g_FrameCount + 1 (after per-frame CBVs)
         CD3DX12_CPU_DESCRIPTOR_HANDLE perSceneCbvHandle(
             cpuStart,
-            (INT)(g_FrameCount + 1),
+            (INT)(g_FrameCount),
             cbvSrvDescriptorSize);
         pipeline_dx12.m_device->CreateConstantBufferView(&perSceneCbvDesc, perSceneCbvHandle);
 
@@ -1002,7 +1016,7 @@ bool LoadAssets()
 
         UINT increment = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         CD3DX12_CPU_DESCRIPTOR_HANDLE cpuSrv(cpuStart);
-        cpuSrv.Offset(g_FrameCount+1+1, increment);
+        cpuSrv.Offset(g_FrameCount+1, increment);
 
         // Describe and create a SRV for the texture.
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};

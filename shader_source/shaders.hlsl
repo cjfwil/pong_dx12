@@ -10,15 +10,15 @@ cbuffer PerFrameConstantBuffer : register(b1)
     // float4x4 world;
     float4x4 view;
     float4x4 projection;
-    float padding[16+16];
+    float per_frame_padding[16+16];
 };
 
 // todo per scene constant buffer, updated in human scale time, like between levels, contains static numbers that change rarely
 cbuffer PerSceneConstantBuffer : register(b2)
 {
     float4 some_vector;
-    float padding[60];
-}
+    float per_scene_padding[60];
+};
 
 struct VSInput
 {
