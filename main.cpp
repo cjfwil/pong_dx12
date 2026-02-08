@@ -100,8 +100,7 @@ bool PopulateCommandList()
 
     pipeline_dx12.m_commandList->RSSetViewports(1, &pipeline_dx12.m_viewport);
     pipeline_dx12.m_commandList->RSSetScissorRects(1, &pipeline_dx12.m_scissorRect);
-
-    const float clearColour[] = {0.0f, 0.2f, 0.4f, 1.0f};
+    
 
     // Choose RTV and DSV based on MSAA state
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle;
@@ -148,7 +147,7 @@ bool PopulateCommandList()
 
     // Common rendering operations
     pipeline_dx12.m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
-    pipeline_dx12.m_commandList->ClearRenderTargetView(rtvHandle, clearColour, 0, nullptr);
+    pipeline_dx12.m_commandList->ClearRenderTargetView(rtvHandle, g_rtClearValue.Color, 0, nullptr);
     pipeline_dx12.m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
     // Draw geometry (same for both)
@@ -367,16 +366,15 @@ static struct
     bool isRunning = true;
 } program_state;
 
-static float g_x = 0.0f;
+static float g_r = 5.0f;
 static float g_y = 0.0f;
-static float g_z = 0.0f;
 
 // Update frame-based values.
 void Update()
 {
     DirectX::XMMATRIX world = DirectX::XMMatrixIdentity();
     
-    DirectX::XMVECTOR eye = DirectX::XMVectorSet(5.0f*sinf(program_state.timing.upTime), g_y, 5.0f*cosf(program_state.timing.upTime), 0.0f);
+    DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r*sinf(program_state.timing.upTime), g_y, g_r*cosf(program_state.timing.upTime), 0.0f);
     DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
     DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(eye, at, up);
@@ -494,6 +492,7 @@ int main(void)
 
         ImGui::Begin("Settings");
         // float test;        
+        ImGui::SliderFloat("r", &g_r, 0.3f, 10.0f);   
         ImGui::SliderFloat("y", &g_y, -10.0f, 10.0f);        
         ImGui::Text("Frametime %.3f ms (%.2f FPS)",
                     1000.0f / ImGui::GetIO().Framerate,
