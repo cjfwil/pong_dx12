@@ -23,7 +23,7 @@ struct PerFrameConstantBuffer
     // DirectX::XMFLOAT4X4 world;
     DirectX::XMFLOAT4X4 view;
     DirectX::XMFLOAT4X4 projection;
-    float padding[16+16]; // Padding so the constant buffer is 256-byte aligned.
+    float padding[16 + 16]; // Padding so the constant buffer is 256-byte aligned.
 };
 static_assert((sizeof(PerFrameConstantBuffer) % 256) == 0, "Constant Buffer size must be 256-byte aligned");
 
@@ -718,10 +718,11 @@ bool LoadAssets()
         CD3DX12_DESCRIPTOR_RANGE1 srvRange;
         srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 
-        CD3DX12_ROOT_PARAMETER1 rootParameters[2];
+        CD3DX12_ROOT_PARAMETER1 rootParameters[3];
         // rootParameters[0].InitAsDescriptorTable(1, &cbvRange, D3D12_SHADER_VISIBILITY_ALL);
-        rootParameters[0].InitAsConstantBufferView(0, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL); // inline CBV
-        rootParameters[1].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
+        rootParameters[0].InitAsConstants(16, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
+        rootParameters[1].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL); // inline CBV
+        rootParameters[2].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
 
         D3D12_STATIC_SAMPLER_DESC sampler = {};
         sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;

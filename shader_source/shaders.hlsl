@@ -1,4 +1,10 @@
-cbuffer PerFrameConstantBuffer : register(b0)
+// Root constants - register(b0) - per-draw world matrix
+cbuffer PerDrawRootConstants : register(b0)
+{
+    float4x4 world;
+};
+
+cbuffer PerFrameConstantBuffer : register(b1)
 {
     // float4x4 world;
     float4x4 view;
@@ -26,7 +32,7 @@ PSInput VSMain(VSInput input)
     PSInput result;
 
     float4 position = input.position;
-    // position = mul(position, world);
+    position = mul(position, world);
     position = mul(position, view);
     position = mul(position, projection);
 

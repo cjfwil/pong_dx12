@@ -74,151 +74,6 @@ static struct
     }
 } g_imguiHeap;
 
-bool PopulateCommandList()
-{
-    pipeline_dx12.ResetCommandObjects();
-
-    // Common setup (shared by both paths)
-    pipeline_dx12.m_commandList->SetGraphicsRootSignature(pipeline_dx12.m_rootSignature);
-
-    ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_mainHeap};
-    pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-
-    // D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    // CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(
-    //     pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
-    //     (INT)sync_state.m_frameIndex,
-    //     descriptorSize);
-    //     pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(0, cbvHandle);
-
-    D3D12_GPU_VIRTUAL_ADDRESS cbvAddress = graphics_resources.m_PerFrameConstantBuffer[sync_state.m_frameIndex]->GetGPUVirtualAddress();
-    pipeline_dx12.m_commandList->SetGraphicsRootConstantBufferView(0, cbvAddress);
-        
-    // texture handle
-    UINT descriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(
-        pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
-        g_FrameCount, // SRV is after all CBVs
-        descriptorSize);
-    pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(1, srvHandle);
-
-    pipeline_dx12.m_commandList->RSSetViewports(1, &pipeline_dx12.m_viewport);
-    pipeline_dx12.m_commandList->RSSetScissorRects(1, &pipeline_dx12.m_scissorRect);
-    
-
-    // Choose RTV and DSV based on MSAA state
-    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle;
-    CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle;
-    ID3D12Resource *renderTarget = nullptr;
-
-    if (msaa_state.m_enabled)
-    {
-        // MSAA path
-        rtvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
-            pipeline_dx12.m_msaaRtvHeap->GetCPUDescriptorHandleForHeapStart(),
-            (INT)sync_state.m_frameIndex,
-            pipeline_dx12.m_rtvDescriptorSize);
-        dsvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
-            pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
-        dsvHandle.Offset(1, pipeline_dx12.m_dsvDescriptorSize); // MSAA depth at index 1
-        renderTarget = pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex];
-
-        // Back buffer starts in PRESENT state for MSAA
-        auto barrier1 = CD3DX12_RESOURCE_BARRIER::Transition(
-            pipeline_dx12.m_renderTargets[sync_state.m_frameIndex],
-            D3D12_RESOURCE_STATE_PRESENT,
-            D3D12_RESOURCE_STATE_RESOLVE_DEST);
-        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier1);
-    }
-    else
-    {
-        // Non-MSAA path
-        rtvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
-            pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(),
-            (INT)sync_state.m_frameIndex,
-            pipeline_dx12.m_rtvDescriptorSize);
-        dsvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
-            pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart()); // Non-MSAA depth at index 0
-        renderTarget = pipeline_dx12.m_renderTargets[sync_state.m_frameIndex];
-
-        // Transition back buffer to RENDER_TARGET
-        auto barrier1 = CD3DX12_RESOURCE_BARRIER::Transition(
-            renderTarget,
-            D3D12_RESOURCE_STATE_PRESENT,
-            D3D12_RESOURCE_STATE_RENDER_TARGET);
-        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier1);
-    }
-
-    // Common rendering operations
-    pipeline_dx12.m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
-    pipeline_dx12.m_commandList->ClearRenderTargetView(rtvHandle, g_rtClearValue.Color, 0, nullptr);
-    pipeline_dx12.m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-
-    // Draw geometry (same for both)
-    pipeline_dx12.m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    pipeline_dx12.m_commandList->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
-    pipeline_dx12.m_commandList->DrawInstanced(3, 1, 0, 0);
-
-    // Post-draw operations
-    if (msaa_state.m_enabled)
-    {
-        // MSAA: Resolve to back buffer
-        auto barrier2 = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
-        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier2);
-
-        pipeline_dx12.m_commandList->ResolveSubresource(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], 0, pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], 0, DXGI_FORMAT_R8G8B8A8_UNORM);
-
-        auto barrier3 = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RESOLVE_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
-        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier3);
-
-        auto barrier4 = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RESOLVE_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
-        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier4);
-    }
-
-    // ImGui rendering (always to back buffer)
-    CD3DX12_CPU_DESCRIPTOR_HANDLE backBufferRtvHandle(
-        pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(),
-        (INT)sync_state.m_frameIndex,
-        pipeline_dx12.m_rtvDescriptorSize);
-    pipeline_dx12.m_commandList->OMSetRenderTargets(1, &backBufferRtvHandle, FALSE, nullptr);
-
-    ImGui::Render();
-    ID3D12DescriptorHeap *imguiHeaps[] = {g_imguiHeap.Heap};
-    pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(imguiHeaps), imguiHeaps);
-    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), pipeline_dx12.m_commandList);
-
-    // Final transition to PRESENT
-    auto finalBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        pipeline_dx12.m_renderTargets[sync_state.m_frameIndex],
-        D3D12_RESOURCE_STATE_RENDER_TARGET,
-        D3D12_RESOURCE_STATE_PRESENT);
-    pipeline_dx12.m_commandList->ResourceBarrier(1, &finalBarrier);
-
-    if (!HRAssert(pipeline_dx12.m_commandList->Close()))
-        return false;
-    return true;
-}
-
-// Render the scene.
-void Render(bool vsync = true)
-{
-    // Record all the commands we need to render the scene into the command list.
-    if (!PopulateCommandList())
-    {
-        log_error("A command failed to be populated");
-    }
-
-    // Execute the command list.
-    ID3D12CommandList *ppCommandLists[] = {pipeline_dx12.m_commandList};
-    pipeline_dx12.m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-
-    // Present the frame.
-    UINT syncInterval = (vsync) ? 1 : 0;
-    UINT syncFlags = (vsync) ? 0 : DXGI_PRESENT_ALLOW_TEARING;
-    HRAssert(pipeline_dx12.m_swapChain->Present(syncInterval, syncFlags));
-    MoveToNextFrame();
-}
-
 struct timing_state
 {
     Uint64 lastCounter = 0;
@@ -370,6 +225,159 @@ static struct
     bool isRunning = true;
 } program_state;
 
+bool PopulateCommandList()
+{
+    pipeline_dx12.ResetCommandObjects();
+
+    // Common setup (shared by both paths)
+    pipeline_dx12.m_commandList->SetGraphicsRootSignature(pipeline_dx12.m_rootSignature);
+
+    ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_mainHeap};
+    pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+
+    // D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    // CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(
+    //     pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
+    //     (INT)sync_state.m_frameIndex,
+    //     descriptorSize);
+    //     pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(0, cbvHandle);
+
+    DirectX::XMFLOAT4X4 world;
+    DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+    DirectX::XMStoreFloat4x4(
+        &world,
+        DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationAxis(
+            axis,
+            program_state.timing.upTime)));
+    pipeline_dx12.m_commandList->SetGraphicsRoot32BitConstants(0, 16, &world, 0);
+
+    D3D12_GPU_VIRTUAL_ADDRESS cbvAddress = graphics_resources.m_PerFrameConstantBuffer[sync_state.m_frameIndex]->GetGPUVirtualAddress();
+    pipeline_dx12.m_commandList->SetGraphicsRootConstantBufferView(1, cbvAddress);
+
+    // texture handle
+    UINT descriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(
+        pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
+        g_FrameCount, // SRV is after all CBVs
+        descriptorSize);
+    pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(2, srvHandle);
+
+    pipeline_dx12.m_commandList->RSSetViewports(1, &pipeline_dx12.m_viewport);
+    pipeline_dx12.m_commandList->RSSetScissorRects(1, &pipeline_dx12.m_scissorRect);
+
+    // Choose RTV and DSV based on MSAA state
+    CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle;
+    CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle;
+    ID3D12Resource *renderTarget = nullptr;
+
+    if (msaa_state.m_enabled)
+    {
+        // MSAA path
+        rtvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+            pipeline_dx12.m_msaaRtvHeap->GetCPUDescriptorHandleForHeapStart(),
+            (INT)sync_state.m_frameIndex,
+            pipeline_dx12.m_rtvDescriptorSize);
+        dsvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+            pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
+        dsvHandle.Offset(1, pipeline_dx12.m_dsvDescriptorSize); // MSAA depth at index 1
+        renderTarget = pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex];
+
+        // Back buffer starts in PRESENT state for MSAA
+        auto barrier1 = CD3DX12_RESOURCE_BARRIER::Transition(
+            pipeline_dx12.m_renderTargets[sync_state.m_frameIndex],
+            D3D12_RESOURCE_STATE_PRESENT,
+            D3D12_RESOURCE_STATE_RESOLVE_DEST);
+        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier1);
+    }
+    else
+    {
+        // Non-MSAA path
+        rtvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+            pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(),
+            (INT)sync_state.m_frameIndex,
+            pipeline_dx12.m_rtvDescriptorSize);
+        dsvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
+            pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart()); // Non-MSAA depth at index 0
+        renderTarget = pipeline_dx12.m_renderTargets[sync_state.m_frameIndex];
+
+        // Transition back buffer to RENDER_TARGET
+        auto barrier1 = CD3DX12_RESOURCE_BARRIER::Transition(
+            renderTarget,
+            D3D12_RESOURCE_STATE_PRESENT,
+            D3D12_RESOURCE_STATE_RENDER_TARGET);
+        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier1);
+    }
+
+    // Common rendering operations
+    pipeline_dx12.m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
+    pipeline_dx12.m_commandList->ClearRenderTargetView(rtvHandle, g_rtClearValue.Color, 0, nullptr);
+    pipeline_dx12.m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+
+    // Draw geometry (same for both)
+    pipeline_dx12.m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    pipeline_dx12.m_commandList->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
+    pipeline_dx12.m_commandList->DrawInstanced(3, 1, 0, 0);
+
+    // Post-draw operations
+    if (msaa_state.m_enabled)
+    {
+        // MSAA: Resolve to back buffer
+        auto barrier2 = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
+        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier2);
+
+        pipeline_dx12.m_commandList->ResolveSubresource(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], 0, pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], 0, DXGI_FORMAT_R8G8B8A8_UNORM);
+
+        auto barrier3 = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RESOLVE_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier3);
+
+        auto barrier4 = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RESOLVE_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier4);
+    }
+
+    // ImGui rendering (always to back buffer)
+    CD3DX12_CPU_DESCRIPTOR_HANDLE backBufferRtvHandle(
+        pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(),
+        (INT)sync_state.m_frameIndex,
+        pipeline_dx12.m_rtvDescriptorSize);
+    pipeline_dx12.m_commandList->OMSetRenderTargets(1, &backBufferRtvHandle, FALSE, nullptr);
+
+    ImGui::Render();
+    ID3D12DescriptorHeap *imguiHeaps[] = {g_imguiHeap.Heap};
+    pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(imguiHeaps), imguiHeaps);
+    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), pipeline_dx12.m_commandList);
+
+    // Final transition to PRESENT
+    auto finalBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        pipeline_dx12.m_renderTargets[sync_state.m_frameIndex],
+        D3D12_RESOURCE_STATE_RENDER_TARGET,
+        D3D12_RESOURCE_STATE_PRESENT);
+    pipeline_dx12.m_commandList->ResourceBarrier(1, &finalBarrier);
+
+    if (!HRAssert(pipeline_dx12.m_commandList->Close()))
+        return false;
+    return true;
+}
+
+// Render the scene.
+void Render(bool vsync = true)
+{
+    // Record all the commands we need to render the scene into the command list.
+    if (!PopulateCommandList())
+    {
+        log_error("A command failed to be populated");
+    }
+
+    // Execute the command list.
+    ID3D12CommandList *ppCommandLists[] = {pipeline_dx12.m_commandList};
+    pipeline_dx12.m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+
+    // Present the frame.
+    UINT syncInterval = (vsync) ? 1 : 0;
+    UINT syncFlags = (vsync) ? 0 : DXGI_PRESENT_ALLOW_TEARING;
+    HRAssert(pipeline_dx12.m_swapChain->Present(syncInterval, syncFlags));
+    MoveToNextFrame();
+}
+
 static float g_r = 5.0f;
 static float g_y = 0.0f;
 
@@ -377,23 +385,24 @@ static float g_y = 0.0f;
 void Update()
 {
     DirectX::XMMATRIX world = DirectX::XMMatrixIdentity();
-    
-    DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r*sinf(program_state.timing.upTime), g_y, g_r*cosf(program_state.timing.upTime), 0.0f);
+
+    // DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r * sinf(program_state.timing.upTime), g_y, g_r * cosf(program_state.timing.upTime), 0.0f);
+    DirectX::XMVECTOR eye = DirectX::XMVectorSet(0, g_y, g_r, 0.0f);
     DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
     DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(eye, at, up);
-    
+
     DirectX::XMMATRIX projection = DirectX::XMMatrixPerspectiveFovLH(
-        DirectX::XMConvertToRadians(60.0f), 
-        viewport_state.m_aspectRatio, 
-        0.01f, 
+        DirectX::XMConvertToRadians(60.0f),
+        viewport_state.m_aspectRatio,
+        0.01f,
         1000.0f);
-    
+
     // TRANSPOSE before storing!
     // DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData.world, DirectX::XMMatrixTranspose(world));
     DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData.view, DirectX::XMMatrixTranspose(view));
     DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData.projection, DirectX::XMMatrixTranspose(projection));
-    
+
     memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex],
            &graphics_resources.m_PerFrameConstantBufferData,
            sizeof(graphics_resources.m_PerFrameConstantBufferData));
@@ -495,9 +504,9 @@ int main(void)
         ImGui::NewFrame();
 
         ImGui::Begin("Settings");
-        // float test;        
-        ImGui::SliderFloat("r", &g_r, 0.3f, 10.0f);   
-        ImGui::SliderFloat("y", &g_y, -10.0f, 10.0f);        
+        // float test;
+        ImGui::SliderFloat("r", &g_r, 0.3f, 10.0f);
+        ImGui::SliderFloat("y", &g_y, -10.0f, 10.0f);
         ImGui::Text("Frametime %.3f ms (%.2f FPS)",
                     1000.0f / ImGui::GetIO().Framerate,
                     ImGui::GetIO().Framerate);
