@@ -25,7 +25,14 @@ struct PerFrameConstantBuffer
     DirectX::XMFLOAT4X4 projection;
     float padding[16 + 16]; // Padding so the constant buffer is 256-byte aligned.
 };
-static_assert((sizeof(PerFrameConstantBuffer) % 256) == 0, "Constant Buffer size must be 256-byte aligned");
+static_assert((sizeof(PerFrameConstantBuffer) % 256) == 0, "Per Frame Constant Buffer size must be 256-byte aligned");
+
+struct PerSceneConstantBuffer
+{
+    DirectX::XMFLOAT4 some_vector;
+    float padding[60];
+};
+static_assert((sizeof(PerSceneConstantBuffer) % 256) == 0, " Per Scene Constant Buffer size must be 256-byte aligned");
 
 static DXGI_FORMAT g_screenFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 static D3D12_CLEAR_VALUE g_rtClearValue = {g_screenFormat, {0.0f, 0.2f, 0.4f, 1.0f}};
@@ -111,10 +118,13 @@ static struct
 static struct
 {
     PerFrameConstantBuffer m_PerFrameConstantBufferData;
+    PerSceneConstantBuffer m_PerSceneConstantBufferData;
     D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
     ID3D12Resource *m_vertexBuffer;
     ID3D12Resource *m_texture;
 
+    ID3D12Resource *m_PerSceneConstantBuffer;
+    UINT8 *m_pPerSceneCbvDataBegin;
     ID3D12Resource *m_PerFrameConstantBuffer[g_FrameCount];
     UINT8 *m_pCbvDataBegin[g_FrameCount];
 } graphics_resources;
@@ -574,7 +584,7 @@ bool LoadPipeline(HWND hwnd)
 
         // Describe and create a shader resource view (SRV) heap for the texture.
         D3D12_DESCRIPTOR_HEAP_DESC mainHeapDesc = {};
-        mainHeapDesc.NumDescriptors = 1 + g_FrameCount;
+        mainHeapDesc.NumDescriptors = 1 + g_FrameCount + 1; // Texture + per-frame CBVs + per-scene CBV
         mainHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         mainHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
         if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&mainHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_mainHeap))))
@@ -677,17 +687,17 @@ std::vector<UINT8> GenerateTextureData()
 
         if (i % 2 == j % 2)
         {
-            pData[n] = 0x00;     // R
-            pData[n + 1] = 0x0f; // G
-            pData[n + 2] = 0xff; // B
-            pData[n + 3] = 0xff; // A
+            pData[n] = 0x11;     // R
+            pData[n + 1] = 0x1c; // G
+            pData[n + 2] = 0xcc; // B
+            pData[n + 3] = 0xcc; // A
         }
         else
         {
-            pData[n] = 0xff;     // R
-            pData[n + 1] = 0xf0; // G
-            pData[n + 2] = 0x00; // B
-            pData[n + 3] = 0xff; // A
+            pData[n] = 0xcc;     // R
+            pData[n + 1] = 0xc1; // G
+            pData[n + 2] = 0x11; // B
+            pData[n + 3] = 0xcc; // A
         }
     }
 
@@ -714,15 +724,15 @@ bool LoadAssets()
         // ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 
         CD3DX12_DESCRIPTOR_RANGE1 cbvRange;
-        cbvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+        cbvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
         CD3DX12_DESCRIPTOR_RANGE1 srvRange;
         srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 
-        CD3DX12_ROOT_PARAMETER1 rootParameters[3];
-        // rootParameters[0].InitAsDescriptorTable(1, &cbvRange, D3D12_SHADER_VISIBILITY_ALL);
-        rootParameters[0].InitAsConstants(12, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);
+        CD3DX12_ROOT_PARAMETER1 rootParameters[4];
+        rootParameters[0].InitAsConstants(12, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);                                           // root constants
         rootParameters[1].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL); // inline CBV
-        rootParameters[2].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
+        rootParameters[2].InitAsDescriptorTable(1, &cbvRange, D3D12_SHADER_VISIBILITY_ALL);                                    // per frame CB
+        rootParameters[3].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
 
         D3D12_STATIC_SAMPLER_DESC sampler = {};
         sampler.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
@@ -762,6 +772,7 @@ bool LoadAssets()
         UINT compileFlags = 0;
 #endif
 
+        // todo print the shader error on fail
         if (!HRAssert(D3DCompileFromFile(L"shader_source\\shaders.hlsl", nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vertexShader, nullptr)))
             return false;
         if (!HRAssert(D3DCompileFromFile(L"shader_source\\shaders.hlsl", nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &pixelShader, nullptr)))
@@ -868,7 +879,7 @@ bool LoadAssets()
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE cpuStart(pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart());
     UINT cbvSrvDescriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    // create constant buffer for each frame in the frame buffer
+    // create per frame constant buffer for each frame in the frame buffer
     for (UINT i = 0; i < g_FrameCount; i++)
     {
         const UINT PerFrameConstantBufferSize = sizeof(PerFrameConstantBuffer); // CB size is required to be 256-byte aligned.
@@ -899,6 +910,42 @@ bool LoadAssets()
         if (!HRAssert(graphics_resources.m_PerFrameConstantBuffer[i]->Map(0, &readRange, reinterpret_cast<void **>(&graphics_resources.m_pCbvDataBegin[i]))))
             return false;
         memcpy(graphics_resources.m_pCbvDataBegin[i], &graphics_resources.m_PerFrameConstantBufferData, sizeof(graphics_resources.m_PerFrameConstantBufferData));
+    }
+
+    // create per scene constant buffer that just sits and gets updated rarely
+    {
+        const UINT PerSceneConstantBufferSize = sizeof(PerSceneConstantBuffer); // CB size is required to be 256-byte aligned.
+
+        HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Buffer(PerSceneConstantBufferSize),
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&graphics_resources.m_PerSceneConstantBuffer)));
+
+        D3D12_CONSTANT_BUFFER_VIEW_DESC perSceneCbvDesc = {};
+        perSceneCbvDesc.BufferLocation = graphics_resources.m_PerSceneConstantBuffer->GetGPUVirtualAddress();
+        perSceneCbvDesc.SizeInBytes = PerSceneConstantBufferSize;
+
+        // Per-scene CBV goes at descriptor index g_FrameCount + 1 (after per-frame CBVs)
+        CD3DX12_CPU_DESCRIPTOR_HANDLE perSceneCbvHandle(
+            cpuStart,
+            (INT)(g_FrameCount + 1),
+            cbvSrvDescriptorSize);
+        pipeline_dx12.m_device->CreateConstantBufferView(&perSceneCbvDesc, perSceneCbvHandle);
+
+        // Map and initialize the per-scene constant buffer
+        CD3DX12_RANGE readRange(0, 0);
+        HRAssert(graphics_resources.m_PerSceneConstantBuffer->Map(
+            0, &readRange,
+            reinterpret_cast<void **>(&graphics_resources.m_pPerSceneCbvDataBegin)));
+
+        graphics_resources.m_PerSceneConstantBufferData.some_vector = DirectX::XMFLOAT4(0.9f, 0.3f, 0.1f, 1.0f);
+
+        memcpy(graphics_resources.m_pPerSceneCbvDataBegin,
+               &graphics_resources.m_PerSceneConstantBufferData,
+               sizeof(graphics_resources.m_PerSceneConstantBufferData));
     }
 
     // Note: ComPtr's are CPU objects but this resource needs to stay in scope until
@@ -955,7 +1002,7 @@ bool LoadAssets()
 
         UINT increment = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         CD3DX12_CPU_DESCRIPTOR_HANDLE cpuSrv(cpuStart);
-        cpuSrv.Offset(g_FrameCount, increment);
+        cpuSrv.Offset(g_FrameCount+1+1, increment);
 
         // Describe and create a SRV for the texture.
         D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};

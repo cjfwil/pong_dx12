@@ -4,6 +4,7 @@ cbuffer PerDrawRootConstants : register(b0)
     float3x4 partial_world;
 };
 
+// per frame constant buffer, updated every frame
 cbuffer PerFrameConstantBuffer : register(b1)
 {
     // float4x4 world;
@@ -11,6 +12,13 @@ cbuffer PerFrameConstantBuffer : register(b1)
     float4x4 projection;
     float padding[16+16];
 };
+
+// todo per scene constant buffer, updated in human scale time, like between levels, contains static numbers that change rarely
+cbuffer PerSceneConstantBuffer : register(b2)
+{
+    float4 some_vector;
+    float padding[60];
+}
 
 struct VSInput
 {
@@ -51,5 +59,5 @@ PSInput VSMain(VSInput input)
 
 float4 PSMain(PSInput input) : SV_TARGET
 {
-    return g_texture.Sample(g_sampler, input.uv);    
+    return g_texture.Sample(g_sampler, input.uv)*some_vector;    
 }

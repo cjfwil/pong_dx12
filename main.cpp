@@ -178,7 +178,7 @@ struct window_state
         // Get current display bounds
         SDL_DisplayID display = SDL_GetDisplayForWindow(window);
         SDL_Rect displayBounds;
-        SDL_GetDisplayBounds(display, &displayBounds);
+        SDL_GetDisplayBounds(display, &displayBounds);        
 
         SDL_SetWindowFullscreen(window, (newMode != WindowMode::WINDOWED));
         SDL_SetWindowResizable(window, false);
@@ -243,21 +243,18 @@ bool PopulateCommandList()
     //     pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(0, cbvHandle);
 
     DirectX::XMFLOAT4X4 world;
+
     DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
     DirectX::XMStoreFloat4x4(
         &world,
         DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationAxis(
             axis,
             program_state.timing.upTime)));
-
     DirectX::XMFLOAT3X4 partial_world;
     for (int j = 0; j < 3; ++j)
-    {
         for (int i = 0; i < 4; ++i)
-        {
             partial_world.m[j][i] = world.m[j][i];
-        }
-    }
+
     pipeline_dx12.m_commandList->SetGraphicsRoot32BitConstants(0, 12, &partial_world, 0);
 
     D3D12_GPU_VIRTUAL_ADDRESS cbvAddress = graphics_resources.m_PerFrameConstantBuffer[sync_state.m_frameIndex]->GetGPUVirtualAddress();
@@ -389,6 +386,7 @@ void Render(bool vsync = true)
 
 static float g_r = 5.0f;
 static float g_y = 0.0f;
+static float g_fov_deg = 60.0f;
 
 // Update frame-based values.
 void Update()
@@ -402,7 +400,7 @@ void Update()
     DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(eye, at, up);
 
     DirectX::XMMATRIX projection = DirectX::XMMatrixPerspectiveFovLH(
-        DirectX::XMConvertToRadians(60.0f),
+        DirectX::XMConvertToRadians(g_fov_deg),
         viewport_state.m_aspectRatio,
         0.01f,
         1000.0f);
@@ -516,6 +514,7 @@ int main(void)
         // float test;
         ImGui::SliderFloat("r", &g_r, 0.3f, 10.0f);
         ImGui::SliderFloat("y", &g_y, -10.0f, 10.0f);
+        ImGui::SliderFloat("fov_deg", &g_fov_deg, 60.0f, 120.0f);
         ImGui::Text("Frametime %.3f ms (%.2f FPS)",
                     1000.0f / ImGui::GetIO().Framerate,
                     ImGui::GetIO().Framerate);
