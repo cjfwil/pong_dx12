@@ -92,7 +92,7 @@ bool PopulateCommandList()
     //     pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(0, cbvHandle);
 
     D3D12_GPU_VIRTUAL_ADDRESS cbvAddress = graphics_resources.m_PerFrameConstantBuffer[sync_state.m_frameIndex]->GetGPUVirtualAddress();
-    pipeline_dx12.m_commandList->SetGraphicsRootConstantBufferView(1, cbvAddress);
+    pipeline_dx12.m_commandList->SetGraphicsRootConstantBufferView(0, cbvAddress);
         
     // texture handle
     UINT descriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
