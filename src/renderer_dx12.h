@@ -21,7 +21,6 @@ struct Vertex
 
 struct PerFrameConstantBuffer
 {
-    // DirectX::XMFLOAT4X4 world;
     DirectX::XMFLOAT4X4 view;
     DirectX::XMFLOAT4X4 projection;
     float padding[16 + 16]; // Padding so the constant buffer is 256-byte aligned.
@@ -30,7 +29,7 @@ static_assert((sizeof(PerFrameConstantBuffer) % 256) == 0, "Per Frame Constant B
 
 struct PerSceneConstantBuffer
 {
-    DirectX::XMFLOAT4 some_vector;
+    DirectX::XMFLOAT4 ambient_colour;
     float padding[60];
 };
 static_assert((sizeof(PerSceneConstantBuffer) % 256) == 0, " Per Scene Constant Buffer size must be 256-byte aligned");
@@ -941,7 +940,7 @@ bool LoadAssets()
             return false;
         memcpy(graphics_resources.m_pCbvDataBegin[i], &graphics_resources.m_PerFrameConstantBufferData, sizeof(graphics_resources.m_PerFrameConstantBufferData));
     }
-
+    
     // create per scene constant buffer that just sits and gets updated rarely
     {
         const UINT PerSceneConstantBufferSize = sizeof(PerSceneConstantBuffer); // CB size is required to be 256-byte aligned.
@@ -965,13 +964,15 @@ bool LoadAssets()
             cbvSrvDescriptorSize);
         pipeline_dx12.m_device->CreateConstantBufferView(&perSceneCbvDesc, perSceneCbvHandle);
 
+        // todo: figure out if i am allowed to unmap?
+        // todo: abstract this so i can call it from main when i want it updated
         // Map and initialize the per-scene constant buffer
         CD3DX12_RANGE readRange(0, 0);
         HRAssert(graphics_resources.m_PerSceneConstantBuffer->Map(
             0, &readRange,
             reinterpret_cast<void **>(&graphics_resources.m_pPerSceneCbvDataBegin)));
 
-        graphics_resources.m_PerSceneConstantBufferData.some_vector = DirectX::XMFLOAT4(0.9f, 0.3f, 0.1f, 1.0f);
+        graphics_resources.m_PerSceneConstantBufferData.ambient_colour = DirectX::XMFLOAT4(0.2f, 0.2f, 0.3f, 1.0f);
 
         memcpy(graphics_resources.m_pPerSceneCbvDataBegin,
                &graphics_resources.m_PerSceneConstantBufferData,
@@ -989,7 +990,7 @@ bool LoadAssets()
 // First: Generate the texture data using your existing function
 
 // Save it as DDS (one-time operation)
-#if defined(_DEBUG)
+#if defined(_DEBUG)        
         {
             std::vector<UINT8> texture = GenerateTextureData();
             // Create ScratchImage from your generated data
@@ -1058,7 +1059,7 @@ bool LoadAssets()
         // Now load from DDS file
         DirectX::ScratchImage loadedImage;
         HRESULT hr = DirectX::LoadFromDDSFile(
-            L"assets/checkerboard.dds",
+            L"assets/brickwall_01_BaseColor.dds",
             DirectX::DDS_FLAGS_NONE,
             nullptr,
             loadedImage);

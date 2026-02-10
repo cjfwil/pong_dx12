@@ -29,6 +29,8 @@
 #include <imgui.h>
 #include <backends/imgui_impl_sdl3.h>
 #include <backends/imgui_impl_dx12.h>
+
+#include <cgltf.h>
 #pragma warning(pop)
 
 #include "local_error.h"

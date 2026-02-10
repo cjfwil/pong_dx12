@@ -7,7 +7,6 @@ cbuffer PerDrawRootConstants : register(b0)
 // per frame constant buffer, updated every frame
 cbuffer PerFrameConstantBuffer : register(b1)
 {
-    // float4x4 world;
     float4x4 view;
     float4x4 projection;
     float per_frame_padding[16+16];
@@ -17,7 +16,7 @@ cbuffer PerFrameConstantBuffer : register(b1)
 // NOTE: do not update too frequently (multiple times per frame or once per frame) or cause performance penalty
 cbuffer PerSceneConstantBuffer : register(b2)
 {
-    float4 some_vector;
+    float4 ambient_colour;
     float per_scene_padding[60];
 };
 
@@ -60,5 +59,5 @@ PSInput VSMain(VSInput input)
 
 float4 PSMain(PSInput input) : SV_TARGET
 {
-    return g_texture.Sample(g_sampler, input.uv)*some_vector;    
+    return g_texture.Sample(g_sampler, input.uv) * ambient_colour;    
 }
