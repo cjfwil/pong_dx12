@@ -113,6 +113,8 @@ static struct
 
     void ResetCommandObjects()
     {
+
+        
         // Command list allocators can only be reset when the associated
         // command lists have finished execution on the GPU; apps should use
         // fences to determine GPU execution progress.

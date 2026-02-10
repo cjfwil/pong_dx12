@@ -237,7 +237,7 @@ static struct
 bool PopulateCommandList()
 {
     pipeline_dx12.ResetCommandObjects();
-    
+
     pipeline_dx12.m_commandList->SetGraphicsRootSignature(pipeline_dx12.m_rootSignature);
 
     ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_mainHeap};
@@ -270,7 +270,7 @@ bool PopulateCommandList()
         descriptorSize);
     pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(2, perSceneCbvHandle);
 
-    // texture handle    
+    // texture handle
     CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(
         pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
         DescriptorIndices::TEXTURE_SRV, // SRV is after all CBVs
@@ -399,7 +399,7 @@ static float g_fov_deg = 60.0f;
 
 // Update frame-based values.
 void Update()
-{
+{        
     DirectX::XMMATRIX world = DirectX::XMMatrixIdentity();
 
     // DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r * sinf(program_state.timing.upTime), g_y, g_r * cosf(program_state.timing.upTime), 0.0f);
@@ -680,6 +680,21 @@ int main(void)
             ImGui::EndCombo();
         }
 
+        static float g_ambient_color[3] = {0.0f, 0.0f, 0.0f};
+        ImGui::Separator();
+        ImGui::Text("Ambient Color");
+        if (ImGui::ColorEdit3("Ambient", g_ambient_color))
+        {
+            // Update the per-scene constant buffer when color changes
+            graphics_resources.m_PerSceneConstantBufferData.ambient_colour =
+                DirectX::XMFLOAT4(g_ambient_color[0], g_ambient_color[1], g_ambient_color[2], 1.0f);
+
+            // Copy to GPU memory
+            memcpy(graphics_resources.m_pPerSceneCbvDataBegin,
+                   &graphics_resources.m_PerSceneConstantBufferData,
+                   sizeof(graphics_resources.m_PerSceneConstantBufferData));
+        }
+
         ImGui::End();
 
         program_state.timing.UpdateTimer();
@@ -690,6 +705,7 @@ int main(void)
             window_request.applyWindowRequest = false;
         }
 
+        // MoveToNextFrame();
         Update();
         Render();
     }
