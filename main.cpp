@@ -241,7 +241,7 @@ bool PopulateCommandList()
     pipeline_dx12.m_commandList->SetGraphicsRootSignature(pipeline_dx12.m_rootSignature);
 
     ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_mainHeap};
-    pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);pipeline_dx12.m_commandList->SetGraphicsRoot32BitConstants(0, 12, &graphics_resources.m_RootConstants.partial_world, 0);    
+    pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
     D3D12_GPU_VIRTUAL_ADDRESS cbvAddress = graphics_resources.m_PerFrameConstantBuffer[sync_state.m_frameIndex]->GetGPUVirtualAddress();
     pipeline_dx12.m_commandList->SetGraphicsRootConstantBufferView(1, cbvAddress);
@@ -308,12 +308,11 @@ bool PopulateCommandList()
         pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier1);
     }
 
-    
     // Common rendering operations
     pipeline_dx12.m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
     pipeline_dx12.m_commandList->ClearRenderTargetView(rtvHandle, g_rtClearValue.Color, 0, nullptr);
     pipeline_dx12.m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
-    
+
     // Draw geometry (same for both)
     pipeline_dx12.m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     pipeline_dx12.m_commandList->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
@@ -377,7 +376,7 @@ void Render(bool vsync = true)
     UINT syncInterval = (vsync) ? 1 : 0;
     UINT syncFlags = (vsync) ? 0 : DXGI_PRESENT_ALLOW_TEARING;
     HRAssert(pipeline_dx12.m_swapChain->Present(syncInterval, syncFlags));
-    MoveToNextFrame();
+    // MoveToNextFrame();
 }
 
 static float g_r = 0.7f;
@@ -399,14 +398,14 @@ void Update()
     DirectX::XMFLOAT4X4 world;
 
     DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
-    DirectX::XMStoreFloat4x4(
-        &world,
-        DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationAxis(
-            axis,
-            (float)program_state.timing.upTime)));
-    for (int j = 0; j < 3; ++j)
-        for (int i = 0; i < 4; ++i)
-            graphics_resources.m_RootConstants.partial_world.m[j][i] = world.m[j][i];
+    // DirectX::XMStoreFloat4x4(&world, DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationAxis(axis, (float)program_state.timing.upTime)));
+    // for (int j = 0; j < 3; ++j)
+    //     for (int i = 0; i < 4; ++i)
+    //         graphics_resources.m_RootConstants.partial_world.m[j][i] = world.m[j][i];
+    graphics_resources.m_RootConstants.partial_world = DirectX::XMFLOAT3X4(
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0);
 
     // DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r * sinf(program_state.timing.upTime), g_y, g_r * cosf(program_state.timing.upTime), 0.0f);
     DirectX::XMVECTOR eye = DirectX::XMVectorSet(0, g_y, g_r, 0.0f);
@@ -435,8 +434,8 @@ void Update()
     // }
 
     memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex],
-               &graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex],
-               sizeof(PerFrameConstantBuffer));
+           &graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex],
+           sizeof(PerFrameConstantBuffer));
 }
 
 int main(void)
@@ -726,7 +725,14 @@ int main(void)
         }
 
         Update();
-        Render((bool)g_liveConfigData.GraphicsSettings.vsync);
+        Render();
+        MoveToNextFrame();
+
+        // WaitForFrameReady();   // Wait for frame to be ready
+        // Update();              // Write to buffers
+        // Render();              // Submit work + Present()
+        // SignalFrameComplete(); // Signal this frame done
+        // AdvanceFrameIndex();   // Get next frame index (works now because Present() was called)
     }
     g_imguiHeap.Destroy();
     OnDestroy();

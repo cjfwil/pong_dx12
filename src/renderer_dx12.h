@@ -94,7 +94,7 @@ static struct
     ID3D12DescriptorHeap *m_imguiHeap;
     ID3D12Resource *m_renderTargets[g_FrameCount];
     ID3D12CommandAllocator *m_commandAllocators[g_FrameCount];
-    ID3D12GraphicsCommandList *m_commandList;
+    ID3D12GraphicsCommandList *m_commandList[g_FrameCount];
     ID3D12RootSignature *m_rootSignature;
 
     // depth buffer
@@ -121,7 +121,10 @@ static struct
         // list, that command list can then be reset at any time and must be before
         // re-recording.
         UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
-        HRAssert(pipeline_dx12.m_commandList->Reset(pipeline_dx12.m_commandAllocators[sync_state.m_frameIndex], pipeline_dx12.m_pipelineStates[psoIndex]));
+        HRAssert(
+            pipeline_dx12.m_commandList->Reset(
+                pipeline_dx12.m_commandAllocators[sync_state.m_frameIndex],
+                pipeline_dx12.m_pipelineStates[psoIndex]));
     }
 } pipeline_dx12;
 
@@ -144,6 +147,28 @@ static struct
     ID3D12Resource *m_PerFrameConstantBuffer[g_FrameCount];
     UINT8 *m_pCbvDataBegin[g_FrameCount];
 } graphics_resources;
+
+void WaitForFrameReady()
+{
+    // Wait if the next frame we want to use isn't ready yet
+    if (sync_state.m_fence->GetCompletedValue() < sync_state.m_fenceValues[sync_state.m_frameIndex])
+    {
+        HRAssert(sync_state.m_fence->SetEventOnCompletion(sync_state.m_fenceValues[sync_state.m_frameIndex], sync_state.m_fenceEvent));
+        WaitForSingleObjectEx(sync_state.m_fenceEvent, INFINITE, FALSE);
+    }
+}
+
+void SignalFrameComplete()
+{
+    const UINT64 currentFenceValue = sync_state.m_fenceValues[sync_state.m_frameIndex];
+    HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, currentFenceValue));
+    sync_state.m_fenceValues[sync_state.m_frameIndex] = currentFenceValue + 1;
+}
+
+void AdvanceFrameIndex()
+{
+    sync_state.m_frameIndex = pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
+}
 
 // Wait for pending GPU work to complete.
 void WaitForGpu()
