@@ -916,9 +916,9 @@ bool LoadAssets()
     ID3D12Resource *vertexBufferUpload;
     {
         // Define the geometry for a triangle.
-        const Vertex* vertices = kCubeVertices;
+        const Vertex* vertices = kPrismVertices;
 
-        const UINT vertexBufferSize = sizeof(kCubeVertices);
+        const UINT vertexBufferSize = sizeof(kPrismVertices);
 
         if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
                 &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
@@ -966,8 +966,9 @@ bool LoadAssets()
     // create index buffer
     ID3D12Resource *indexBufferUpload = nullptr;
     {
-        const uint32_t* indices = kCubeIndices;
-        const UINT indexBufferSize = sizeof(kCubeIndices);
+        const uint32_t* indices = kPrismIndices;
+        const UINT indexBufferSize = sizeof(kPrismIndices);
+        const UINT indexCount = kPrismIndexCount;
 
         // Create index buffer in DEFAULT heap
         HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
@@ -990,7 +991,7 @@ bool LoadAssets()
         UINT8 *pIndexDataBegin;
         CD3DX12_RANGE readRange(0, 0);
         indexBufferUpload->Map(0, &readRange, reinterpret_cast<void **>(&pIndexDataBegin));
-        memcpy(pIndexDataBegin, kCubeIndices, indexBufferSize);
+        memcpy(pIndexDataBegin, indices, indexBufferSize);
         indexBufferUpload->Unmap(0, nullptr);
 
         pipeline_dx12.m_commandList[0]->CopyBufferRegion(
@@ -1007,7 +1008,7 @@ bool LoadAssets()
         graphics_resources.m_indexBufferView.BufferLocation = graphics_resources.m_indexBuffer->GetGPUVirtualAddress();
         graphics_resources.m_indexBufferView.SizeInBytes = indexBufferSize;
         graphics_resources.m_indexBufferView.Format = DXGI_FORMAT_R32_UINT;
-        graphics_resources.m_indexCount = kCubeIndexCount;
+        graphics_resources.m_indexCount = indexCount;
     }
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE cpuStart(pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart());

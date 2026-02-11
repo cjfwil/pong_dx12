@@ -3,7 +3,9 @@ write a program which automatically detects all required libraries, pulls all th
 
 ## basic lighting model with static directional light
 
-## when adding third meta_xxxx.py then merge into unified metaprogramming system
+# when adding third meta_xxxx.py then merge into unified metaprogramming system (DO THIS NOW)
+
+# meta program the whole primitive pipelinem generate the whole primitive struct and just blast it out full thing with drop down
 
 ## abstract out constant buffer updating because we wil need to be doing it 3+ times in the code
 

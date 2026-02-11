@@ -5,6 +5,7 @@ Output: src/generated/mesh_data.h
 """
 
 import os
+import math
 from pathlib import Path
 from collections import namedtuple
 
@@ -20,7 +21,6 @@ def gen_cube():
 
     s = 0.5  # half‑size
 
-    # Define the 8 corner positions
     corners = [
         Vec3(-s, -s, -s),  # 0
         Vec3( s, -s, -s),  # 1
@@ -32,7 +32,6 @@ def gen_cube():
         Vec3(-s,  s,  s),  # 7
     ]
 
-    # UVs for each corner of a face (in order: bottom‑left, bottom‑right, top‑right, top‑left)
     uvs = [
         Vec2(0, 1),  # bottom-left
         Vec2(1, 1),  # bottom-right
@@ -40,8 +39,6 @@ def gen_cube():
         Vec2(0, 0),  # top-left
     ]
 
-    # Face definitions: each face is a quad of 4 corners in counter‑clockwise order when viewed from outside
-    # Format: [corner_indices], [uv_indices] (we use the same uv order for all faces)
     faces = [
         # bottom (y = -s)
         ([3, 2, 1, 0], uvs),
@@ -58,14 +55,12 @@ def gen_cube():
     ]
 
     base_index = 0
-    for (corner_idxs, face_uvs) in faces:
-        # Add the 4 vertices for this face
+    for corner_idxs, face_uvs in faces:
         for i in range(4):
             pos = corners[corner_idxs[i]]
             uv = face_uvs[i]
             vertices.append(Vertex(pos, uv))
 
-        # Generate two triangles: 0,1,2 and 0,2,3
         indices.append(base_index + 0)
         indices.append(base_index + 1)
         indices.append(base_index + 2)
@@ -78,19 +73,178 @@ def gen_cube():
     return vertices, indices
 
 
-def gen_cylinder(slices=16):
-    """Placeholder: generate a cylinder mesh."""
+def gen_cylinder(slices=12):
+    """
+    Generate a cylinder mesh (radius=0.5, height=1.0).
+    Sides: quads, top/bottom: triangle fans.
+    Returns (vertices, indices).
+    """
     vertices = []
     indices = []
-    # TODO: implement later
+
+    radius = 0.5
+    half_height = 0.5
+    slices = max(3, slices)  # at least 3
+
+    angle_step = 2.0 * math.pi / slices
+
+    # --- bottom center ---
+    bottom_center = Vec3(0, -half_height, 0)
+    bottom_center_idx = len(vertices)
+    vertices.append(Vertex(bottom_center, Vec2(0.5, 0.5)))
+
+    # --- top center ---
+    top_center = Vec3(0, half_height, 0)
+    top_center_idx = len(vertices)
+    vertices.append(Vertex(top_center, Vec2(0.5, 0.5)))
+
+    # --- bottom ring & top ring vertices ---
+    bottom_ring_start = len(vertices)
+    top_ring_start = bottom_ring_start + slices
+
+    for i in range(slices):
+        angle = i * angle_step
+        x = radius * math.cos(angle)
+        z = radius * math.sin(angle)
+
+        # bottom vertex (y = -half_height)
+        bottom_pos = Vec3(x, -half_height, z)
+        bottom_uv = Vec2(i / slices, 0.0)
+        vertices.append(Vertex(bottom_pos, bottom_uv))
+
+        # top vertex (y =  half_height)
+        top_pos = Vec3(x, half_height, z)
+        top_uv = Vec2(i / slices, 1.0)
+        vertices.append(Vertex(top_pos, top_uv))
+
+    # --- side quads ---
+    for i in range(slices):
+        next_i = (i + 1) % slices
+
+        b0 = bottom_ring_start + i * 2      # bottom vertex this slice
+        b1 = bottom_ring_start + next_i * 2 # bottom vertex next slice
+        t0 = bottom_ring_start + i * 2 + 1  # top vertex this slice
+        t1 = bottom_ring_start + next_i * 2 + 1 # top vertex next slice
+
+        # triangle 1: (b0, b1, t1)
+        indices.append(b0)
+        indices.append(b1)
+        indices.append(t1)
+        # triangle 2: (b0, t1, t0)
+        indices.append(b0)
+        indices.append(t1)
+        indices.append(t0)
+
+    # --- bottom cap (triangle fan) ---
+    # bottom center already at bottom_center_idx
+    for i in range(slices):
+        next_i = (i + 1) % slices
+        b0 = bottom_ring_start + i * 2
+        b1 = bottom_ring_start + next_i * 2
+
+        # triangle (center, b1, b0) – clockwise when viewed from below (outside)
+        indices.append(bottom_center_idx)
+        indices.append(b1)
+        indices.append(b0)
+
+    # --- top cap (triangle fan) ---
+    for i in range(slices):
+        next_i = (i + 1) % slices
+        t0 = bottom_ring_start + i * 2 + 1
+        t1 = bottom_ring_start + next_i * 2 + 1
+
+        # triangle (center, t0, t1) – counter‑clockwise when viewed from above (outside)
+        indices.append(top_center_idx)
+        indices.append(t0)
+        indices.append(t1)
+
     return vertices, indices
 
 
 def gen_prism():
-    """Placeholder: generate a triangular prism mesh."""
+    """
+    Generate an equilateral triangular prism (radius=0.5, height=1.0).
+    Returns (vertices, indices) with per‑face vertices for correct UVs.
+    """
     vertices = []
     indices = []
-    # TODO: implement later
+
+    radius = 0.5
+    half_height = 0.5
+
+    # --- bottom face (y = -half_height) ---
+    # vertices of an equilateral triangle, pointing up (top vertex at angle 90°)
+    # angles: 90°, 210°, 330°
+    bottom_tri_angles = [math.pi/2, 7*math.pi/6, 11*math.pi/6]
+    bottom_tri_pos = []
+    for a in bottom_tri_angles:
+        x = radius * math.cos(a)
+        z = radius * math.sin(a)
+        bottom_tri_pos.append(Vec3(x, -half_height, z))
+
+    # bottom face UVs – map triangle to a 0‑1 square-ish? We'll use a simple 0,0;1,0;0.5,1.
+    bottom_uvs = [Vec2(0, 0), Vec2(1, 0), Vec2(0.5, 1)]
+
+    bottom_start = len(vertices)
+    for i in range(3):
+        vertices.append(Vertex(bottom_tri_pos[i], bottom_uvs[i]))
+
+    # indices for bottom triangle (0,1,2)
+    indices.append(bottom_start + 0)
+    indices.append(bottom_start + 1)
+    indices.append(bottom_start + 2)
+
+    # --- top face (y = half_height) ---
+    top_tri_pos = []
+    for a in bottom_tri_angles:
+        x = radius * math.cos(a)
+        z = radius * math.sin(a)
+        top_tri_pos.append(Vec3(x, half_height, z))
+
+    # top face UVs (same mapping)
+    top_start = len(vertices)
+    for i in range(3):
+        vertices.append(Vertex(top_tri_pos[i], bottom_uvs[i]))
+
+    # indices for top triangle (3,4,5) – note winding: should be CCW when viewed from above
+    indices.append(top_start + 0)
+    indices.append(top_start + 1)
+    indices.append(top_start + 2)
+
+    # --- side faces (3 quads) ---
+    # for each edge, create a quad with proper UVs (0,0)-(1,0)-(1,1)-(0,1)
+    for edge in range(3):
+        next_edge = (edge + 1) % 3
+
+        # bottom vertices: bottom_tri_pos[edge], bottom_tri_pos[next_edge]
+        # top vertices:   top_tri_pos[edge], top_tri_pos[next_edge]
+
+        # order: bottom_left, bottom_right, top_right, top_left
+        bl = bottom_tri_pos[edge]
+        br = bottom_tri_pos[next_edge]
+        tr = top_tri_pos[next_edge]
+        tl = top_tri_pos[edge]
+
+        bl_uv = Vec2(0.0, 0.0)
+        br_uv = Vec2(1.0, 0.0)
+        tr_uv = Vec2(1.0, 1.0)
+        tl_uv = Vec2(0.0, 1.0)
+
+        quad_start = len(vertices)
+        vertices.append(Vertex(bl, bl_uv))
+        vertices.append(Vertex(br, br_uv))
+        vertices.append(Vertex(tr, tr_uv))
+        vertices.append(Vertex(tl, tl_uv))
+
+        # two triangles: (bl, br, tr) and (bl, tr, tl)
+        indices.append(quad_start + 0)
+        indices.append(quad_start + 1)
+        indices.append(quad_start + 2)
+
+        indices.append(quad_start + 0)
+        indices.append(quad_start + 2)
+        indices.append(quad_start + 3)
+
     return vertices, indices
 
 
@@ -106,7 +260,7 @@ def write_header(path, cube_verts, cube_idxs, cyl_verts, cyl_idxs, prism_verts, 
         # ------------------------------------------------------------------
         f.write(f"static const Vertex kCubeVertices[{len(cube_verts)}] = {{\n")
         for v in cube_verts:
-            f.write(f"    {{{{{v.position.x}f, {v.position.y}f, {v.position.z}f}}, {{{v.uv.x:.1f}f, {v.uv.y:.1f}f}}}},\n")
+            f.write(f"    {{{{ {v.position.x:.6f}f, {v.position.y:.6f}f, {v.position.z:.6f}f }}, {{ {v.uv.x:.6f}f, {v.uv.y:.6f}f }}}},\n")
         f.write("};\n\n")
 
         f.write(f"static const uint32_t kCubeIndices[{len(cube_idxs)}] = {{\n    ")
@@ -115,25 +269,42 @@ def write_header(path, cube_verts, cube_idxs, cyl_verts, cyl_idxs, prism_verts, 
                 f.write("\n    ")
             f.write(f"{idx}, ")
         f.write("\n};\n\n")
-
         f.write(f"static const UINT kCubeIndexCount = {len(cube_idxs)};\n\n")
 
         # ------------------------------------------------------------------
-        # Cylinder (placeholder)
+        # Cylinder
         # ------------------------------------------------------------------
         if cyl_verts:
-            f.write(f"static const Vertex kCylinderVertices[{len(cyl_verts)}] = {{ ... }};\n")
-            f.write(f"static const uint32_t kCylinderIndices[{len(cyl_idxs)}] = {{ ... }};\n")
+            f.write(f"static const Vertex kCylinderVertices[{len(cyl_verts)}] = {{\n")
+            for v in cyl_verts:
+                f.write(f"    {{{{ {v.position.x:.6f}f, {v.position.y:.6f}f, {v.position.z:.6f}f }}, {{ {v.uv.x:.6f}f, {v.uv.y:.6f}f }}}},\n")
+            f.write("};\n\n")
+
+            f.write(f"static const uint32_t kCylinderIndices[{len(cyl_idxs)}] = {{\n    ")
+            for i, idx in enumerate(cyl_idxs):
+                if i != 0 and i % 12 == 0:
+                    f.write("\n    ")
+                f.write(f"{idx}, ")
+            f.write("\n};\n\n")
             f.write(f"static const UINT kCylinderIndexCount = {len(cyl_idxs)};\n\n")
         else:
             f.write("// Cylinder mesh not yet generated\n\n")
 
         # ------------------------------------------------------------------
-        # Prism (placeholder)
+        # Prism
         # ------------------------------------------------------------------
         if prism_verts:
-            f.write(f"static const Vertex kPrismVertices[{len(prism_verts)}] = {{ ... }};\n")
-            f.write(f"static const uint32_t kPrismIndices[{len(prism_idxs)}] = {{ ... }};\n")
+            f.write(f"static const Vertex kPrismVertices[{len(prism_verts)}] = {{\n")
+            for v in prism_verts:
+                f.write(f"    {{{{ {v.position.x:.6f}f, {v.position.y:.6f}f, {v.position.z:.6f}f }}, {{ {v.uv.x:.6f}f, {v.uv.y:.6f}f }}}},\n")
+            f.write("};\n\n")
+
+            f.write(f"static const uint32_t kPrismIndices[{len(prism_idxs)}] = {{\n    ")
+            for i, idx in enumerate(prism_idxs):
+                if i != 0 and i % 12 == 0:
+                    f.write("\n    ")
+                f.write(f"{idx}, ")
+            f.write("\n};\n\n")
             f.write(f"static const UINT kPrismIndexCount = {len(prism_idxs)};\n\n")
         else:
             f.write("// Prism mesh not yet generated\n\n")
@@ -142,20 +313,25 @@ def write_header(path, cube_verts, cube_idxs, cyl_verts, cyl_idxs, prism_verts, 
 
 
 def main():
-    # Ensure output directory exists
     out_dir = Path("src/generated")
     out_dir.mkdir(parents=True, exist_ok=True)
     out_path = out_dir / "mesh_data.h"
 
-    # Generate meshes
+    print("Generating cube...")
     cube_verts, cube_idxs = gen_cube()
-    cyl_verts, cyl_idxs = gen_cylinder()   # placeholder
-    prism_verts, prism_idxs = gen_prism()  # placeholder
+    print(f"  {len(cube_verts)} vertices, {len(cube_idxs)} indices")
 
-    # Write header
+    print("Generating cylinder...")
+    cyl_verts, cyl_idxs = gen_cylinder(slices=12)  # 12 slices looks fine for greybox
+    print(f"  {len(cyl_verts)} vertices, {len(cyl_idxs)} indices")
+
+    print("Generating prism...")
+    prism_verts, prism_idxs = gen_prism()
+    print(f"  {len(prism_verts)} vertices, {len(prism_idxs)} indices")
+
     write_header(out_path, cube_verts, cube_idxs, cyl_verts, cyl_idxs, prism_verts, prism_idxs)
 
-    print(f"✅ Mesh generation complete. Generated cube with {len(cube_verts)} vertices, {len(cube_idxs)} indices.")
+    print(f"✅ Mesh generation complete.")
 
 
 if __name__ == "__main__":
