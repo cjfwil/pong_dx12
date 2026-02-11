@@ -918,7 +918,7 @@ bool LoadAssets()
         // Define the geometry for a triangle.
         const Vertex* vertices = kCubeVertices;
 
-        const UINT vertexBufferSize = sizeof(vertices);
+        const UINT vertexBufferSize = sizeof(kCubeVertices);
 
         if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
                 &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
@@ -967,7 +967,7 @@ bool LoadAssets()
     ID3D12Resource *indexBufferUpload = nullptr;
     {
         const uint32_t* indices = kCubeIndices;
-        const UINT indexBufferSize = sizeof(indices);
+        const UINT indexBufferSize = sizeof(kCubeIndices);
 
         // Create index buffer in DEFAULT heap
         HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
