@@ -113,8 +113,6 @@ static struct
 
     void ResetCommandObjects()
     {
-
-        
         // Command list allocators can only be reset when the associated
         // command lists have finished execution on the GPU; apps should use
         // fences to determine GPU execution progress.
@@ -127,8 +125,13 @@ static struct
     }
 } pipeline_dx12;
 
+struct Root32BitConstants {
+    DirectX::XMFLOAT3X4 partial_world;
+};
+
 static struct
 {
+    Root32BitConstants m_RootConstants;    
     PerFrameConstantBuffer m_PerFrameConstantBufferData;
     PerSceneConstantBuffer m_PerSceneConstantBufferData;
     D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
@@ -151,7 +154,7 @@ void WaitForGpu()
     WaitForSingleObjectEx(sync_state.m_fenceEvent, INFINITE, FALSE);
 
     // Increment the fence value for the current frame.
-    sync_state.m_fenceValues[sync_state.m_frameIndex]++;
+    // sync_state.m_fenceValues[sync_state.m_frameIndex]++;
 }
 
 void WaitForAllFrames()
@@ -942,7 +945,7 @@ bool LoadAssets()
             return false;
         memcpy(graphics_resources.m_pCbvDataBegin[i], &graphics_resources.m_PerFrameConstantBufferData, sizeof(graphics_resources.m_PerFrameConstantBufferData));
     }
-    
+
     // create per scene constant buffer that just sits and gets updated rarely
     {
         const UINT PerSceneConstantBufferSize = sizeof(PerSceneConstantBuffer); // CB size is required to be 256-byte aligned.
@@ -992,7 +995,7 @@ bool LoadAssets()
 // First: Generate the texture data using your existing function
 
 // Save it as DDS (one-time operation)
-#if defined(_DEBUG)        
+#if defined(_DEBUG)
         {
             std::vector<UINT8> texture = GenerateTextureData();
             // Create ScratchImage from your generated data
@@ -1061,7 +1064,7 @@ bool LoadAssets()
         // Now load from DDS file
         DirectX::ScratchImage loadedImage;
         HRESULT hr = DirectX::LoadFromDDSFile(
-            L"assets/brickwall_01_BaseColor.dds",
+            L"assets/checkerboard.dds",
             DirectX::DDS_FLAGS_NONE,
             nullptr,
             loadedImage);
@@ -1170,6 +1173,11 @@ bool LoadAssets()
         if (!HRAssert(pipeline_dx12.m_device->CreateFence(sync_state.m_fenceValues[sync_state.m_frameIndex], D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&sync_state.m_fence))))
             return false;
         sync_state.m_fenceValues[sync_state.m_frameIndex]++;
+
+        for (UINT i = 0; i < g_FrameCount; i++)
+        {
+            sync_state.m_fenceValues[i] = 1;
+        }
 
         // Create an event handle to use for frame synchronization.
         sync_state.m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);

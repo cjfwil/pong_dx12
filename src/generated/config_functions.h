@@ -5,11 +5,12 @@
 /* Inline function to generate the config string with sections */
 static inline void Generated_SaveConfigToString(ConfigData* config, char* buffer, size_t buffer_size) {
     SDL_snprintf(buffer, buffer_size, 
-                 "[DisplaySettings]\nwindow_width=%d\nwindow_height=%d\nwindow_mode=%d\n\n[GraphicsSettings]\nmsaa_level=%d\n", 
+                 "[DisplaySettings]\nwindow_width=%d\nwindow_height=%d\nwindow_mode=%d\n\n[GraphicsSettings]\nmsaa_level=%d\nvsync=%d\n", 
                  config->DisplaySettings.window_width,
                  config->DisplaySettings.window_height,
                  config->DisplaySettings.window_mode,
-                 config->GraphicsSettings.msaa_level);
+                 config->GraphicsSettings.msaa_level,
+                 config->GraphicsSettings.vsync);
 }
 
 /* Inline function to parse config from string data with sections */
@@ -45,6 +46,8 @@ static inline void Generated_LoadConfigFromString(ConfigData* config, char* data
             if (SDL_strcmp(current_section, "GraphicsSettings") == 0) {
                 if (SDL_strncmp(line, "msaa_level=", 11) == 0) {
                     config->GraphicsSettings.msaa_level = SDL_atoi(line + 11);
+                } else if (SDL_strncmp(line, "vsync=", 6) == 0) {
+                    config->GraphicsSettings.vsync = SDL_atoi(line + 6);
                 }
             }
             

@@ -12,6 +12,7 @@ typedef struct
     struct
     {
         int msaa_level;
+        int vsync;        
     } GraphicsSettings;
 } ConfigData;
 
@@ -43,6 +44,7 @@ ConfigData LoadConfig()
         config.DisplaySettings.window_height = 1080;
         config.DisplaySettings.window_mode = (int)1;
         config.GraphicsSettings.msaa_level = 1;
+        config.GraphicsSettings.vsync = 0;
         SaveConfig(&config);
         return config;
     }

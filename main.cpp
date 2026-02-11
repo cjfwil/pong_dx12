@@ -243,20 +243,7 @@ bool PopulateCommandList()
     ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_mainHeap};
     pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-    DirectX::XMFLOAT4X4 world;
-
-    DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
-    DirectX::XMStoreFloat4x4(
-        &world,
-        DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationAxis(
-            axis,
-            (float)program_state.timing.upTime)));
-    DirectX::XMFLOAT3X4 partial_world;
-    for (int j = 0; j < 3; ++j)
-        for (int i = 0; i < 4; ++i)
-            partial_world.m[j][i] = world.m[j][i];
-
-    pipeline_dx12.m_commandList->SetGraphicsRoot32BitConstants(0, 12, &partial_world, 0);
+    pipeline_dx12.m_commandList->SetGraphicsRoot32BitConstants(0, 12, &graphics_resources.m_RootConstants.partial_world, 0);
 
     D3D12_GPU_VIRTUAL_ADDRESS cbvAddress = graphics_resources.m_PerFrameConstantBuffer[sync_state.m_frameIndex]->GetGPUVirtualAddress();
     pipeline_dx12.m_commandList->SetGraphicsRootConstantBufferView(1, cbvAddress);
@@ -399,8 +386,26 @@ static float g_fov_deg = 60.0f;
 
 // Update frame-based values.
 void Update()
-{        
-    DirectX::XMMATRIX world = DirectX::XMMatrixIdentity();
+{
+    SDL_Log("Update: frameIndex=%u, fenceValues=[%llu, %llu, %llu], completed=%llu",
+            sync_state.m_frameIndex,
+            sync_state.m_fenceValues[0],
+            sync_state.m_fenceValues[1],
+            sync_state.m_fenceValues[2],
+            sync_state.m_fence->GetCompletedValue());
+
+    // maybe put this calculation in update?
+    DirectX::XMFLOAT4X4 world;
+
+    DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+    DirectX::XMStoreFloat4x4(
+        &world,
+        DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationAxis(
+            axis,
+            (float)program_state.timing.upTime)));
+    for (int j = 0; j < 3; ++j)
+        for (int i = 0; i < 4; ++i)
+            graphics_resources.m_RootConstants.partial_world.m[j][i] = world.m[j][i];
 
     // DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r * sinf(program_state.timing.upTime), g_y, g_r * cosf(program_state.timing.upTime), 0.0f);
     DirectX::XMVECTOR eye = DirectX::XMVectorSet(0, g_y, g_r, 0.0f);
@@ -415,9 +420,18 @@ void Update()
         1000.0f);
 
     // TRANSPOSE before storing!
-    // DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData.world, DirectX::XMMatrixTranspose(world));
     DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData.view, DirectX::XMMatrixTranspose(view));
     DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData.projection, DirectX::XMMatrixTranspose(projection));
+
+    // DEBUG: Log what we're writing
+    static int debugFrame = 0;
+    if (debugFrame < 10)
+    {
+        SDL_Log("Frame %d: Writing to CBV at index %u", debugFrame, sync_state.m_frameIndex);
+        SDL_Log("  View matrix [0][0] = %f", graphics_resources.m_PerFrameConstantBufferData.view._11);
+        SDL_Log("  Projection matrix [0][0] = %f", graphics_resources.m_PerFrameConstantBufferData.projection._11);
+        debugFrame++;
+    }
 
     memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex],
            &graphics_resources.m_PerFrameConstantBufferData,
@@ -680,6 +694,11 @@ int main(void)
             ImGui::EndCombo();
         }
 
+        if (ImGui::Checkbox("Vsync", (bool*)&g_liveConfigData.GraphicsSettings.vsync))
+        {
+            SaveConfig(&g_liveConfigData);
+        }
+
         static float g_ambient_color[3] = {0.0f, 0.0f, 0.0f};
         ImGui::Separator();
         ImGui::Text("Ambient Color");
@@ -704,10 +723,9 @@ int main(void)
             program_state.window.ApplyWindowMode();
             window_request.applyWindowRequest = false;
         }
-
-        // MoveToNextFrame();
+        
         Update();
-        Render();
+        Render((bool)g_liveConfigData.GraphicsSettings.vsync);
     }
     g_imguiHeap.Destroy();
     OnDestroy();
