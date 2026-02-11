@@ -125,14 +125,15 @@ static struct
     }
 } pipeline_dx12;
 
-struct Root32BitConstants {
+struct Root32BitConstants
+{
     DirectX::XMFLOAT3X4 partial_world;
 };
 
 static struct
 {
-    Root32BitConstants m_RootConstants;    
-    PerFrameConstantBuffer m_PerFrameConstantBufferData;
+    Root32BitConstants m_RootConstants[g_FrameCount];
+    PerFrameConstantBuffer m_PerFrameConstantBufferData[g_FrameCount];
     PerSceneConstantBuffer m_PerSceneConstantBufferData;
     D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
     ID3D12Resource *m_vertexBuffer;
@@ -507,7 +508,7 @@ bool LoadPipeline(HWND hwnd)
         if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
         {
             debugController->EnableDebugLayer();
-
+            // debugController->SetEnableGPUBasedValidation(true);  // Extra validation
             // Enable additional debug layers.
             dxgiFactoryFlags |= DXGI_CREATE_FACTORY_DEBUG;
         }

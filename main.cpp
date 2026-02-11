@@ -243,7 +243,7 @@ bool PopulateCommandList()
     ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_mainHeap};
     pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
     
-    pipeline_dx12.m_commandList->SetGraphicsRoot32BitConstants(0, 12, &graphics_resources.m_RootConstants.partial_world, 0);
+    pipeline_dx12.m_commandList->SetGraphicsRoot32BitConstants(0, 12, &graphics_resources.m_RootConstants[sync_state.m_frameIndex].partial_world, 0);
 
     D3D12_GPU_VIRTUAL_ADDRESS cbvAddress = graphics_resources.m_PerFrameConstantBuffer[sync_state.m_frameIndex]->GetGPUVirtualAddress();
     pipeline_dx12.m_commandList->SetGraphicsRootConstantBufferView(1, cbvAddress);
@@ -406,7 +406,7 @@ void Update()
             (float)program_state.timing.upTime)));
     for (int j = 0; j < 3; ++j)
         for (int i = 0; i < 4; ++i)
-            graphics_resources.m_RootConstants.partial_world.m[j][i] = world.m[j][i];
+            graphics_resources.m_RootConstants[sync_state.m_frameIndex].partial_world.m[j][i] = world.m[j][i];
 
     // DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r * sinf(program_state.timing.upTime), g_y, g_r * cosf(program_state.timing.upTime), 0.0f);
     DirectX::XMVECTOR eye = DirectX::XMVectorSet(0, g_y, g_r, 0.0f);
@@ -421,8 +421,8 @@ void Update()
         1000.0f);
 
     // TRANSPOSE before storing!
-    DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData.view, DirectX::XMMatrixTranspose(view));
-    DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData.projection, DirectX::XMMatrixTranspose(projection));
+    DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].view, DirectX::XMMatrixTranspose(view));
+    DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].projection, DirectX::XMMatrixTranspose(projection));
 
     // DEBUG: Log what we're writing
     // static int debugFrame = 0;
@@ -435,8 +435,8 @@ void Update()
     // }
 
     memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex],
-               &graphics_resources.m_PerFrameConstantBufferData,
-               sizeof(graphics_resources.m_PerFrameConstantBufferData));
+               &graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex],
+               sizeof(PerFrameConstantBuffer));
 }
 
 int main(void)
