@@ -135,6 +135,11 @@ void OnDestroy()
         pipeline_dx12.m_msaaDepthStencil->Release();
         pipeline_dx12.m_msaaDepthStencil = nullptr;
     }
+    if (graphics_resources.m_indexBuffer)
+    {
+        graphics_resources.m_indexBuffer->Release();
+        graphics_resources.m_indexBuffer = nullptr;
+    }
     if (graphics_resources.m_PerSceneConstantBuffer)
     {
         graphics_resources.m_PerSceneConstantBuffer->Release();

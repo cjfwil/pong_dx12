@@ -317,7 +317,9 @@ bool PopulateCommandList()
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, 16, &graphics_resources.m_RootConstants.partial_world, 0);
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawInstanced(3, 1, 0, 0);
+    // pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawInstanced(3, 1, 0, 0);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_indexBufferView);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_indexCount, 1, 0, 0, 0);
 
     // Post-draw operations
     if (msaa_state.m_enabled)
@@ -386,7 +388,7 @@ static float g_fov_deg = 60.0f;
 // Update frame-based values.
 void Update()
 {
-    DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.2f, 1.0f, 0.0f);
+    DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
     DirectX::XMStoreFloat4x4(
         &graphics_resources.m_RootConstants.partial_world,
         DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationAxis(axis, (float)program_state.timing.upTime)));
@@ -637,15 +639,15 @@ int main(void)
         ImGui::Separator();
 
         static int currentResItem = -1;
-        static const int numSupportedResolutions = 5;
+        static const int numSupportedResolutions = 6;
         static struct
         {
-            char *resNames[numSupportedResolutions] = {"1280x720", "1920x1080", "640x480", "1024x768", "1680x720"};
-            uint32_t w[numSupportedResolutions] = {1280, 1920, 640, 1024, 1680};
-            uint32_t h[numSupportedResolutions] = {720, 1080, 480, 768, 720};
+            char *resNames[numSupportedResolutions] = {"1280x720", "1920x1080", "640x480", "1024x768", "1680x720", "1280x800 (steamdeck)"};
+            uint32_t w[numSupportedResolutions] = {1280, 1920, 640, 1024, 1680, 1280};
+            uint32_t h[numSupportedResolutions] = {720, 1080, 480, 768, 720, 800};
         } supported_window_dimensions;
         if (program_state.window.m_currentMode == WindowMode::WINDOWED &&
-            ImGui::BeginCombo("Res", (currentResItem == -1) ? "." : supported_window_dimensions.resNames[currentResItem]))
+            ImGui::BeginCombo("Resolution", (currentResItem == -1) ? "." : supported_window_dimensions.resNames[currentResItem]))
         {
             for (int i = 0; i < numSupportedResolutions; i++)
             {

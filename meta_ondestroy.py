@@ -11,7 +11,7 @@ def parse_dx12_resources(header_path):
     
     # Pattern to match COM pointer declarations in structs
     # Matches: ID3D12Something *name or ID3D12Something *name[N]
-    pattern = r'(ID3D\w+|IDXGISwapChain\d*)\s*\*\s*(\w+)(\[[\w_]+\])?;'
+    pattern = r'(ID3D\w+|IDXGISwapChain\d*)\s*\*\s*(\w+)(\[[^\]]*\])?\s*(=\s*[^;]*)?;'
     
     # Find all struct definitions with their names
     struct_pattern = r'static struct\s*\{(.+?)\}\s*(\w+);'

@@ -9,5 +9,7 @@ write a program which automatically detects all required libraries, pulls all th
 
 ## internal resolution scale slider
 
-## solve the flickering on the machine with the faster GPU (done)
-solution use 4x4 matrix instead of 3x4 for world matrix
+# load and render a 3d model
+drop down of cube, torus, sphere etc...?
+
+## greyboxing?

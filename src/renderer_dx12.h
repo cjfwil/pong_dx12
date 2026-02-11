@@ -133,19 +133,33 @@ struct Root32BitConstants
     DirectX::XMFLOAT4X4 partial_world;
 };
 
+enum struct PrimitiveType : UINT
+{
+    PRIMITIVE_TRIANGLE,
+    PRIMITIVE_QUAD,
+    PRIMITIVE_CUBE,
+    PRIMITIVE_CYLINDER,
+    PRIMITIVE_PRISM,
+    PRIMITIVE_COUNT
+};
+
 static struct
 {
     Root32BitConstants m_RootConstants;
     PerFrameConstantBuffer m_PerFrameConstantBufferData[g_FrameCount];
     PerSceneConstantBuffer m_PerSceneConstantBufferData;
-    D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
-    ID3D12Resource *m_vertexBuffer;
-    ID3D12Resource *m_texture;
 
-    ID3D12Resource *m_PerSceneConstantBuffer;
-    UINT8 *m_pPerSceneCbvDataBegin;
-    ID3D12Resource *m_PerFrameConstantBuffer[g_FrameCount];
-    UINT8 *m_pCbvDataBegin[g_FrameCount];
+    D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
+    D3D12_INDEX_BUFFER_VIEW m_indexBufferView;
+    ID3D12Resource *m_vertexBuffer = nullptr;
+    ID3D12Resource *m_indexBuffer = nullptr;
+    UINT m_indexCount;
+
+    ID3D12Resource *m_texture = nullptr;
+    ID3D12Resource *m_PerSceneConstantBuffer = nullptr;
+    UINT8 *m_pPerSceneCbvDataBegin = nullptr;
+    ID3D12Resource *m_PerFrameConstantBuffer[g_FrameCount] = {};
+    UINT8 *m_pCbvDataBegin[g_FrameCount] = {};
 } graphics_resources;
 
 void WaitForFrameReady()
@@ -895,7 +909,7 @@ bool LoadAssets()
         pipeline_dx12.m_commandAllocators[0],
         pipeline_dx12.m_pipelineStates[0]));
 
-    // Create the vertex buffer.
+    // Create the vertex buffer
     ID3D12Resource *vertexBufferUpload;
     {
         // Define the geometry for a triangle.
@@ -948,6 +962,54 @@ bool LoadAssets()
         graphics_resources.m_vertexBufferView.BufferLocation = graphics_resources.m_vertexBuffer->GetGPUVirtualAddress();
         graphics_resources.m_vertexBufferView.StrideInBytes = sizeof(Vertex);
         graphics_resources.m_vertexBufferView.SizeInBytes = vertexBufferSize;
+    }
+
+    // create index buffer
+    ID3D12Resource *indexBufferUpload = nullptr;
+    {
+        UINT triangleIndices[] = {0, 1, 2};
+        const UINT indexBufferSize = sizeof(triangleIndices);
+
+
+        // Create index buffer in DEFAULT heap
+        HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize),
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            nullptr,
+            IID_PPV_ARGS(&graphics_resources.m_indexBuffer)));
+
+        // Create upload buffer
+        HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Buffer(indexBufferSize),
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&indexBufferUpload)));
+
+        UINT8 *pIndexDataBegin;
+        CD3DX12_RANGE readRange(0, 0);
+        indexBufferUpload->Map(0, &readRange, reinterpret_cast<void **>(&pIndexDataBegin));
+        memcpy(pIndexDataBegin, triangleIndices, indexBufferSize);
+        indexBufferUpload->Unmap(0, nullptr);
+
+        pipeline_dx12.m_commandList[0]->CopyBufferRegion(
+            graphics_resources.m_indexBuffer, 0,
+            indexBufferUpload, 0,
+            indexBufferSize);
+
+        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+            graphics_resources.m_indexBuffer,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_INDEX_BUFFER);
+        pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
+
+        graphics_resources.m_indexBufferView.BufferLocation = graphics_resources.m_indexBuffer->GetGPUVirtualAddress();
+        graphics_resources.m_indexBufferView.SizeInBytes = indexBufferSize;
+        graphics_resources.m_indexBufferView.Format = DXGI_FORMAT_R32_UINT;
+        graphics_resources.m_indexCount = 3;
     }
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE cpuStart(pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart());
@@ -1232,6 +1294,7 @@ bool LoadAssets()
         WaitForGpu();
     }
     vertexBufferUpload->Release();
+    indexBufferUpload->Release();
     textureUploadHeap->Release();
     return true;
 }
