@@ -242,7 +242,7 @@ bool PopulateCommandList()
 
     ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_mainHeap};
     pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
-
+    
     pipeline_dx12.m_commandList->SetGraphicsRoot32BitConstants(0, 12, &graphics_resources.m_RootConstants.partial_world, 0);
 
     D3D12_GPU_VIRTUAL_ADDRESS cbvAddress = graphics_resources.m_PerFrameConstantBuffer[sync_state.m_frameIndex]->GetGPUVirtualAddress();
@@ -387,12 +387,13 @@ static float g_fov_deg = 60.0f;
 // Update frame-based values.
 void Update()
 {
-    SDL_Log("Update: frameIndex=%u, fenceValues=[%llu, %llu, %llu], completed=%llu",
-            sync_state.m_frameIndex,
-            sync_state.m_fenceValues[0],
-            sync_state.m_fenceValues[1],
-            sync_state.m_fenceValues[2],
-            sync_state.m_fence->GetCompletedValue());
+    // debug: logging
+    // SDL_Log("Update: frameIndex=%u, fenceValues=[%llu, %llu, %llu], completed=%llu",
+    //         sync_state.m_frameIndex,
+    //         sync_state.m_fenceValues[0],
+    //         sync_state.m_fenceValues[1],
+    //         sync_state.m_fenceValues[2],
+    //         sync_state.m_fence->GetCompletedValue());
 
     // maybe put this calculation in update?
     DirectX::XMFLOAT4X4 world;
@@ -424,18 +425,18 @@ void Update()
     DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData.projection, DirectX::XMMatrixTranspose(projection));
 
     // DEBUG: Log what we're writing
-    static int debugFrame = 0;
-    if (debugFrame < 10)
-    {
-        SDL_Log("Frame %d: Writing to CBV at index %u", debugFrame, sync_state.m_frameIndex);
-        SDL_Log("  View matrix [0][0] = %f", graphics_resources.m_PerFrameConstantBufferData.view._11);
-        SDL_Log("  Projection matrix [0][0] = %f", graphics_resources.m_PerFrameConstantBufferData.projection._11);
-        debugFrame++;
-    }
+    // static int debugFrame = 0;
+    // if (debugFrame < 10)
+    // {
+    //     SDL_Log("Frame %d: Writing to CBV at index %u", debugFrame, sync_state.m_frameIndex);
+    //     SDL_Log("  View matrix [0][0] = %f", graphics_resources.m_PerFrameConstantBufferData.view._11);
+    //     SDL_Log("  Projection matrix [0][0] = %f", graphics_resources.m_PerFrameConstantBufferData.projection._11);
+    //     debugFrame++;
+    // }
 
     memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex],
-           &graphics_resources.m_PerFrameConstantBufferData,
-           sizeof(graphics_resources.m_PerFrameConstantBufferData));
+               &graphics_resources.m_PerFrameConstantBufferData,
+               sizeof(graphics_resources.m_PerFrameConstantBufferData));
 }
 
 int main(void)
@@ -694,7 +695,7 @@ int main(void)
             ImGui::EndCombo();
         }
 
-        if (ImGui::Checkbox("Vsync", (bool*)&g_liveConfigData.GraphicsSettings.vsync))
+        if (ImGui::Checkbox("Vsync", (bool *)&g_liveConfigData.GraphicsSettings.vsync))
         {
             SaveConfig(&g_liveConfigData);
         }
@@ -723,7 +724,7 @@ int main(void)
             program_state.window.ApplyWindowMode();
             window_request.applyWindowRequest = false;
         }
-        
+
         Update();
         Render((bool)g_liveConfigData.GraphicsSettings.vsync);
     }
