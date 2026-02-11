@@ -18,6 +18,7 @@ struct Vertex
     DirectX::XMFLOAT3 position;
     DirectX::XMFLOAT2 uv;
 };
+#include "mesh_data.h"
 
 struct PerFrameConstantBuffer
 {
@@ -128,12 +129,14 @@ static struct
     }
 } pipeline_dx12;
 
-struct Root32BitConstants
+struct PerDrawRootConstants
 {
-    DirectX::XMFLOAT4X4 partial_world;
+    DirectX::XMFLOAT4X4 world; // NOTE: changing this to XMFLOAT3x4 screws up rendering on faster gpu for some reason??????
+    static_assert(sizeof(world) == 16 * 4, "Dont change type of world matrix, it screws up everything on test bench for some reason (faster GPU)");
 };
+static_assert((sizeof(PerDrawRootConstants) <= 256), "Root32BitConstants size must be 256-bytes or smaller (64 DWORDS)");
 
-enum struct PrimitiveType : UINT
+enum PrimitiveType : unsigned long long
 {
     PRIMITIVE_TRIANGLE,
     PRIMITIVE_QUAD,
@@ -145,15 +148,15 @@ enum struct PrimitiveType : UINT
 
 static struct
 {
-    Root32BitConstants m_RootConstants;
+    PerDrawRootConstants m_RootConstants;
     PerFrameConstantBuffer m_PerFrameConstantBufferData[g_FrameCount];
     PerSceneConstantBuffer m_PerSceneConstantBufferData;
 
-    D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
-    D3D12_INDEX_BUFFER_VIEW m_indexBufferView;
-    ID3D12Resource *m_vertexBuffer = nullptr;
-    ID3D12Resource *m_indexBuffer = nullptr;
-    UINT m_indexCount;
+    D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView = {};
+    D3D12_INDEX_BUFFER_VIEW m_indexBufferView = {};
+    ID3D12Resource *m_vertexBuffer = {};
+    ID3D12Resource *m_indexBuffer = {};
+    UINT m_indexCount = {};
 
     ID3D12Resource *m_texture = nullptr;
     ID3D12Resource *m_PerSceneConstantBuffer = nullptr;
@@ -784,7 +787,7 @@ bool LoadAssets()
         srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 
         CD3DX12_ROOT_PARAMETER1 rootParameters[4];
-        rootParameters[0].InitAsConstants(16, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);                                           // root constants
+        rootParameters[0].InitAsConstants(sizeof(PerDrawRootConstants)/4, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);                   // root constants
         rootParameters[1].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL); // inline CBV
         rootParameters[2].InitAsDescriptorTable(1, &cbvRange, D3D12_SHADER_VISIBILITY_ALL);                                    // per frame CB
         rootParameters[3].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);
@@ -913,13 +916,9 @@ bool LoadAssets()
     ID3D12Resource *vertexBufferUpload;
     {
         // Define the geometry for a triangle.
-        Vertex triangleVertices[] =
-            {
-                {{0.0f, 0.25f, 0.0f}, {0.5f, 0.0f}},
-                {{0.25f, -0.25f, 0.0f}, {1.0f, 1.0f}},
-                {{-0.25f, -0.25f, 0.0f}, {0.0f, 1.0f}}};
+        const Vertex* vertices = kCubeVertices;
 
-        const UINT vertexBufferSize = sizeof(triangleVertices);
+        const UINT vertexBufferSize = sizeof(vertices);
 
         if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
                 &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
@@ -946,7 +945,7 @@ bool LoadAssets()
         CD3DX12_RANGE readRange(0, 0); // We do not intend to read from this resource on the CPU.
         if (!HRAssert(vertexBufferUpload->Map(0, &readRange, reinterpret_cast<void **>(&pVertexDataBegin))))
             return false;
-        memcpy(pVertexDataBegin, triangleVertices, vertexBufferSize);
+        memcpy(pVertexDataBegin, vertices, vertexBufferSize);
         vertexBufferUpload->Unmap(0, nullptr);
 
         pipeline_dx12.m_commandList[0]->CopyBufferRegion(graphics_resources.m_vertexBuffer, 0, vertexBufferUpload, 0, vertexBufferSize);
@@ -967,9 +966,8 @@ bool LoadAssets()
     // create index buffer
     ID3D12Resource *indexBufferUpload = nullptr;
     {
-        UINT triangleIndices[] = {0, 1, 2};
-        const UINT indexBufferSize = sizeof(triangleIndices);
-
+        const uint32_t* indices = kCubeIndices;
+        const UINT indexBufferSize = sizeof(indices);
 
         // Create index buffer in DEFAULT heap
         HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
@@ -992,7 +990,7 @@ bool LoadAssets()
         UINT8 *pIndexDataBegin;
         CD3DX12_RANGE readRange(0, 0);
         indexBufferUpload->Map(0, &readRange, reinterpret_cast<void **>(&pIndexDataBegin));
-        memcpy(pIndexDataBegin, triangleIndices, indexBufferSize);
+        memcpy(pIndexDataBegin, kCubeIndices, indexBufferSize);
         indexBufferUpload->Unmap(0, nullptr);
 
         pipeline_dx12.m_commandList[0]->CopyBufferRegion(
@@ -1009,7 +1007,7 @@ bool LoadAssets()
         graphics_resources.m_indexBufferView.BufferLocation = graphics_resources.m_indexBuffer->GetGPUVirtualAddress();
         graphics_resources.m_indexBufferView.SizeInBytes = indexBufferSize;
         graphics_resources.m_indexBufferView.Format = DXGI_FORMAT_R32_UINT;
-        graphics_resources.m_indexCount = 3;
+        graphics_resources.m_indexCount = kCubeIndexCount;
     }
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE cpuStart(pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart());

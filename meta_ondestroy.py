@@ -204,7 +204,7 @@ def get_category_comment(name):
     
     if clean_name in ['fence']:
         return "Release sync objects"
-    elif clean_name in ['texture', 'vertexBuffer', 'depthStencil']:
+    elif clean_name in ['texture', 'vertexBuffer', 'indexBuffer', 'depthStencil']:
         return "Release graphics resources"
     elif clean_name in ['rootSignature', 'pipelineState', 'commandList']:
         return "Release pipeline objects"
@@ -264,11 +264,11 @@ def main():
     with open(output_path, 'w') as f:
         f.write(cleanup_code)
     
-    print(f"\n✓ Generated cleanup code written to: {output_path}")
-    print("\nPreview:")
-    print("=" * 80)
-    print(cleanup_code)
-    print("=" * 80)
+    print(f"\n✓ Generated cleanup code written to: {output_path}")    
+    # print("\nPreview:")
+    # print("=" * 80)
+    # print(cleanup_code)
+    # print("=" * 80)
 
 if __name__ == "__main__":
     main()

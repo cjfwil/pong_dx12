@@ -211,7 +211,6 @@ struct window_state
         viewport_state.m_aspectRatio = (float)w / (float)h;
 
         m_currentMode = newMode;
-        // m_modeChanged = false;
 
         SDL_Log("Window mode applied: %dx%d mode=%d", w, h, newMode);
 
@@ -313,11 +312,10 @@ bool PopulateCommandList()
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ClearRenderTargetView(rtvHandle, g_rtClearValue.Color, 0, nullptr);
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
-    // Draw geometry (same for both)
+    // Draw geometry (same for both MSAA)
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, 16, &graphics_resources.m_RootConstants.partial_world, 0);
-    // pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawInstanced(3, 1, 0, 0);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants)/4, &graphics_resources.m_RootConstants.world, 0);
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_indexBufferView);
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_indexCount, 1, 0, 0, 0);
 
@@ -364,33 +362,26 @@ bool PopulateCommandList()
 // Render the scene.
 void Render(bool vsync = true)
 {
-    // Record all the commands we need to render the scene into the command list.
     if (!PopulateCommandList())
-    {
         log_error("A command failed to be populated");
-    }
 
-    // Execute the command list.
     ID3D12CommandList *ppCommandLists[] = {pipeline_dx12.m_commandList[sync_state.m_frameIndex]};
     pipeline_dx12.m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
-    // Present the frame.
     UINT syncInterval = (vsync) ? 1 : 0;
     UINT syncFlags = (vsync) ? 0 : DXGI_PRESENT_ALLOW_TEARING;
     HRAssert(pipeline_dx12.m_swapChain->Present(syncInterval, syncFlags));
-    // MoveToNextFrame();
 }
 
 static float g_r = 0.7f;
 static float g_y = 0.0f;
 static float g_fov_deg = 60.0f;
 
-// Update frame-based values.
 void Update()
 {
     DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
     DirectX::XMStoreFloat4x4(
-        &graphics_resources.m_RootConstants.partial_world,
+        &graphics_resources.m_RootConstants.world,
         DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationAxis(axis, (float)program_state.timing.upTime)));
 
     // DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r * sinf(program_state.timing.upTime), g_y, g_r * cosf(program_state.timing.upTime), 0.0f);
@@ -405,7 +396,7 @@ void Update()
         0.01f,
         1000.0f);
 
-    // TRANSPOSE before storing!
+    // TRANSPOSE before storing because dx shader does not use row major by default
     DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].view, DirectX::XMMatrixTranspose(view));
     DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].projection, DirectX::XMMatrixTranspose(projection));
 
@@ -510,7 +501,6 @@ int main(void)
         ImGui::NewFrame();
 
         ImGui::Begin("Settings");
-        // float test;
         ImGui::SliderFloat("r", &g_r, 0.3f, 10.0f);
         ImGui::SliderFloat("y", &g_y, -10.0f, 10.0f);
         ImGui::SliderFloat("fov_deg", &g_fov_deg, 60.0f, 120.0f);
@@ -543,7 +533,6 @@ int main(void)
 
         if (ImGui::BeginCombo("Anti-aliasing", currentSelection))
         {
-            // Always show 1x (disabled) option
             {
                 bool isSelected = (msaa_state.m_currentSampleIndex == 0);
                 if (ImGui::Selectable("Disabled (1x)", isSelected))
@@ -559,7 +548,7 @@ int main(void)
             }
 
             // Show MSAA options
-            for (UINT i = 1; i < 4; i++) // Start from 1 to skip 1x
+            for (UINT i = 1; i < 4; i++)
             {
                 bool isSelected = (msaa_state.m_currentSampleIndex == i);
                 bool isSupported = msaa_state.m_supported[i];
