@@ -122,7 +122,7 @@ static struct
         // re-recording.
         UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
         HRAssert(
-            pipeline_dx12.m_commandList->Reset(
+            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->Reset(
                 pipeline_dx12.m_commandAllocators[sync_state.m_frameIndex],
                 pipeline_dx12.m_pipelineStates[psoIndex]));
     }
@@ -878,9 +878,22 @@ bool LoadAssets()
         }
     }
 
-    // Create the command list.
-    if (!HRAssert(pipeline_dx12.m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, pipeline_dx12.m_commandAllocators[sync_state.m_frameIndex], pipeline_dx12.m_pipelineStates[0], IID_PPV_ARGS(&pipeline_dx12.m_commandList))))
-        return false;
+    // Create the command lists
+    for (UINT i = 0; i < g_FrameCount; ++i)
+    {
+        HRAssert(
+            pipeline_dx12.m_device->CreateCommandList(
+                0, D3D12_COMMAND_LIST_TYPE_DIRECT,
+                pipeline_dx12.m_commandAllocators[i],
+                pipeline_dx12.m_pipelineStates[0],
+                IID_PPV_ARGS(&pipeline_dx12.m_commandList[i])));
+        HRAssert(pipeline_dx12.m_commandList[i]->Close());
+    }
+
+    // Reset the first command list for setup recording
+    HRAssert(pipeline_dx12.m_commandList[0]->Reset(
+        pipeline_dx12.m_commandAllocators[0],
+        pipeline_dx12.m_pipelineStates[0]));
 
     // Create the vertex buffer.
     ID3D12Resource *vertexBufferUpload;
@@ -922,14 +935,14 @@ bool LoadAssets()
         memcpy(pVertexDataBegin, triangleVertices, vertexBufferSize);
         vertexBufferUpload->Unmap(0, nullptr);
 
-        pipeline_dx12.m_commandList->CopyBufferRegion(graphics_resources.m_vertexBuffer, 0, vertexBufferUpload, 0, vertexBufferSize);
+        pipeline_dx12.m_commandList[0]->CopyBufferRegion(graphics_resources.m_vertexBuffer, 0, vertexBufferUpload, 0, vertexBufferSize);
 
         // transition to vertex buffer state
         auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
             graphics_resources.m_vertexBuffer,
             D3D12_RESOURCE_STATE_COPY_DEST,
             D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
+        pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
 
         // Initialize the vertex buffer view.
         graphics_resources.m_vertexBufferView.BufferLocation = graphics_resources.m_vertexBuffer->GetGPUVirtualAddress();
@@ -1159,7 +1172,7 @@ bool LoadAssets()
         }
 
         // Copy ALL mip levels to the GPU
-        UpdateSubresources(pipeline_dx12.m_commandList,
+        UpdateSubresources(pipeline_dx12.m_commandList[0],
                            graphics_resources.m_texture,
                            textureUploadHeap,
                            0, 0,
@@ -1170,7 +1183,7 @@ bool LoadAssets()
             graphics_resources.m_texture,
             D3D12_RESOURCE_STATE_COPY_DEST,
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier);
+        pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
 
         UINT increment = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(
             D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -1189,9 +1202,9 @@ bool LoadAssets()
     }
 
     // Close the command list and execute it to begin the initial GPU setup.
-    if (!HRAssert(pipeline_dx12.m_commandList->Close()))
+    if (!HRAssert(pipeline_dx12.m_commandList[0]->Close()))
         return false;
-    ID3D12CommandList *ppCommandLists[] = {pipeline_dx12.m_commandList};
+    ID3D12CommandList *ppCommandLists[] = {pipeline_dx12.m_commandList[0]};
     pipeline_dx12.m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
     // Create synchronization objects and wait until assets have been uploaded to the GPU.

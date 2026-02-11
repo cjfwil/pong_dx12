@@ -238,13 +238,13 @@ bool PopulateCommandList()
 {
     pipeline_dx12.ResetCommandObjects();
 
-    pipeline_dx12.m_commandList->SetGraphicsRootSignature(pipeline_dx12.m_rootSignature);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRootSignature(pipeline_dx12.m_rootSignature);
 
     ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_mainHeap};
-    pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
     D3D12_GPU_VIRTUAL_ADDRESS cbvAddress = graphics_resources.m_PerFrameConstantBuffer[sync_state.m_frameIndex]->GetGPUVirtualAddress();
-    pipeline_dx12.m_commandList->SetGraphicsRootConstantBufferView(1, cbvAddress);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRootConstantBufferView(1, cbvAddress);
 
     // Set per - scene CBV(root parameter 2 - descriptor table)
     UINT descriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -253,17 +253,17 @@ bool PopulateCommandList()
         pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
         DescriptorIndices::PER_SCENE_CBV, // Per-scene CBV is after all per-frame CBVs
         descriptorSize);
-    pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(2, perSceneCbvHandle);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRootDescriptorTable(2, perSceneCbvHandle);
 
     // texture handle
     CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(
         pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
         DescriptorIndices::TEXTURE_SRV, // SRV is after all CBVs
         descriptorSize);
-    pipeline_dx12.m_commandList->SetGraphicsRootDescriptorTable(3, srvHandle);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRootDescriptorTable(3, srvHandle);
 
-    pipeline_dx12.m_commandList->RSSetViewports(1, &pipeline_dx12.m_viewport);
-    pipeline_dx12.m_commandList->RSSetScissorRects(1, &pipeline_dx12.m_scissorRect);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->RSSetViewports(1, &pipeline_dx12.m_viewport);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->RSSetScissorRects(1, &pipeline_dx12.m_scissorRect);
 
     // Choose RTV and DSV based on MSAA state
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle;
@@ -287,7 +287,7 @@ bool PopulateCommandList()
             pipeline_dx12.m_renderTargets[sync_state.m_frameIndex],
             D3D12_RESOURCE_STATE_PRESENT,
             D3D12_RESOURCE_STATE_RESOLVE_DEST);
-        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier1);
+        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ResourceBarrier(1, &barrier1);
     }
     else
     {
@@ -305,34 +305,34 @@ bool PopulateCommandList()
             renderTarget,
             D3D12_RESOURCE_STATE_PRESENT,
             D3D12_RESOURCE_STATE_RENDER_TARGET);
-        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier1);
+        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ResourceBarrier(1, &barrier1);
     }
 
     // Common rendering operations
-    pipeline_dx12.m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
-    pipeline_dx12.m_commandList->ClearRenderTargetView(rtvHandle, g_rtClearValue.Color, 0, nullptr);
-    pipeline_dx12.m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ClearRenderTargetView(rtvHandle, g_rtClearValue.Color, 0, nullptr);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
     // Draw geometry (same for both)
-    pipeline_dx12.m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    pipeline_dx12.m_commandList->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
-    pipeline_dx12.m_commandList->SetGraphicsRoot32BitConstants(0, 12, &graphics_resources.m_RootConstants.partial_world, 0);
-    pipeline_dx12.m_commandList->DrawInstanced(3, 1, 0, 0);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, 12, &graphics_resources.m_RootConstants.partial_world, 0);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawInstanced(3, 1, 0, 0);
 
     // Post-draw operations
     if (msaa_state.m_enabled)
     {
         // MSAA: Resolve to back buffer
         auto barrier2 = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
-        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier2);
+        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ResourceBarrier(1, &barrier2);
 
-        pipeline_dx12.m_commandList->ResolveSubresource(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], 0, pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], 0, DXGI_FORMAT_R8G8B8A8_UNORM);
+        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ResolveSubresource(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], 0, pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], 0, DXGI_FORMAT_R8G8B8A8_UNORM);
 
         auto barrier3 = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RESOLVE_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
-        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier3);
+        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ResourceBarrier(1, &barrier3);
 
         auto barrier4 = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RESOLVE_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
-        pipeline_dx12.m_commandList->ResourceBarrier(1, &barrier4);
+        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ResourceBarrier(1, &barrier4);
     }
 
     // ImGui rendering (always to back buffer)
@@ -340,21 +340,21 @@ bool PopulateCommandList()
         pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(),
         (INT)sync_state.m_frameIndex,
         pipeline_dx12.m_rtvDescriptorSize);
-    pipeline_dx12.m_commandList->OMSetRenderTargets(1, &backBufferRtvHandle, FALSE, nullptr);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->OMSetRenderTargets(1, &backBufferRtvHandle, FALSE, nullptr);
 
     ImGui::Render();
     ID3D12DescriptorHeap *imguiHeaps[] = {g_imguiHeap.Heap};
-    pipeline_dx12.m_commandList->SetDescriptorHeaps(_countof(imguiHeaps), imguiHeaps);
-    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), pipeline_dx12.m_commandList);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetDescriptorHeaps(_countof(imguiHeaps), imguiHeaps);
+    ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), pipeline_dx12.m_commandList[sync_state.m_frameIndex]);
 
     // Final transition to PRESENT
     auto finalBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
         pipeline_dx12.m_renderTargets[sync_state.m_frameIndex],
         D3D12_RESOURCE_STATE_RENDER_TARGET,
         D3D12_RESOURCE_STATE_PRESENT);
-    pipeline_dx12.m_commandList->ResourceBarrier(1, &finalBarrier);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ResourceBarrier(1, &finalBarrier);
 
-    if (!HRAssert(pipeline_dx12.m_commandList->Close()))
+    if (!HRAssert(pipeline_dx12.m_commandList[sync_state.m_frameIndex]->Close()))
         return false;
     return true;
 }
@@ -369,7 +369,7 @@ void Render(bool vsync = true)
     }
 
     // Execute the command list.
-    ID3D12CommandList *ppCommandLists[] = {pipeline_dx12.m_commandList};
+    ID3D12CommandList *ppCommandLists[] = {pipeline_dx12.m_commandList[sync_state.m_frameIndex]};
     pipeline_dx12.m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
     // Present the frame.
@@ -397,7 +397,7 @@ void Update()
     // maybe put this calculation in update?
     DirectX::XMFLOAT4X4 world;
 
-    DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+    DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);    
     // DirectX::XMStoreFloat4x4(&world, DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationAxis(axis, (float)program_state.timing.upTime)));
     // for (int j = 0; j < 3; ++j)
     //     for (int i = 0; i < 4; ++i)

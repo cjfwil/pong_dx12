@@ -15,16 +15,6 @@ void OnDestroy()
         sync_state.m_fence = nullptr;
     }
 
-    // Release other resources
-    for (UINT i = 0; i < g_FrameCount; i++)
-    {
-        if (graphics_resources.m_PerFrameConstantBuffer[i])
-        {
-            graphics_resources.m_PerFrameConstantBuffer[i]->Release();
-            graphics_resources.m_PerFrameConstantBuffer[i] = nullptr;
-        }
-    }
-
     // Release graphics resources
     if (pipeline_dx12.m_depthStencil)
     {
@@ -43,10 +33,13 @@ void OnDestroy()
     }
 
     // Release pipeline objects
-    if (pipeline_dx12.m_commandList)
+    for (UINT i = 0; i < g_FrameCount; i++)
     {
-        pipeline_dx12.m_commandList->Release();
-        pipeline_dx12.m_commandList = nullptr;
+        if (pipeline_dx12.m_commandList[i])
+        {
+            pipeline_dx12.m_commandList[i]->Release();
+            pipeline_dx12.m_commandList[i] = nullptr;
+        }
     }
     if (pipeline_dx12.m_rootSignature)
     {
@@ -141,6 +134,19 @@ void OnDestroy()
     {
         pipeline_dx12.m_msaaDepthStencil->Release();
         pipeline_dx12.m_msaaDepthStencil = nullptr;
+    }
+    if (graphics_resources.m_PerSceneConstantBuffer)
+    {
+        graphics_resources.m_PerSceneConstantBuffer->Release();
+        graphics_resources.m_PerSceneConstantBuffer = nullptr;
+    }
+    for (UINT i = 0; i < g_FrameCount; i++)
+    {
+        if (graphics_resources.m_PerFrameConstantBuffer[i])
+        {
+            graphics_resources.m_PerFrameConstantBuffer[i]->Release();
+            graphics_resources.m_PerFrameConstantBuffer[i] = nullptr;
+        }
     }
 
     // Close fence event handle
