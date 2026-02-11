@@ -316,7 +316,7 @@ bool PopulateCommandList()
     // Draw geometry (same for both)
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, 12, &graphics_resources.m_RootConstants.partial_world, 0);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, 16, &graphics_resources.m_RootConstants.partial_world, 0);
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawInstanced(3, 1, 0, 0);
 
     // Post-draw operations
@@ -386,26 +386,10 @@ static float g_fov_deg = 60.0f;
 // Update frame-based values.
 void Update()
 {
-    // debug: logging
-    // SDL_Log("Update: frameIndex=%u, fenceValues=[%llu, %llu, %llu], completed=%llu",
-    //         sync_state.m_frameIndex,
-    //         sync_state.m_fenceValues[0],
-    //         sync_state.m_fenceValues[1],
-    //         sync_state.m_fenceValues[2],
-    //         sync_state.m_fence->GetCompletedValue());
-
-    // maybe put this calculation in update?
-
-    DirectX::XMFLOAT4X4 world;
-    DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);    
-    // DirectX::XMStoreFloat4x4(&world, DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationAxis(axis, (float)program_state.timing.upTime)));
-    // for (int j = 0; j < 3; ++j)
-    //     for (int i = 0; i < 4; ++i)
-    //         graphics_resources.m_RootConstants.partial_world.m[j][i] = world.m[j][i];
-    graphics_resources.m_RootConstants.partial_world = DirectX::XMFLOAT3X4(
-        1, 0, 0, 0,
-        0, 1, 0, 0,
-        0, 0, 1, 0);
+    DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.2f, 1.0f, 0.0f);
+    DirectX::XMStoreFloat4x4(
+        &graphics_resources.m_RootConstants.partial_world,
+        DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationAxis(axis, (float)program_state.timing.upTime)));
 
     // DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r * sinf(program_state.timing.upTime), g_y, g_r * cosf(program_state.timing.upTime), 0.0f);
     DirectX::XMVECTOR eye = DirectX::XMVectorSet(0, g_y, g_r, 0.0f);
@@ -422,16 +406,6 @@ void Update()
     // TRANSPOSE before storing!
     DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].view, DirectX::XMMatrixTranspose(view));
     DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].projection, DirectX::XMMatrixTranspose(projection));
-
-    // DEBUG: Log what we're writing
-    // static int debugFrame = 0;
-    // if (debugFrame < 10)
-    // {
-    //     SDL_Log("Frame %d: Writing to CBV at index %u", debugFrame, sync_state.m_frameIndex);
-    //     SDL_Log("  View matrix [0][0] = %f", graphics_resources.m_PerFrameConstantBufferData.view._11);
-    //     SDL_Log("  Projection matrix [0][0] = %f", graphics_resources.m_PerFrameConstantBufferData.projection._11);
-    //     debugFrame++;
-    // }
 
     memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex],
            &graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex],
@@ -727,12 +701,6 @@ int main(void)
         Update();
         Render((bool)g_liveConfigData.GraphicsSettings.vsync);
         MoveToNextFrame();
-
-        // WaitForFrameReady();   // Wait for frame to be ready
-        // Update();              // Write to buffers
-        // Render();              // Submit work + Present()
-        // SignalFrameComplete(); // Signal this frame done
-        // AdvanceFrameIndex();   // Get next frame index (works now because Present() was called)
     }
     g_imguiHeap.Destroy();
     OnDestroy();

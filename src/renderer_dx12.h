@@ -130,7 +130,7 @@ static struct
 
 struct Root32BitConstants
 {
-    DirectX::XMFLOAT3X4 partial_world;
+    DirectX::XMFLOAT4X4 partial_world;
 };
 
 static struct
@@ -770,7 +770,7 @@ bool LoadAssets()
         srvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 
         CD3DX12_ROOT_PARAMETER1 rootParameters[4];
-        rootParameters[0].InitAsConstants(12, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);                                           // root constants
+        rootParameters[0].InitAsConstants(16, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);                                           // root constants
         rootParameters[1].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL); // inline CBV
         rootParameters[2].InitAsDescriptorTable(1, &cbvRange, D3D12_SHADER_VISIBILITY_ALL);                                    // per frame CB
         rootParameters[3].InitAsDescriptorTable(1, &srvRange, D3D12_SHADER_VISIBILITY_PIXEL);

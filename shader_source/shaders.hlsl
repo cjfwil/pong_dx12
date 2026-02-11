@@ -1,7 +1,7 @@
 // Root constants - register(b0) - per-draw world matrix
 cbuffer PerDrawRootConstants : register(b0)
 {
-    float3x4 partial_world;
+    float4x4 partial_world;
 };
 
 // per frame constant buffer, updated every frame
