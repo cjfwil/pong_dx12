@@ -132,7 +132,7 @@ struct Root32BitConstants
 
 static struct
 {
-    Root32BitConstants m_RootConstants[g_FrameCount];
+    Root32BitConstants m_RootConstants;
     PerFrameConstantBuffer m_PerFrameConstantBufferData[g_FrameCount];
     PerSceneConstantBuffer m_PerSceneConstantBufferData;
     D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;

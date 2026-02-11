@@ -47,7 +47,7 @@ PSInput VSMain(VSInput input)
         float4(0, 0, 0, 1)
     );
 
-    // position = mul(position, world);
+    position = mul(position, world);
     position = mul(position, view);
     position = mul(position, projection);
 
