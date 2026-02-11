@@ -395,8 +395,8 @@ void Update()
     //         sync_state.m_fence->GetCompletedValue());
 
     // maybe put this calculation in update?
-    DirectX::XMFLOAT4X4 world;
 
+    DirectX::XMFLOAT4X4 world;
     DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);    
     // DirectX::XMStoreFloat4x4(&world, DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationAxis(axis, (float)program_state.timing.upTime)));
     // for (int j = 0; j < 3; ++j)
@@ -725,7 +725,7 @@ int main(void)
         }
 
         Update();
-        Render();
+        Render((bool)g_liveConfigData.GraphicsSettings.vsync);
         MoveToNextFrame();
 
         // WaitForFrameReady();   // Wait for frame to be ready
