@@ -26,59 +26,35 @@ SamplerState g_sampler : register(s0);
 struct VSInput
 {
     float4 position : POSITION;
-    float3 normal : NORMAL; // ADD THIS – your mesh generator must provide normals
-    float2 uv : TEXCOORD;   // optional, not used for triplanar but keep for other uses
+    float3 norm : NORMAL;
+    float2 uv : TEXCOORD;
 };
 
 struct PSInput
 {
-    float4 position : SV_POSITION;
-    float3 worldPos : POSITION2; // world position
-    float3 normal : NORMAL;      // world normal
-    float2 uv : TEXCOORD;        // optional
+    float4 position : SV_POSITION;    
+    float3 normal : NORMAL;
+    float2 uv : TEXCOORD;
 };
 
 PSInput VSMain(VSInput input)
 {
     PSInput result;
+    float4 position = input.position;
 
-    float4 worldPosition = mul(input.position, world); // row‑major – note order!
-    result.position = mul(mul(worldPosition, view), projection);
-    result.worldPos = worldPosition.xyz;
+    position = mul(position, world);
+    position = mul(position, view);
+    position = mul(position, projection);
 
-    // Transform normal to world space (no translation, only rotation/scale)
-    result.normal = normalize(mul(input.normal, (float3x3)world));
+    result.position = position;
+    result.normal = input.norm;
+    result.uv = input.uv;
 
-    result.uv = input.uv; // pass through if needed
     return result;
 }
 
-//todo: expose?
-static const float g_Tiling = 1.0f;         // texels per world metre (increase = more repeats)
-static const float g_BlendSharpness = 4.0f; // higher = sharper blend between axes
-
-float4 SampleTriplanar(Texture2D tex, SamplerState sam, float3 worldPos, float3 normal, float tiling)
-{    
-    float3 wp = worldPos * tiling;
- 
-    float4 colX = tex.Sample(sam, wp.yz); // YZ plane (facing ±X)
-    float4 colY = tex.Sample(sam, wp.xz); // XZ plane (facing ±Y)
-    float4 colZ = tex.Sample(sam, wp.xy); // XY plane (facing ±Z)
-
-    // Compute blend weights from absolute normal
-    float3 blend = abs(normal);
-    blend = pow(blend, g_BlendSharpness);
-    blend /= (blend.x + blend.y + blend.z); // normalise
-
-    return colX * blend.x + colY * blend.y + colZ * blend.z;
-}
-
 float4 PSMain(PSInput input) : SV_TARGET
-{    
-    float3 worldPos = input.worldPos;
-    float3 normal = input.normal;
-
-    float4 texColor = SampleTriplanar(g_texture, g_sampler, worldPos, normal, g_Tiling);
-    float4 final = texColor * ambient_colour;
-    return final;
+{
+    float4 color = g_texture.Sample(g_sampler, input.uv) * ambient_colour;
+    return color;
 }
