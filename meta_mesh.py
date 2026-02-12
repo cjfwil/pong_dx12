@@ -1,9 +1,13 @@
 #!/usr/bin/env python3
 """
-meta_mesh.py – Generate mesh_data.h with primitive geometry.
+meta_mesh.py – Generate mesh_data.h with primitive geometry + NORMALS.
 
-Parses PRIMITIVES list, runs each generator, writes vertex/index arrays,
-enum, lookup table, and display names. Now uses common.py.
+Now outputs:
+    position (float3)
+    normal   (float3)   ← NEW
+    uv       (float2)
+
+All generators compute correct outward normals.
 """
 
 import math
@@ -21,14 +25,36 @@ except ImportError:
     import common
 
 # ----------------------------------------------------------------------
-# Geometry definitions (unchanged from original meta_mesh.py)
+# Geometry definitions – Vertex now includes normal
 # ----------------------------------------------------------------------
-Vertex = namedtuple('Vertex', ['position', 'uv'])
+Vertex = namedtuple('Vertex', ['position', 'normal', 'uv'])
 Vec3 = namedtuple('Vec3', ['x', 'y', 'z'])
 Vec2 = namedtuple('Vec2', ['x', 'y'])
 
+def normalize(v):
+    """Return normalized Vec3."""
+    length = math.sqrt(v.x*v.x + v.y*v.y + v.z*v.z)
+    if length == 0:
+        return Vec3(0,0,0)
+    return Vec3(v.x/length, v.y/length, v.z/length)
+
+def cross(a, b):
+    """Cross product of two Vec3."""
+    return Vec3(
+        a.y*b.z - a.z*b.y,
+        a.z*b.x - a.x*b.z,
+        a.x*b.y - a.y*b.x
+    )
+
+def sub(a, b):
+    """a - b."""
+    return Vec3(a.x-b.x, a.y-b.y, a.z-b.z)
+
+# ----------------------------------------------------------------------
+# Cube
+# ----------------------------------------------------------------------
 def gen_cube():
-    """24 vertices, 36 indices."""
+    """24 vertices, 36 indices. Hard edges – one normal per face."""
     vertices = []
     indices = []
     s = 0.5
@@ -37,24 +63,42 @@ def gen_cube():
         Vec3(-s,  s, -s), Vec3( s,  s, -s), Vec3( s,  s,  s), Vec3(-s,  s,  s)
     ]
     uvs = [Vec2(0,1), Vec2(1,1), Vec2(1,0), Vec2(0,0)]
+
+    # Face corner indices (order matters for CCW winding)
     faces = [
-        ([0,1,2,3], uvs), ([7,6,5,4], uvs), ([2,6,7,3], uvs),
-        ([0,4,5,1], uvs), ([3,7,4,0], uvs), ([6,2,1,5], uvs)
+        ([0,1,2,3], uvs),   # bottom (-Y)
+        ([7,6,5,4], uvs),   # top    (+Y)
+        ([2,6,7,3], uvs),   # right? we compute normals dynamically to be safe
+        ([0,4,5,1], uvs),   # left
+        ([3,7,4,0], uvs),   # front
+        ([6,2,1,5], uvs)    # back
     ]
+
     base = 0
     for corner_idxs, face_uvs in faces:
+        # Compute face normal from first three corners (CCW)
+        p0 = corners[corner_idxs[0]]
+        p1 = corners[corner_idxs[1]]
+        p2 = corners[corner_idxs[2]]
+        normal = normalize(cross(sub(p1, p0), sub(p2, p0)))
         for i in range(4):
-            vertices.append(Vertex(corners[corner_idxs[i]], face_uvs[i]))
+            vertices.append(Vertex(
+                position = corners[corner_idxs[i]],
+                normal   = normal,
+                uv       = face_uvs[i]
+            ))
         indices.extend([base+0, base+1, base+2, base+0, base+2, base+3])
         base += 4
     return vertices, indices
 
+# ----------------------------------------------------------------------
+# Cylinder
+# ----------------------------------------------------------------------
 def gen_cylinder(slices):
     """
-    Generate a cylinder mesh (radius=0.5, height=1.0).
-    - sides: correct UVs with seam duplicated (u from 0 to 1, v from 0 to 1)
-    - caps: planar UV mapping (no radial distortion)
-    - winding: counter‑clockwise when viewed from outside.
+    Cylinder radius 0.5, height 1.0.
+    - Side: smooth normals (radial)
+    - Caps: flat normals (0,±1,0)
     """
     vertices = []
     indices = []
@@ -65,34 +109,53 @@ def gen_cylinder(slices):
 
     # --- centers (caps) ---
     bottom_center_idx = len(vertices)
-    vertices.append(Vertex(Vec3(0, -half_h, 0), Vec2(0.5, 0.5)))  # bottom center
+    vertices.append(Vertex(
+        Vec3(0, -half_h, 0),
+        Vec3(0, -1, 0),          # normal points down
+        Vec2(0.5, 0.5)
+    ))
     top_center_idx = len(vertices)
-    vertices.append(Vertex(Vec3(0,  half_h, 0), Vec2(0.5, 0.5)))  # top center
+    vertices.append(Vertex(
+        Vec3(0,  half_h, 0),
+        Vec3(0,  1, 0),          # normal points up
+        Vec2(0.5, 0.5)
+    ))
 
-    # --- SIDE VERTICES -------------------------------------------------
-    # Interleaved bottom/top vertices for the side wall.
-    # We use slices+1 vertices per ring to create a clean seam at u=1.0.
-    side_start = len(vertices)  # first side vertex (bottom of slice 0)
-
+    # --- SIDE VERTICES (smooth normals) ---
+    side_start = len(vertices)
     for i in range(slices + 1):
-        u = i / slices                     # 0.0 ... 1.0
+        u = i / slices
         angle = i * (2.0 * math.pi / slices)
         x = radius * math.cos(angle)
         z = radius * math.sin(angle)
+        # radial normal (pointing outward)
+        n = normalize(Vec3(x, 0, z))
 
-        # bottom vertex (y = -half_h)
-        vertices.append(Vertex(Vec3(x, -half_h, z), Vec2(u, 0.0)))
-        # top vertex    (y =  half_h)
-        vertices.append(Vertex(Vec3(x,  half_h, z), Vec2(u, 1.0)))
+        # bottom ring
+        vertices.append(Vertex(
+            Vec3(x, -half_h, z),
+            n,
+            Vec2(u, 0.0)
+        ))
+        # top ring
+        vertices.append(Vertex(
+            Vec3(x,  half_h, z),
+            n,
+            Vec2(u, 1.0)
+        ))
 
-    # --- CAP VERTICES (separate, with planar UVs) --------------------
+    # --- CAP VERTICES (flat normals, planar UVs) ---
     bottom_cap_start = len(vertices)
     for i in range(slices + 1):
         angle = i * (2.0 * math.pi / slices)
         x = radius * math.cos(angle)
         z = radius * math.sin(angle)
         uv = Vec2((x / radius + 1) * 0.5, (z / radius + 1) * 0.5)
-        vertices.append(Vertex(Vec3(x, -half_h, z), uv))
+        vertices.append(Vertex(
+            Vec3(x, -half_h, z),
+            Vec3(0, -1, 0),
+            uv
+        ))
 
     top_cap_start = len(vertices)
     for i in range(slices + 1):
@@ -100,84 +163,96 @@ def gen_cylinder(slices):
         x = radius * math.cos(angle)
         z = radius * math.sin(angle)
         uv = Vec2((x / radius + 1) * 0.5, (z / radius + 1) * 0.5)
-        vertices.append(Vertex(Vec3(x,  half_h, z), uv))
+        vertices.append(Vertex(
+            Vec3(x,  half_h, z),
+            Vec3(0,  1, 0),
+            uv
+        ))
 
-    # --- SIDE QUADS ----------------------------------------------------
-    # Two triangles per quad, both CCW when viewed from outside.
+    # --- INDICES (same as before) ---
+    # side quads
     for i in range(slices):
-        # indices into the interleaved side vertices
         b0 = side_start + i * 2
         b1 = side_start + (i + 1) * 2
         t0 = b0 + 1
         t1 = b1 + 1
+        indices.extend([b0, t1, b1, b0, t0, t1])
 
-        # Triangle 1: (b0, b1, t1)
-        indices.append(b0)
-        indices.append(t1)
-        indices.append(b1)
-
-        # Triangle 2: (b0, t1, t0)
-        indices.append(b0)
-        indices.append(t0)
-        indices.append(t1)
-
-    # --- BOTTOM CAP (triangle fan) ------------------------------------
-    # Outward normal = -y. Viewed from below, CCW = (center, b0, b1)
+    # bottom cap (triangle fan)
     for i in range(slices):
         c0 = bottom_cap_start + i
         c1 = bottom_cap_start + i + 1
-        indices.append(bottom_center_idx)
-        indices.append(c0)
-        indices.append(c1)
+        indices.extend([bottom_center_idx, c0, c1])
 
-    # --- TOP CAP (triangle fan) ---------------------------------------
-    # Outward normal = +y. Viewed from above, CCW = (center, c1, c0)
+    # top cap (triangle fan)
     for i in range(slices):
         c0 = top_cap_start + i
         c1 = top_cap_start + i + 1
-        indices.append(top_center_idx)
-        indices.append(c1)
-        indices.append(c0)
+        indices.extend([top_center_idx, c1, c0])
 
     return vertices, indices
 
+# ----------------------------------------------------------------------
+# Triangular Prism
+# ----------------------------------------------------------------------
 def gen_prism():
-    """Equilateral triangular prism."""
-    vertices, indices = [], []
-    radius, half_h = 0.5, 0.5
+    """Equilateral triangular prism. Hard edges – one normal per face."""
+    vertices = []
+    indices = []
+    radius = 0.5
+    half_h = 0.5
     angles = [math.pi/2, 7*math.pi/6, 11*math.pi/6]
     bottom_tri = [Vec3(radius*math.cos(a), -half_h, radius*math.sin(a)) for a in angles]
     top_tri    = [Vec3(radius*math.cos(a),  half_h, radius*math.sin(a)) for a in angles]
     bottom_uvs = [Vec2(0,0), Vec2(1,0), Vec2(0.5,1)]
-    # bottom face
+    top_uvs    = [Vec2(0,0), Vec2(1,0), Vec2(0.5,1)]   # planar mapping
+
+    # --- bottom face (normal -Y) ---
     bottom_start = len(vertices)
+    n_bottom = Vec3(0, -1, 0)
     for i in range(3):
-        vertices.append(Vertex(bottom_tri[i], bottom_uvs[i]))
+        vertices.append(Vertex(bottom_tri[i], n_bottom, bottom_uvs[i]))
     indices.extend([bottom_start, bottom_start+1, bottom_start+2])
-    # top face
+
+    # --- top face (normal +Y) ---
     top_start = len(vertices)
+    n_top = Vec3(0, 1, 0)
     for i in range(3):
-        vertices.append(Vertex(top_tri[i], bottom_uvs[i]))
-    indices.extend([top_start, top_start+2, top_start+1])
-    # side faces
+        vertices.append(Vertex(top_tri[i], n_top, top_uvs[i]))
+    indices.extend([top_start, top_start+2, top_start+1])   # reverse winding
+
+    # --- side faces (each is a quad, outward normal) ---
     for e in range(3):
-        n = (e+1)%3
+        n = (e+1) % 3
         bl = bottom_tri[e]
         tl = top_tri[e]
         tr = top_tri[n]
         br = bottom_tri[n]
+
+        # compute quad normal (cross product of (br-bl) and (tl-bl))
+        edge1 = sub(br, bl)
+        edge2 = sub(tl, bl)
+        face_normal = normalize(cross(edge1, edge2))
+
         quad_start = len(vertices)
-        vertices.append(Vertex(bl, Vec2(0,0)))
-        vertices.append(Vertex(tl, Vec2(0,1)))
-        vertices.append(Vertex(tr, Vec2(1,1)))
-        vertices.append(Vertex(br, Vec2(1,0)))
-        indices.extend([quad_start, quad_start+1, quad_start+2,
-                        quad_start, quad_start+2, quad_start+3])
+        vertices.append(Vertex(bl, face_normal, Vec2(0,0)))
+        vertices.append(Vertex(tl, face_normal, Vec2(0,1)))
+        vertices.append(Vertex(tr, face_normal, Vec2(1,1)))
+        vertices.append(Vertex(br, face_normal, Vec2(1,0)))
+        indices.extend([
+            quad_start,   quad_start+1, quad_start+2,
+            quad_start,   quad_start+2, quad_start+3
+        ])
+
     return vertices, indices
 
+# ----------------------------------------------------------------------
+# Sphere (smooth normals = normalized position)
+# ----------------------------------------------------------------------
 def gen_sphere(slices, stacks):
-    """UV sphere radius=0.5."""
-    vertices, indices = [], []
+    """UV sphere radius 0.5, smooth normals (outward)."""
+    vertices = []
+    indices = []
     radius = 0.5
     for i in range(stacks + 1):
         v = i / stacks
@@ -189,7 +264,11 @@ def gen_sphere(slices, stacks):
             theta = u * 2.0 * math.pi
             x = radius * sin_phi * math.cos(theta)
             z = radius * sin_phi * math.sin(theta)
-            vertices.append(Vertex(Vec3(x, y, z), Vec2(u, v)))
+            pos = Vec3(x, y, z)
+            # normal = normalized position (since sphere centered at origin)
+            n = normalize(pos)
+            vertices.append(Vertex(pos, n, Vec2(u, v)))
+
     for i in range(stacks):
         for j in range(slices):
             a = i * (slices + 1) + j
@@ -199,9 +278,13 @@ def gen_sphere(slices, stacks):
             indices.extend([a, d, b, a, c, d])
     return vertices, indices
 
+# ----------------------------------------------------------------------
+# Inverted Sphere (normals point inward)
+# ----------------------------------------------------------------------
 def gen_inverted_sphere(slices, stacks):
-    """Same vertices, reversed winding (for skyboxes)."""
-    vertices, indices = [], []
+    """Same vertices as sphere, but reversed winding and inward normals."""
+    vertices = []
+    indices = []
     radius = 0.5
     for i in range(stacks + 1):
         v = i / stacks
@@ -213,14 +296,18 @@ def gen_inverted_sphere(slices, stacks):
             theta = u * 2.0 * math.pi
             x = radius * sin_phi * math.cos(theta)
             z = radius * sin_phi * math.sin(theta)
-            vertices.append(Vertex(Vec3(x, y, z), Vec2(u, v)))
+            pos = Vec3(x, y, z)
+            n = normalize(pos)
+            n = Vec3(-n.x, -n.y, -n.z)   # inward
+            vertices.append(Vertex(pos, n, Vec2(u, v)))
+
     for i in range(stacks):
         for j in range(slices):
             a = i * (slices + 1) + j
             b = a + 1
             c = (i + 1) * (slices + 1) + j
             d = c + 1
-            indices.extend([a, b, d, a, d, c])
+            indices.extend([a, b, d, a, d, c])   # reverse winding
     return vertices, indices
 
 # ----------------------------------------------------------------------
@@ -235,7 +322,7 @@ PRIMITIVES = [
 ]
 
 # ----------------------------------------------------------------------
-# Header generator
+# Header generator – now writes position, normal, uv
 # ----------------------------------------------------------------------
 def generate_mesh_header(
     output_path: Path = Path("src/generated/mesh_data.h"),
@@ -272,14 +359,20 @@ def generate_mesh_header(
     content += "    const uint32_t* indices;\n"
     content += "    UINT indexCount;\n};\n\n"
 
-    # Vertex/Index arrays and constants
+    # Vertex/Index arrays – now includes normal
     for name, verts, idxs in primitives_data:
         array_name = ''.join(p.capitalize() for p in name.split('_'))
         vc = len(verts)
         ic = len(idxs)
         content += f"static const Vertex k{array_name}Vertices[{vc}] = {{\n"
         for v in verts:
-            content += f"    {{{{ {v.position.x:.6f}f, {v.position.y:.6f}f, {v.position.z:.6f}f }}, {{ {v.uv.x:.6f}f, {v.uv.y:.6f}f }}}},\n"
+            # position
+            px, py, pz = v.position.x, v.position.y, v.position.z
+            # normal
+            nx, ny, nz = v.normal.x, v.normal.y, v.normal.z
+            # uv
+            ux, uy = v.uv.x, v.uv.y
+            content += f"    {{{{ {px:.6f}f, {py:.6f}f, {pz:.6f}f }}, {{ {nx:.6f}f, {ny:.6f}f, {nz:.6f}f }}, {{ {ux:.6f}f, {uy:.6f}f }}}},\n"
         content += "};\n\n"
         content += f"static const UINT k{array_name}VertexCount = {vc};\n\n"
         content += f"static const uint32_t k{array_name}Indices[{ic}] = {{\n    "
@@ -313,7 +406,7 @@ def generate_mesh_header(
 # ----------------------------------------------------------------------
 if __name__ == '__main__':
     import argparse
-    parser = argparse.ArgumentParser(description="Generate mesh_data.h")
+    parser = argparse.ArgumentParser(description="Generate mesh_data.h with normals")
     common.add_common_args(parser)
     parser.add_argument('--output', '-o', type=Path,
                         default=Path("src/generated/mesh_data.h"),

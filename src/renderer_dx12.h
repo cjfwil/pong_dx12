@@ -17,6 +17,7 @@
 struct Vertex
 {
     DirectX::XMFLOAT3 position;
+    DirectX::XMFLOAT3 normal;
     DirectX::XMFLOAT2 uv;
 };
 #include "mesh_data.h"
@@ -948,7 +949,8 @@ bool LoadAssets()
         D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
             {
                 {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-                {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}};
+                {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+                {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}};
 
         // Create PSO for each supported MSAA level
         for (UINT i = 0; i < 4; i++)

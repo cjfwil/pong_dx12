@@ -228,6 +228,7 @@ struct window_state
 // basically the game state
 static float g_r = 0.7f;
 static float g_y = 0.0f;
+static float g_theta = 0.7f;
 static float g_scale_x = 1.0f;
 static float g_fov_deg = 60.0f;
 static PrimitiveType g_viewPrimitive = PrimitiveType::PRIMITIVE_CUBE;
@@ -478,8 +479,8 @@ void Update()
     // UpdateDrawList((float)program_state.timing.upTime);
     g_draw_list.transforms.scale[0].x = g_scale_x;
 
-    // DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r * sinf(program_state.timing.upTime), g_y, g_r * cosf(program_state.timing.upTime), 0.0f);
-    DirectX::XMVECTOR eye = DirectX::XMVectorSet(0, g_y, g_r, 0.0f);
+    DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r * sinf(g_theta), g_y, g_r * cosf(g_theta), 0.0f);
+    // DirectX::XMVECTOR eye = DirectX::XMVectorSet(0, g_y, g_r, 0.0f);
     DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
     DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(eye, at, up);
@@ -600,6 +601,7 @@ int main(void)
         ImGui::Begin("Settings");
         ImGui::SliderFloat("r", &g_r, 0.3f, 10.0f);
         ImGui::SliderFloat("y", &g_y, -10.0f, 10.0f);
+        ImGui::SliderFloat("theta", &g_theta, 0.0f, 2*3.14159f);
         ImGui::SliderFloat("global scale x", &g_scale_x, 0.1f, 10.0f);
         ImGui::SliderFloat("fov_deg", &g_fov_deg, 60.0f, 120.0f);
         ImGui::Text("Frametime %.3f ms (%.2f FPS)",
