@@ -328,18 +328,35 @@ def write_header(path, primitives_data):
         f.write("};\n\n")
 
         # ------------------------------------------------------------------
-        # Mesh data arrays for each primitive
+        # PrimitiveMeshData struct definition
+        # ------------------------------------------------------------------
+        f.write("// Mesh data structure for a primitive\n")
+        f.write("struct PrimitiveMeshData\n")
+        f.write("{\n")
+        f.write("    const Vertex* vertices;\n")
+        f.write("    UINT vertexCount;\n")
+        f.write("    const uint32_t* indices;\n")
+        f.write("    UINT indexCount;\n")
+        f.write("};\n\n")
+
+        # ------------------------------------------------------------------
+        # Mesh data arrays and count constants for each primitive
         # ------------------------------------------------------------------
         for name, vertices, indices in primitives_data:
             array_name = name.capitalize()
             vert_count = len(vertices)
             idx_count = len(indices)
 
+            # Vertex array
             f.write(f"static const Vertex k{array_name}Vertices[{vert_count}] = {{\n")
             for v in vertices:
                 f.write(f"    {{{{ {v.position.x:.6f}f, {v.position.y:.6f}f, {v.position.z:.6f}f }}, {{ {v.uv.x:.6f}f, {v.uv.y:.6f}f }}}},\n")
             f.write("};\n\n")
 
+            # Vertex count constant
+            f.write(f"static const UINT k{array_name}VertexCount = {vert_count};\n\n")
+
+            # Index array
             f.write(f"static const uint32_t k{array_name}Indices[{idx_count}] = {{\n    ")
             for i, idx in enumerate(indices):
                 if i != 0 and i % 12 == 0:
@@ -347,7 +364,30 @@ def write_header(path, primitives_data):
                 f.write(f"{idx}, ")
             f.write("\n};\n\n")
 
+            # Index count constant
             f.write(f"static const UINT k{array_name}IndexCount = {idx_count};\n\n")
+
+        # ------------------------------------------------------------------
+        # Primitive lookup table (indexed by PrimitiveType)
+        # ------------------------------------------------------------------
+        f.write("// Lookup table for all primitives - order matches PrimitiveType\n")
+        f.write("static const PrimitiveMeshData kPrimitiveMeshData[PRIMITIVE_COUNT] =\n")
+        f.write("{\n")
+        for name, vertices, indices in primitives_data:
+            array_name = name.capitalize()
+            f.write(f"    {{ k{array_name}Vertices, k{array_name}VertexCount, k{array_name}Indices, k{array_name}IndexCount }},\n")
+        f.write("};\n\n")
+
+        # ------------------------------------------------------------------
+        # Primitive display names (for UI, in same order as enum)
+        # ------------------------------------------------------------------
+        f.write("// Display names for primitives - order matches PrimitiveType\n")
+        f.write("static const char* g_primitiveNames[PRIMITIVE_COUNT] = \n")
+        f.write("{\n")
+        for name, _, _ in primitives_data:
+            display_name = name.capitalize()
+            f.write(f'    "{display_name}",\n')
+        f.write("};\n\n")
 
     print(f"✓ Wrote {path}")
 

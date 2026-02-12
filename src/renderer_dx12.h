@@ -18,26 +18,10 @@ struct Vertex
     DirectX::XMFLOAT3 position;
     DirectX::XMFLOAT2 uv;
 };
-struct PrimitiveMeshData
-{
-    const Vertex *vertices;
-    UINT vertexCount;
-    const uint32_t *indices;
-    UINT indexCount;
-};
 #include "mesh_data.h"
 
-// TODO: metaprogram this
-static const PrimitiveMeshData kPrimitiveMeshData[PrimitiveType::PRIMITIVE_COUNT] =
-    {
-        {kCubeVertices, _countof(kCubeVertices), kCubeIndices, kCubeIndexCount},
-        {kCylinderVertices, _countof(kCylinderVertices), kCylinderIndices, kCylinderIndexCount},
-        {kPrismVertices, _countof(kPrismVertices), kPrismIndices, kPrismIndexCount},
-        {kSphereVertices, _countof(kSphereVertices), kSphereIndices, kSphereIndexCount},
-};
-
-ID3D12Resource *g_vertexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
-ID3D12Resource *g_indexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
+static ID3D12Resource *g_vertexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
+static ID3D12Resource *g_indexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
 
 bool CreateMeshBuffers(
     ID3D12Device *device,

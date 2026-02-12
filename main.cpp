@@ -683,12 +683,9 @@ int main(void)
 
         ImGui::Separator();
         ImGui::Text("Primitive");
-
-        // Hardcoded names – order must match PrimitiveType enum (CUBE=0, CYLINDER=1, PRISM=2, SPHERE=3)
-        static const char *primitiveNames[] = {"Cube", "Cylinder", "Prism", "Sphere"};
+                
         int currentPrimitive = (int)g_viewPrimitive;
-
-        if (ImGui::Combo("Shape", &currentPrimitive, primitiveNames, IM_ARRAYSIZE(primitiveNames)))
+        if (ImGui::Combo("Shape", &currentPrimitive, g_primitiveNames, IM_ARRAYSIZE(g_primitiveNames)))
         {
             g_viewPrimitive = (PrimitiveType)currentPrimitive;
         }

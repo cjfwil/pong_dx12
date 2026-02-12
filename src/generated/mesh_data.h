@@ -11,6 +11,15 @@ enum PrimitiveType
     PRIMITIVE_COUNT
 };
 
+// Mesh data structure for a primitive
+struct PrimitiveMeshData
+{
+    const Vertex* vertices;
+    UINT vertexCount;
+    const uint32_t* indices;
+    UINT indexCount;
+};
+
 static const Vertex kCubeVertices[24] = {
     {{ -0.500000f, -0.500000f, 0.500000f }, { 0.000000f, 1.000000f }},
     {{ 0.500000f, -0.500000f, 0.500000f }, { 1.000000f, 1.000000f }},
@@ -37,6 +46,8 @@ static const Vertex kCubeVertices[24] = {
     {{ 0.500000f, 0.500000f, 0.500000f }, { 1.000000f, 0.000000f }},
     {{ 0.500000f, 0.500000f, -0.500000f }, { 0.000000f, 0.000000f }},
 };
+
+static const UINT kCubeVertexCount = 24;
 
 static const uint32_t kCubeIndices[36] = {
     0, 1, 2, 0, 2, 3, 4, 5, 6, 4, 6, 7, 
@@ -75,6 +86,8 @@ static const Vertex kCylinderVertices[26] = {
     {{ 0.433013f, 0.500000f, -0.250000f }, { 0.916667f, 1.000000f }},
 };
 
+static const UINT kCylinderVertexCount = 26;
+
 static const uint32_t kCylinderIndices[144] = {
     2, 4, 5, 2, 5, 3, 4, 6, 7, 4, 7, 5, 
     6, 8, 9, 6, 9, 7, 8, 10, 11, 8, 11, 9, 
@@ -112,6 +125,8 @@ static const Vertex kPrismVertices[18] = {
     {{ 0.000000f, 0.500000f, 0.500000f }, { 1.000000f, 1.000000f }},
     {{ 0.433013f, 0.500000f, -0.250000f }, { 0.000000f, 1.000000f }},
 };
+
+static const UINT kPrismVertexCount = 18;
 
 static const uint32_t kPrismIndices[24] = {
     0, 1, 2, 3, 4, 5, 6, 7, 8, 6, 8, 9, 
@@ -396,6 +411,8 @@ static const Vertex kSphereVertices[273] = {
     {{ 0.000000f, 0.500000f, -0.000000f }, { 1.000000f, 1.000000f }},
 };
 
+static const UINT kSphereVertexCount = 273;
+
 static const uint32_t kSphereIndices[1440] = {
     0, 1, 22, 0, 22, 21, 1, 2, 23, 1, 23, 22, 
     2, 3, 24, 2, 24, 23, 3, 4, 25, 3, 25, 24, 
@@ -520,4 +537,22 @@ static const uint32_t kSphereIndices[1440] = {
 };
 
 static const UINT kSphereIndexCount = 1440;
+
+// Lookup table for all primitives - order matches PrimitiveType
+static const PrimitiveMeshData kPrimitiveMeshData[PRIMITIVE_COUNT] =
+{
+    { kCubeVertices, kCubeVertexCount, kCubeIndices, kCubeIndexCount },
+    { kCylinderVertices, kCylinderVertexCount, kCylinderIndices, kCylinderIndexCount },
+    { kPrismVertices, kPrismVertexCount, kPrismIndices, kPrismIndexCount },
+    { kSphereVertices, kSphereVertexCount, kSphereIndices, kSphereIndexCount },
+};
+
+// Display names for primitives - order matches PrimitiveType
+static const char* g_primitiveNames[PRIMITIVE_COUNT] = 
+{
+    "Cube",
+    "Cylinder",
+    "Prism",
+    "Sphere",
+};
 
