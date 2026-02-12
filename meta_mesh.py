@@ -50,50 +50,94 @@ def gen_cube():
     return vertices, indices
 
 def gen_cylinder(slices):
-    """radius=0.5, height=1.0. Correct winding for caps."""
-    vertices, indices = [], []
-    radius, half_h = 0.5, 0.5
-    step = 2.0 * math.pi / slices
+    """
+    Generate a cylinder mesh (radius=0.5, height=1.0).
+    - sides: correct UVs with seam duplicated (u from 0 to 1, v from 0 to 1)
+    - caps: planar UV mapping (no radial distortion)
+    - winding: counter‑clockwise when viewed from outside.
+    """
+    vertices = []
+    indices = []
 
-    # centers
-    vertices.append(Vertex(Vec3(0, -half_h, 0), Vec2(0.5, 0.5)))  # 0 bottom center
-    vertices.append(Vertex(Vec3(0,  half_h, 0), Vec2(0.5, 0.5)))  # 1 top center
+    radius = 0.5
+    half_h = 0.5
+    slices = max(3, slices)
 
-    bottom_start = len(vertices)
-    for i in range(slices):
-        angle = i * step
+    # --- centers (caps) ---
+    bottom_center_idx = len(vertices)
+    vertices.append(Vertex(Vec3(0, -half_h, 0), Vec2(0.5, 0.5)))  # bottom center
+    top_center_idx = len(vertices)
+    vertices.append(Vertex(Vec3(0,  half_h, 0), Vec2(0.5, 0.5)))  # top center
+
+    # --- SIDE VERTICES -------------------------------------------------
+    # Interleaved bottom/top vertices for the side wall.
+    # We use slices+1 vertices per ring to create a clean seam at u=1.0.
+    side_start = len(vertices)  # first side vertex (bottom of slice 0)
+
+    for i in range(slices + 1):
+        u = i / slices                     # 0.0 ... 1.0
+        angle = i * (2.0 * math.pi / slices)
         x = radius * math.cos(angle)
         z = radius * math.sin(angle)
-        vertices.append(Vertex(Vec3(x, -half_h, z), Vec2(i/slices, 0.0)))  # bottom ring
-        vertices.append(Vertex(Vec3(x,  half_h, z), Vec2(i/slices, 1.0)))  # top ring
 
-    # sides – two triangles per quad, CCW from outside
+        # bottom vertex (y = -half_h)
+        vertices.append(Vertex(Vec3(x, -half_h, z), Vec2(u, 0.0)))
+        # top vertex    (y =  half_h)
+        vertices.append(Vertex(Vec3(x,  half_h, z), Vec2(u, 1.0)))
+
+    # --- CAP VERTICES (separate, with planar UVs) --------------------
+    bottom_cap_start = len(vertices)
+    for i in range(slices + 1):
+        angle = i * (2.0 * math.pi / slices)
+        x = radius * math.cos(angle)
+        z = radius * math.sin(angle)
+        uv = Vec2((x / radius + 1) * 0.5, (z / radius + 1) * 0.5)
+        vertices.append(Vertex(Vec3(x, -half_h, z), uv))
+
+    top_cap_start = len(vertices)
+    for i in range(slices + 1):
+        angle = i * (2.0 * math.pi / slices)
+        x = radius * math.cos(angle)
+        z = radius * math.sin(angle)
+        uv = Vec2((x / radius + 1) * 0.5, (z / radius + 1) * 0.5)
+        vertices.append(Vertex(Vec3(x,  half_h, z), uv))
+
+    # --- SIDE QUADS ----------------------------------------------------
+    # Two triangles per quad, both CCW when viewed from outside.
     for i in range(slices):
-        n = (i + 1) % slices
-        b0 = bottom_start + i * 2
-        b1 = bottom_start + n * 2
+        # indices into the interleaved side vertices
+        b0 = side_start + i * 2
+        b1 = side_start + (i + 1) * 2
         t0 = b0 + 1
         t1 = b1 + 1
-        # triangle 1: (b0, t1, b1)
-        indices.extend([b0, t1, b1])
-        # triangle 2: (b0, t0, t1)
-        indices.extend([b0, t0, t1])
 
-    # bottom cap – triangle fan from center, CCW from outside (looking from below)
-    for i in range(slices):
-        n = (i + 1) % slices
-        b0 = bottom_start + i * 2
-        b1 = bottom_start + n * 2
-        indices.extend([0, b0, b1])   # center, b0, b1
+        # Triangle 1: (b0, b1, t1)
+        indices.append(b0)
+        indices.append(t1)
+        indices.append(b1)
 
-    # top cap – triangle fan from center, CCW from outside (looking from above)
-    # vertices around top ring are ordered same as bottom, but we need reversed order
-    # to maintain CCW when viewed from above.
+        # Triangle 2: (b0, t1, t0)
+        indices.append(b0)
+        indices.append(t0)
+        indices.append(t1)
+
+    # --- BOTTOM CAP (triangle fan) ------------------------------------
+    # Outward normal = -y. Viewed from below, CCW = (center, b0, b1)
     for i in range(slices):
-        n = (i + 1) % slices
-        t0 = bottom_start + i * 2 + 1
-        t1 = bottom_start + n * 2 + 1
-        indices.extend([1, t1, t0])   # center, t1, t0
+        c0 = bottom_cap_start + i
+        c1 = bottom_cap_start + i + 1
+        indices.append(bottom_center_idx)
+        indices.append(c0)
+        indices.append(c1)
+
+    # --- TOP CAP (triangle fan) ---------------------------------------
+    # Outward normal = +y. Viewed from above, CCW = (center, c1, c0)
+    for i in range(slices):
+        c0 = top_cap_start + i
+        c1 = top_cap_start + i + 1
+        indices.append(top_center_idx)
+        indices.append(c1)
+        indices.append(c0)
 
     return vertices, indices
 

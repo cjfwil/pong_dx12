@@ -228,16 +228,44 @@ struct window_state
 // basically the game state
 static float g_r = 0.7f;
 static float g_y = 0.0f;
+static float g_scale_x = 1.0f;
 static float g_fov_deg = 60.0f;
 static PrimitiveType g_viewPrimitive = PrimitiveType::PRIMITIVE_CUBE;
 
-static const int g_num_primitives_to_draw = 8;
-
 // example for next
+const int g_draw_list_element_total = PrimitiveType::PRIMITIVE_COUNT;
 static struct
 {
-    PrimitiveType types[g_num_primitives_to_draw] = {};
-    float x_pos[g_num_primitives_to_draw] = {};    
+    PrimitiveType types[g_draw_list_element_total] = {};
+    struct
+    {
+        DirectX::XMFLOAT3 pos[g_draw_list_element_total];
+        DirectX::XMFLOAT4 rot[g_draw_list_element_total];
+        DirectX::XMFLOAT3 scale[g_draw_list_element_total];
+    } transforms;
+
+    void fill_init()
+    {
+        float radius = 5.0f;
+        for (int i = 0; i < g_draw_list_element_total; ++i)
+        {
+            types[i] = (PrimitiveType)(i % PrimitiveType::PRIMITIVE_COUNT);
+            
+            float angle = 2.0f * 3.14159f * (float)i / (float)g_draw_list_element_total;
+            transforms.pos[i].x = radius * cosf(angle);
+            transforms.pos[i].y = 0.0f;
+            transforms.pos[i].z = radius * sinf(angle);
+
+            transforms.rot[i].x = 0.0f;
+            transforms.rot[i].y = 0.0f;
+            transforms.rot[i].z = 0.0f;
+            transforms.rot[i].w = 1.0f;
+            
+            transforms.scale[i].x = 1.0f;
+            transforms.scale[i].y = 1.0f;
+            transforms.scale[i].z = 1.0f;
+        }
+    }
 } g_draw_list;
 
 static struct
@@ -331,22 +359,20 @@ bool PopulateCommandList()
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
     PerDrawRootConstants currentDrawConstants = {};
-    for (int i = 0; i < g_num_primitives_to_draw; ++i)
+    for (int i = 0; i < g_draw_list_element_total; ++i)
     {
-        PrimitiveType currentPrimitiveToDraw = (PrimitiveType)(i % (int)PRIMITIVE_COUNT);
-        DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
-        float rot = (float)program_state.timing.upTime;
-        // float rot = 3.1418f;
+        PrimitiveType currentPrimitiveToDraw = g_draw_list.types[i];
 
         // Translation parameters
-        float x = -8.0f + i * 2.0f; // negative Z is forward in LH coords
-        float z = 0.0f;
-        DirectX::XMVECTOR position = DirectX::XMVectorSet(x, 0.0f, z, 0.0f);        
+        DirectX::XMVECTOR position = DirectX::XMLoadFloat3(&g_draw_list.transforms.pos[i]);
+        DirectX::XMVECTOR rotationQuat = DirectX::XMLoadFloat4(&g_draw_list.transforms.rot[i]);
+        DirectX::XMVECTOR scale = DirectX::XMLoadFloat3(&g_draw_list.transforms.scale[i]);
 
         // Build transform: SCALE * ROTATION * TRANSLATION (for row-major/left-multiply in HLSL)
         DirectX::XMMATRIX worldMatrix =
-            DirectX::XMMatrixRotationAxis(axis, rot) *        // rotation
-            DirectX::XMMatrixTranslationFromVector(position); // translation
+            DirectX::XMMatrixScalingFromVector(scale) *
+            DirectX::XMMatrixRotationQuaternion(rotationQuat) * // rotation
+            DirectX::XMMatrixTranslationFromVector(position);   // translation
 
         DirectX::XMStoreFloat4x4(
             &currentDrawConstants.world,
@@ -412,8 +438,46 @@ void Render(bool vsync = true)
     HRAssert(pipeline_dx12.m_swapChain->Present(syncInterval, syncFlags));
 }
 
+void UpdateDrawList(float time)
+{
+    float baseRadius = 5.0f;
+    for (int i = 0; i < g_draw_list_element_total; ++i)
+    {
+        // 1. POSITION - elliptical path + vertical bob
+        float angleOffset = 2.0f * 3.14159f * i / g_draw_list_element_total;
+        // Radius pulses individually
+        float radius = baseRadius + 1.5f * sinf(time * 1.5f + i * 1.2f);
+        // Elliptical squash/stretch
+        float xScale = 1.0f + 0.3f * sinf(time * 0.7f + i);
+        float zScale = 1.0f + 0.3f * cosf(time * 0.8f + i * 1.3f);
+        
+        g_draw_list.transforms.pos[i].x = radius * cosf(angleOffset) * xScale;
+        g_draw_list.transforms.pos[i].z = radius * sinf(angleOffset) * zScale;
+        // Vertical sine wave – each at different phase
+        g_draw_list.transforms.pos[i].y = 2.0f * sinf(time * 2.0f + i * 0.9f);
+
+        // 2. ROTATION – spin around Y axis at different speeds
+        float spinSpeed = 1.2f + 0.5f * ((float)(10*i)/(float)g_draw_list_element_total);
+        float rotAngle = time * spinSpeed;
+        // Quaternion for rotation around Y axis
+        g_draw_list.transforms.rot[i].x = 0.0f;
+        g_draw_list.transforms.rot[i].y = sinf(rotAngle * 0.5f);
+        g_draw_list.transforms.rot[i].z = 0.0f;
+        g_draw_list.transforms.rot[i].w = cosf(rotAngle * 0.5f);
+
+        // 3. SCALE – pulse individually
+        float pulse = 0.8f + 0.4f * sinf(time * 3.0f + i * 2.1f);
+        g_draw_list.transforms.scale[i].x = pulse;
+        g_draw_list.transforms.scale[i].y = pulse*pulse;
+        g_draw_list.transforms.scale[i].z = pulse*pulse*pulse;
+    }
+}
+
 void Update()
 {
+    // UpdateDrawList((float)program_state.timing.upTime);
+    g_draw_list.transforms.scale[0].x = g_scale_x;
+
     // DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r * sinf(program_state.timing.upTime), g_y, g_r * cosf(program_state.timing.upTime), 0.0f);
     DirectX::XMVECTOR eye = DirectX::XMVectorSet(0, g_y, g_r, 0.0f);
     DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
@@ -511,6 +575,9 @@ int main(void)
         ImGui_ImplDX12_Init(&init_info);
     }
 
+    // draw list init
+    g_draw_list.fill_init();
+
     while (program_state.isRunning)
     {
         SDL_Event sdlEvent;
@@ -533,6 +600,7 @@ int main(void)
         ImGui::Begin("Settings");
         ImGui::SliderFloat("r", &g_r, 0.3f, 10.0f);
         ImGui::SliderFloat("y", &g_y, -10.0f, 10.0f);
+        ImGui::SliderFloat("global scale x", &g_scale_x, 0.1f, 10.0f);
         ImGui::SliderFloat("fov_deg", &g_fov_deg, 60.0f, 120.0f);
         ImGui::Text("Frametime %.3f ms (%.2f FPS)",
                     1000.0f / ImGui::GetIO().Framerate,
