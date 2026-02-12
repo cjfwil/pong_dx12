@@ -24,7 +24,7 @@ struct Vertex
 static ID3D12Resource *g_vertexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
 static ID3D12Resource *g_indexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
 
-bool CreateMeshBuffers(
+bool CreatePrimitiveMeshBuffers(
     ID3D12Device *device,
     ID3D12GraphicsCommandList *cmdList,
     PrimitiveType type,
@@ -1005,7 +1005,7 @@ bool LoadAssets()
     for (UINT i = 0; i < PrimitiveType::PRIMITIVE_COUNT; ++i)
     {
         PrimitiveType type = static_cast<PrimitiveType>(i);
-        if (!CreateMeshBuffers(
+        if (!CreatePrimitiveMeshBuffers(
                 pipeline_dx12.m_device,
                 pipeline_dx12.m_commandList[0],
                 type,

@@ -48,11 +48,11 @@ def gen_cube():
         ([7, 6, 5, 4], uvs),
         # front  (z =  s)
         ([2, 6, 7, 3], uvs),
-        # back   (z = -s)   - FIXED: was [1,5,4,0], now reversed → [0,4,5,1]
+        # back   (z = -s)
         ([0, 4, 5, 1], uvs),
         # left   (x = -s)
         ([3, 7, 4, 0], uvs),
-        # right  (x =  s)   - FIXED: was [5,1,2,6], now reversed → [6,2,1,5]
+        # right  (x =  s)
         ([6, 2, 1, 5], uvs),
     ]
 
@@ -129,8 +129,6 @@ def gen_cylinder(slices=12):
         t0 = bottom_ring_start + i * 2 + 1  # top this slice
         t1 = bottom_ring_start + next_i * 2 + 1 # top next slice
 
-        # Original was (b0,b1,t1) and (b0,t1,t0) – those were CW from outside.
-        # Reverse to CCW from outside:
         # Triangle 1: (b0, t1, b1)
         indices.append(b0)
         indices.append(t1)
@@ -141,8 +139,6 @@ def gen_cylinder(slices=12):
         indices.append(t1)
 
     # --- bottom cap (triangle fan) – reverse winding ---
-    # Outside is below, need CCW when viewed from below.
-    # Original: (center, b1, b0) was CW from below -> reverse to (center, b0, b1)
     for i in range(slices):
         next_i = (i + 1) % slices
         b0 = bottom_ring_start + i * 2
@@ -152,10 +148,6 @@ def gen_cylinder(slices=12):
         indices.append(b1)
 
     # --- top cap (triangle fan) – reverse winding ---
-    # Outside is above, need CCW when viewed from above.
-    # Original: (center, t0, t1) was CCW from above -> that's actually CW from outside (since outside is above, viewer looks down).
-    # To be CCW from outside (above), we need the triangle to be clockwise from above.
-    # So reverse the order: (center, t1, t0)
     for i in range(slices):
         next_i = (i + 1) % slices
         t0 = bottom_ring_start + i * 2 + 1
@@ -180,8 +172,6 @@ def gen_prism():
     half_height = 0.5
 
     # --- bottom face (y = -half_height) ---
-    # vertices of an equilateral triangle, pointing up (top vertex at angle 90°)
-    # angles: 90°, 210°, 330°
     bottom_tri_angles = [math.pi/2, 7*math.pi/6, 11*math.pi/6]
     bottom_tri_pos = []
     for a in bottom_tri_angles:
@@ -189,14 +179,13 @@ def gen_prism():
         z = radius * math.sin(a)
         bottom_tri_pos.append(Vec3(x, -half_height, z))
 
-    # bottom face UVs – map triangle to a 0‑1 square-ish
     bottom_uvs = [Vec2(0, 0), Vec2(1, 0), Vec2(0.5, 1)]
 
     bottom_start = len(vertices)
     for i in range(3):
         vertices.append(Vertex(bottom_tri_pos[i], bottom_uvs[i]))
 
-    # indices for bottom triangle (0,1,2) – already CCW from below (outward normal -y points toward viewer)
+    # bottom triangle – CCW from below
     indices.append(bottom_start + 0)
     indices.append(bottom_start + 1)
     indices.append(bottom_start + 2)
@@ -212,22 +201,15 @@ def gen_prism():
     for i in range(3):
         vertices.append(Vertex(top_tri_pos[i], bottom_uvs[i]))
 
-    # Top face: need CCW when viewed from above (outside). Original (0,1,2) was CW from above.
-    # Reverse to (0,2,1) to get CCW from above.
+    # top triangle – CCW from above (reverse winding)
     indices.append(top_start + 0)
     indices.append(top_start + 2)
     indices.append(top_start + 1)
 
     # --- side faces (3 quads) ---
-    # for each edge, create a quad with proper UVs, but reverse winding to be CCW from outside.
     for edge in range(3):
         next_edge = (edge + 1) % 3
 
-        # bottom vertices: bottom_tri_pos[edge], bottom_tri_pos[next_edge]
-        # top vertices:   top_tri_pos[edge], top_tri_pos[next_edge]
-
-        # order for CCW from outside: bottom_left, top_left, top_right, bottom_right
-        # (i.e., bl, tl, tr, br) – this makes both triangles CCW.
         bl = bottom_tri_pos[edge]
         tl = top_tri_pos[edge]
         tr = top_tri_pos[next_edge]
@@ -244,11 +226,10 @@ def gen_prism():
         vertices.append(Vertex(tr, tr_uv))
         vertices.append(Vertex(br, br_uv))
 
-        # two triangles: (0,1,2) and (0,2,3) – both CCW with this vertex order.
+        # two triangles: (0,1,2) and (0,2,3) – both CCW
         indices.append(quad_start + 0)
         indices.append(quad_start + 1)
         indices.append(quad_start + 2)
-
         indices.append(quad_start + 0)
         indices.append(quad_start + 2)
         indices.append(quad_start + 3)
@@ -269,24 +250,18 @@ def gen_sphere(slices=20, stacks=12):
 
     for i in range(stacks + 1):
         v = i / stacks
-        phi = (1.0 - v) * math.pi          # 0 at north pole, pi at south pole
+        phi = (1.0 - v) * math.pi
         y = radius * math.cos(phi)
         sin_phi = math.sin(phi)
 
         for j in range(slices + 1):
             u = j / slices
             theta = u * 2.0 * math.pi
-
             x = radius * sin_phi * math.cos(theta)
             z = radius * sin_phi * math.sin(theta)
+            vertices.append(Vertex(Vec3(x, y, z), Vec2(u, v)))
 
-            pos = Vec3(x, y, z)
-            uv = Vec2(u, v)
-            vertices.append(Vertex(pos, uv))
-
-    # Indices: two triangles per quad, with CCW winding from outside.
-    # Original was (a,b,d) and (a,d,c) – those were CW from outside.
-    # Reverse each triangle: (a,d,b) and (a,c,d)
+    # CCW from outside
     for i in range(stacks):
         for j in range(slices):
             a = i * (slices + 1) + j
@@ -305,15 +280,61 @@ def gen_sphere(slices=20, stacks=12):
     return vertices, indices
 
 
+def gen_inverted_sphere(slices=20, stacks=12):
+    """
+    Generate an inverted UV sphere mesh (radius=0.5).
+    Identical vertices to gen_sphere, but with clockwise winding
+    (front face from inside – ideal for skyboxes).
+    """
+    vertices = []
+    indices = []
+
+    radius = 0.5
+
+    # --- identical vertex generation ---
+    for i in range(stacks + 1):
+        v = i / stacks
+        phi = (1.0 - v) * math.pi
+        y = radius * math.cos(phi)
+        sin_phi = math.sin(phi)
+
+        for j in range(slices + 1):
+            u = j / slices
+            theta = u * 2.0 * math.pi
+            x = radius * sin_phi * math.cos(theta)
+            z = radius * sin_phi * math.sin(theta)
+            vertices.append(Vertex(Vec3(x, y, z), Vec2(u, v)))
+
+    # --- inverted winding (CW from outside / CCW from inside) ---
+    # Use the original unwound order: (a,b,d) and (a,d,c)
+    for i in range(stacks):
+        for j in range(slices):
+            a = i * (slices + 1) + j
+            b = i * (slices + 1) + j + 1
+            c = (i + 1) * (slices + 1) + j
+            d = (i + 1) * (slices + 1) + j + 1
+
+            indices.append(a)
+            indices.append(b)
+            indices.append(d)
+
+            indices.append(a)
+            indices.append(d)
+            indices.append(c)
+
+    return vertices, indices
+
+
 # -------------------------------------------------------------------------
 # Primitive registry – add new primitives here (name, generator, *args)
 # The enum order will follow the order in this list.
 # -------------------------------------------------------------------------
 PRIMITIVES = [
-    ("cube",     gen_cube),
-    ("cylinder", gen_cylinder, 12),   # slices=12
-    ("prism",    gen_prism),
-    ("sphere",   gen_sphere, 20, 12), # slices=20, stacks=12
+    ("cube",             gen_cube),
+    ("cylinder",         gen_cylinder, 12),          # slices=12
+    ("prism",            gen_prism),
+    ("sphere",           gen_sphere, 20, 12),        # slices=20, stacks=12
+    ("inverted_sphere",  gen_inverted_sphere, 20, 12), # inverted version
 ]
 
 
@@ -354,7 +375,8 @@ def write_header(path, primitives_data):
         # Mesh data arrays and count constants for each primitive
         # ------------------------------------------------------------------
         for name, vertices, indices in primitives_data:
-            array_name = name.capitalize()
+            # Convert name like "inverted_sphere" -> "InvertedSphere"
+            array_name = ''.join(part.capitalize() for part in name.split('_'))
             vert_count = len(vertices)
             idx_count = len(indices)
 
@@ -385,7 +407,7 @@ def write_header(path, primitives_data):
         f.write("static const PrimitiveMeshData kPrimitiveMeshData[PRIMITIVE_COUNT] =\n")
         f.write("{\n")
         for name, vertices, indices in primitives_data:
-            array_name = name.capitalize()
+            array_name = ''.join(part.capitalize() for part in name.split('_'))
             f.write(f"    {{ k{array_name}Vertices, k{array_name}VertexCount, k{array_name}Indices, k{array_name}IndexCount }},\n")
         f.write("};\n\n")
 
@@ -396,7 +418,8 @@ def write_header(path, primitives_data):
         f.write("static const char* g_primitiveNames[PRIMITIVE_COUNT] = \n")
         f.write("{\n")
         for name, _, _ in primitives_data:
-            display_name = name.capitalize()
+            # Convert "inverted_sphere" -> "Inverted Sphere"
+            display_name = ' '.join(part.capitalize() for part in name.split('_'))
             f.write(f'    "{display_name}",\n')
         f.write("};\n\n")
 
