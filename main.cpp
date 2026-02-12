@@ -225,6 +225,12 @@ struct window_state
     }
 };
 
+// basically the game state
+static float g_r = 0.7f;
+static float g_y = 0.0f;
+static float g_fov_deg = 60.0f;
+static PrimitiveType g_viewPrimitive = PrimitiveType::PRIMITIVE_CUBE;
+
 static struct
 {
     timing_state timing;
@@ -314,10 +320,10 @@ bool PopulateCommandList()
 
     // Draw geometry (same for both MSAA)
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView);
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants)/4, &graphics_resources.m_RootConstants.world, 0);
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_indexBufferView);
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_indexCount, 1, 0, 0, 0);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView[g_viewPrimitive]);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants) / 4, &graphics_resources.m_RootConstants.world, 0);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_indexBufferView[g_viewPrimitive]);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_indexCount[g_viewPrimitive], 1, 0, 0, 0);
 
     // Post-draw operations
     if (msaa_state.m_enabled)
@@ -372,10 +378,6 @@ void Render(bool vsync = true)
     UINT syncFlags = (vsync) ? 0 : DXGI_PRESENT_ALLOW_TEARING;
     HRAssert(pipeline_dx12.m_swapChain->Present(syncInterval, syncFlags));
 }
-
-static float g_r = 0.7f;
-static float g_y = 0.0f;
-static float g_fov_deg = 60.0f;
 
 void Update()
 {
@@ -677,6 +679,18 @@ int main(void)
             memcpy(graphics_resources.m_pPerSceneCbvDataBegin,
                    &graphics_resources.m_PerSceneConstantBufferData,
                    sizeof(graphics_resources.m_PerSceneConstantBufferData));
+        }
+
+        ImGui::Separator();
+        ImGui::Text("Primitive");
+
+        // Hardcoded names – order must match PrimitiveType enum (CUBE=0, CYLINDER=1, PRISM=2, SPHERE=3)
+        static const char *primitiveNames[] = {"Cube", "Cylinder", "Prism", "Sphere"};
+        int currentPrimitive = (int)g_viewPrimitive;
+
+        if (ImGui::Combo("Shape", &currentPrimitive, primitiveNames, IM_ARRAYSIZE(primitiveNames)))
+        {
+            g_viewPrimitive = (PrimitiveType)currentPrimitive;
         }
 
         ImGui::End();

@@ -21,10 +21,13 @@ void OnDestroy()
         pipeline_dx12.m_depthStencil->Release();
         pipeline_dx12.m_depthStencil = nullptr;
     }
-    if (graphics_resources.m_vertexBuffer)
+    for (UINT i = 0; i < PrimitiveType::PRIMITIVE_COUNT; i++)
     {
-        graphics_resources.m_vertexBuffer->Release();
-        graphics_resources.m_vertexBuffer = nullptr;
+        if (graphics_resources.m_vertexBuffer[i])
+        {
+            graphics_resources.m_vertexBuffer[i]->Release();
+            graphics_resources.m_vertexBuffer[i] = nullptr;
+        }
     }
     if (graphics_resources.m_texture)
     {
@@ -137,10 +140,13 @@ void OnDestroy()
     }
 
     // Release graphics resources
-    if (graphics_resources.m_indexBuffer)
+    for (UINT i = 0; i < PrimitiveType::PRIMITIVE_COUNT; i++)
     {
-        graphics_resources.m_indexBuffer->Release();
-        graphics_resources.m_indexBuffer = nullptr;
+        if (graphics_resources.m_indexBuffer[i])
+        {
+            graphics_resources.m_indexBuffer[i]->Release();
+            graphics_resources.m_indexBuffer[i] = nullptr;
+        }
     }
 
     // Release other resources
