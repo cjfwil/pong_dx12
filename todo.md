@@ -35,3 +35,6 @@ use above to have a skelelton for spheremapped textures
 
 
 ## remove all std::vector and move towards custom linear allocator for those particular things
+
+## metaprogram vertex stuff?
+should allow for different kinds of vertices?

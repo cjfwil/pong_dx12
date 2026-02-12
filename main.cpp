@@ -477,7 +477,10 @@ void UpdateDrawList(float time)
 void Update()
 {
     // UpdateDrawList((float)program_state.timing.upTime);
-    g_draw_list.transforms.scale[0].x = g_scale_x;
+    for (int i = 0; i < PRIMITIVE_COUNT; ++i) {
+        g_draw_list.transforms.scale[i].x = g_scale_x;
+    }
+    
 
     DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r * sinf(g_theta), g_y, g_r * cosf(g_theta), 0.0f);
     // DirectX::XMVECTOR eye = DirectX::XMVectorSet(0, g_y, g_r, 0.0f);
