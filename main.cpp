@@ -231,6 +231,15 @@ static float g_y = 0.0f;
 static float g_fov_deg = 60.0f;
 static PrimitiveType g_viewPrimitive = PrimitiveType::PRIMITIVE_CUBE;
 
+static const int g_num_primitives_to_draw = 8;
+
+// example for next
+static struct
+{
+    PrimitiveType types[g_num_primitives_to_draw] = {};
+    float x_pos[g_num_primitives_to_draw] = {};    
+} g_draw_list;
+
 static struct
 {
     timing_state timing;
@@ -320,10 +329,34 @@ bool PopulateCommandList()
 
     // Draw geometry (same for both MSAA)
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView[g_viewPrimitive]);
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants) / 4, &graphics_resources.m_RootConstants.world, 0);
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_indexBufferView[g_viewPrimitive]);
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_indexCount[g_viewPrimitive], 1, 0, 0, 0);
+
+    PerDrawRootConstants currentDrawConstants = {};
+    for (int i = 0; i < g_num_primitives_to_draw; ++i)
+    {
+        PrimitiveType currentPrimitiveToDraw = (PrimitiveType)(i % (int)PRIMITIVE_COUNT);
+        DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+        float rot = (float)program_state.timing.upTime;
+        // float rot = 3.1418f;
+
+        // Translation parameters
+        float x = -8.0f + i * 2.0f; // negative Z is forward in LH coords
+        float z = 0.0f;
+        DirectX::XMVECTOR position = DirectX::XMVectorSet(x, 0.0f, z, 0.0f);        
+
+        // Build transform: SCALE * ROTATION * TRANSLATION (for row-major/left-multiply in HLSL)
+        DirectX::XMMATRIX worldMatrix =
+            DirectX::XMMatrixRotationAxis(axis, rot) *        // rotation
+            DirectX::XMMatrixTranslationFromVector(position); // translation
+
+        DirectX::XMStoreFloat4x4(
+            &currentDrawConstants.world,
+            DirectX::XMMatrixTranspose(worldMatrix));
+
+        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView[currentPrimitiveToDraw]);
+        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
+        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_indexBufferView[currentPrimitiveToDraw]);
+        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_indexCount[currentPrimitiveToDraw], 1, 0, 0, 0);
+    }
 
     // Post-draw operations
     if (msaa_state.m_enabled)
@@ -381,13 +414,6 @@ void Render(bool vsync = true)
 
 void Update()
 {
-    DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
-    // float rot = 3.1418f;
-    float rot = (float)program_state.timing.upTime;
-    DirectX::XMStoreFloat4x4(
-        &graphics_resources.m_RootConstants.world,
-        DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationAxis(axis, rot)));
-
     // DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r * sinf(program_state.timing.upTime), g_y, g_r * cosf(program_state.timing.upTime), 0.0f);
     DirectX::XMVECTOR eye = DirectX::XMVectorSet(0, g_y, g_r, 0.0f);
     DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
@@ -685,7 +711,7 @@ int main(void)
 
         ImGui::Separator();
         ImGui::Text("Primitive");
-                
+
         int currentPrimitive = (int)g_viewPrimitive;
         if (ImGui::Combo("Shape", &currentPrimitive, g_primitiveNames, IM_ARRAYSIZE(g_primitiveNames)))
         {

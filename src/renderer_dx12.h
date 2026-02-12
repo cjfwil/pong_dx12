@@ -238,7 +238,7 @@ static_assert((sizeof(PerDrawRootConstants) <= 256), "Root32BitConstants size mu
 
 static struct
 {
-    PerDrawRootConstants m_RootConstants;
+    // PerDrawRootConstants m_RootConstants;
     PerFrameConstantBuffer m_PerFrameConstantBufferData[g_FrameCount];
     PerSceneConstantBuffer m_PerSceneConstantBufferData;
 
@@ -970,9 +970,9 @@ bool LoadAssets()
             // psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
             psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
             psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-            // psoDesc.DepthStencilState.DepthEnable = true;
-            // psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-            // psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+            psoDesc.DepthStencilState.DepthEnable = false;
+            psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+            psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
             psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
             psoDesc.SampleMask = UINT_MAX;
             psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
