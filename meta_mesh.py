@@ -15,21 +15,22 @@ Vec3 = namedtuple('Vec3', ['x', 'y', 'z'])
 Vec2 = namedtuple('Vec2', ['x', 'y'])
 
 def gen_cube():
-    """Generate 24 vertices (4 per face) and 36 indices for a cube."""
+    """Generate 24 vertices (4 per face) and 36 indices for a cube.
+       Winding: counter-clockwise when viewed from outside."""
     vertices = []
     indices = []
 
     s = 0.5  # half‑size
 
     corners = [
-        Vec3(-s, -s, -s),  # 0
-        Vec3( s, -s, -s),  # 1
-        Vec3( s, -s,  s),  # 2
-        Vec3(-s, -s,  s),  # 3
-        Vec3(-s,  s, -s),  # 4
-        Vec3( s,  s, -s),  # 5
-        Vec3( s,  s,  s),  # 6
-        Vec3(-s,  s,  s),  # 7
+        Vec3(-s, -s, -s),  # 0 back  bottom left
+        Vec3( s, -s, -s),  # 1 back  bottom right
+        Vec3( s, -s,  s),  # 2 front bottom right
+        Vec3(-s, -s,  s),  # 3 front bottom left
+        Vec3(-s,  s, -s),  # 4 back  top left
+        Vec3( s,  s, -s),  # 5 back  top right
+        Vec3( s,  s,  s),  # 6 front top right
+        Vec3(-s,  s,  s),  # 7 front top left
     ]
 
     uvs = [
@@ -39,19 +40,20 @@ def gen_cube():
         Vec2(0, 0),  # top-left
     ]
 
+    # Each face: vertex indices in COUNTER-CLOCKWISE order when viewed from OUTSIDE.
     faces = [
         # bottom (y = -s)
-        ([3, 2, 1, 0], uvs),
-        # top (y =  s)
-        ([4, 5, 6, 7], uvs),
-        # front (z =  s)
-        ([7, 6, 2, 3], uvs),
-        # back (z = -s)
-        ([0, 1, 5, 4], uvs),
-        # left (x = -s)
-        ([4, 7, 3, 0], uvs),
-        # right (x =  s)
-        ([1, 2, 6, 5], uvs),
+        ([0, 1, 2, 3], uvs),
+        # top    (y =  s)
+        ([7, 6, 5, 4], uvs),
+        # front  (z =  s)
+        ([2, 6, 7, 3], uvs),
+        # back   (z = -s)   - FIXED: was [1,5,4,0], now reversed → [0,4,5,1]
+        ([0, 4, 5, 1], uvs),
+        # left   (x = -s)
+        ([3, 7, 4, 0], uvs),
+        # right  (x =  s)   - FIXED: was [5,1,2,6], now reversed → [6,2,1,5]
+        ([6, 2, 1, 5], uvs),
     ]
 
     base_index = 0
@@ -61,6 +63,7 @@ def gen_cube():
             uv = face_uvs[i]
             vertices.append(Vertex(pos, uv))
 
+        # Two triangles: (0,1,2) and (0,2,3) – both CCW from outside with our vertex order.
         indices.append(base_index + 0)
         indices.append(base_index + 1)
         indices.append(base_index + 2)
@@ -77,14 +80,14 @@ def gen_cylinder(slices=12):
     """
     Generate a cylinder mesh (radius=0.5, height=1.0).
     Sides: quads, top/bottom: triangle fans.
-    Returns (vertices, indices).
+    Winding: counter-clockwise when viewed from outside.
     """
     vertices = []
     indices = []
 
     radius = 0.5
     half_height = 0.5
-    slices = max(3, slices)  # at least 3
+    slices = max(3, slices)
 
     angle_step = 2.0 * math.pi / slices
 
@@ -117,46 +120,49 @@ def gen_cylinder(slices=12):
         top_uv = Vec2(i / slices, 1.0)
         vertices.append(Vertex(top_pos, top_uv))
 
-    # --- side quads ---
+    # --- side quads (reverse winding to be CCW from outside) ---
     for i in range(slices):
         next_i = (i + 1) % slices
 
-        b0 = bottom_ring_start + i * 2      # bottom vertex this slice
-        b1 = bottom_ring_start + next_i * 2 # bottom vertex next slice
-        t0 = bottom_ring_start + i * 2 + 1  # top vertex this slice
-        t1 = bottom_ring_start + next_i * 2 + 1 # top vertex next slice
+        b0 = bottom_ring_start + i * 2      # bottom this slice
+        b1 = bottom_ring_start + next_i * 2 # bottom next slice
+        t0 = bottom_ring_start + i * 2 + 1  # top this slice
+        t1 = bottom_ring_start + next_i * 2 + 1 # top next slice
 
-        # triangle 1: (b0, b1, t1)
+        # Original was (b0,b1,t1) and (b0,t1,t0) – those were CW from outside.
+        # Reverse to CCW from outside:
+        # Triangle 1: (b0, t1, b1)
         indices.append(b0)
+        indices.append(t1)
         indices.append(b1)
-        indices.append(t1)
-        # triangle 2: (b0, t1, t0)
+        # Triangle 2: (b0, t0, t1)
         indices.append(b0)
-        indices.append(t1)
         indices.append(t0)
+        indices.append(t1)
 
-    # --- bottom cap (triangle fan) ---
-    # bottom center already at bottom_center_idx
+    # --- bottom cap (triangle fan) – reverse winding ---
+    # Outside is below, need CCW when viewed from below.
+    # Original: (center, b1, b0) was CW from below -> reverse to (center, b0, b1)
     for i in range(slices):
         next_i = (i + 1) % slices
         b0 = bottom_ring_start + i * 2
         b1 = bottom_ring_start + next_i * 2
-
-        # triangle (center, b1, b0) – clockwise when viewed from below (outside)
         indices.append(bottom_center_idx)
-        indices.append(b1)
         indices.append(b0)
+        indices.append(b1)
 
-    # --- top cap (triangle fan) ---
+    # --- top cap (triangle fan) – reverse winding ---
+    # Outside is above, need CCW when viewed from above.
+    # Original: (center, t0, t1) was CCW from above -> that's actually CW from outside (since outside is above, viewer looks down).
+    # To be CCW from outside (above), we need the triangle to be clockwise from above.
+    # So reverse the order: (center, t1, t0)
     for i in range(slices):
         next_i = (i + 1) % slices
         t0 = bottom_ring_start + i * 2 + 1
         t1 = bottom_ring_start + next_i * 2 + 1
-
-        # triangle (center, t0, t1) – counter‑clockwise when viewed from above (outside)
         indices.append(top_center_idx)
-        indices.append(t0)
         indices.append(t1)
+        indices.append(t0)
 
     return vertices, indices
 
@@ -165,6 +171,7 @@ def gen_prism():
     """
     Generate an equilateral triangular prism (radius=0.5, height=1.0).
     Returns (vertices, indices) with per‑face vertices for correct UVs.
+    Winding: counter-clockwise when viewed from outside.
     """
     vertices = []
     indices = []
@@ -182,14 +189,14 @@ def gen_prism():
         z = radius * math.sin(a)
         bottom_tri_pos.append(Vec3(x, -half_height, z))
 
-    # bottom face UVs – map triangle to a 0‑1 square-ish? We'll use a simple 0,0;1,0;0.5,1.
+    # bottom face UVs – map triangle to a 0‑1 square-ish
     bottom_uvs = [Vec2(0, 0), Vec2(1, 0), Vec2(0.5, 1)]
 
     bottom_start = len(vertices)
     for i in range(3):
         vertices.append(Vertex(bottom_tri_pos[i], bottom_uvs[i]))
 
-    # indices for bottom triangle (0,1,2)
+    # indices for bottom triangle (0,1,2) – already CCW from below (outward normal -y points toward viewer)
     indices.append(bottom_start + 0)
     indices.append(bottom_start + 1)
     indices.append(bottom_start + 2)
@@ -201,42 +208,43 @@ def gen_prism():
         z = radius * math.sin(a)
         top_tri_pos.append(Vec3(x, half_height, z))
 
-    # top face UVs (same mapping)
     top_start = len(vertices)
     for i in range(3):
         vertices.append(Vertex(top_tri_pos[i], bottom_uvs[i]))
 
-    # indices for top triangle (3,4,5) – note winding: should be CCW when viewed from above
+    # Top face: need CCW when viewed from above (outside). Original (0,1,2) was CW from above.
+    # Reverse to (0,2,1) to get CCW from above.
     indices.append(top_start + 0)
-    indices.append(top_start + 1)
     indices.append(top_start + 2)
+    indices.append(top_start + 1)
 
     # --- side faces (3 quads) ---
-    # for each edge, create a quad with proper UVs (0,0)-(1,0)-(1,1)-(0,1)
+    # for each edge, create a quad with proper UVs, but reverse winding to be CCW from outside.
     for edge in range(3):
         next_edge = (edge + 1) % 3
 
         # bottom vertices: bottom_tri_pos[edge], bottom_tri_pos[next_edge]
         # top vertices:   top_tri_pos[edge], top_tri_pos[next_edge]
 
-        # order: bottom_left, bottom_right, top_right, top_left
+        # order for CCW from outside: bottom_left, top_left, top_right, bottom_right
+        # (i.e., bl, tl, tr, br) – this makes both triangles CCW.
         bl = bottom_tri_pos[edge]
-        br = bottom_tri_pos[next_edge]
-        tr = top_tri_pos[next_edge]
         tl = top_tri_pos[edge]
+        tr = top_tri_pos[next_edge]
+        br = bottom_tri_pos[next_edge]
 
         bl_uv = Vec2(0.0, 0.0)
-        br_uv = Vec2(1.0, 0.0)
-        tr_uv = Vec2(1.0, 1.0)
         tl_uv = Vec2(0.0, 1.0)
+        tr_uv = Vec2(1.0, 1.0)
+        br_uv = Vec2(1.0, 0.0)
 
         quad_start = len(vertices)
         vertices.append(Vertex(bl, bl_uv))
-        vertices.append(Vertex(br, br_uv))
-        vertices.append(Vertex(tr, tr_uv))
         vertices.append(Vertex(tl, tl_uv))
+        vertices.append(Vertex(tr, tr_uv))
+        vertices.append(Vertex(br, br_uv))
 
-        # two triangles: (bl, br, tr) and (bl, tr, tl)
+        # two triangles: (0,1,2) and (0,2,3) – both CCW with this vertex order.
         indices.append(quad_start + 0)
         indices.append(quad_start + 1)
         indices.append(quad_start + 2)
@@ -252,7 +260,7 @@ def gen_sphere(slices=20, stacks=12):
     """
     Generate a UV sphere mesh (radius=0.5).
     Slices = number of meridians, stacks = number of latitude bands.
-    Returns (vertices, indices).
+    Winding: counter-clockwise when viewed from outside.
     """
     vertices = []
     indices = []
@@ -276,7 +284,9 @@ def gen_sphere(slices=20, stacks=12):
             uv = Vec2(u, v)
             vertices.append(Vertex(pos, uv))
 
-    # Indices: two triangles per quad
+    # Indices: two triangles per quad, with CCW winding from outside.
+    # Original was (a,b,d) and (a,d,c) – those were CW from outside.
+    # Reverse each triangle: (a,d,b) and (a,c,d)
     for i in range(stacks):
         for j in range(slices):
             a = i * (slices + 1) + j
@@ -285,11 +295,12 @@ def gen_sphere(slices=20, stacks=12):
             d = (i + 1) * (slices + 1) + j + 1
 
             indices.append(a)
+            indices.append(d)
             indices.append(b)
-            indices.append(d)
+
             indices.append(a)
-            indices.append(d)
             indices.append(c)
+            indices.append(d)
 
     return vertices, indices
 

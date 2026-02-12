@@ -9,6 +9,7 @@
 #include <d3dcompiler.h>
 #include <DirectXMath.h>
 #include <DirectXTex.h>
+#include <SDL3/SDL.h>
 #pragma warning(pop)
 
 #include "local_error.h"
