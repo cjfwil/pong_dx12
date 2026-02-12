@@ -132,7 +132,9 @@ static_assert((sizeof(PerFrameConstantBuffer) % 256) == 0, "Per Frame Constant B
 struct PerSceneConstantBuffer
 {
     DirectX::XMFLOAT4 ambient_colour;
-    float padding[60];
+    DirectX::XMFLOAT4 light_direction;
+    DirectX::XMFLOAT4 light_colour;
+    float padding[52];
 };
 static_assert((sizeof(PerSceneConstantBuffer) % 256) == 0, " Per Scene Constant Buffer size must be 256-byte aligned");
 
@@ -1089,6 +1091,8 @@ bool LoadAssets()
             reinterpret_cast<void **>(&graphics_resources.m_pPerSceneCbvDataBegin)));
 
         graphics_resources.m_PerSceneConstantBufferData.ambient_colour = DirectX::XMFLOAT4(0.2f, 0.2f, 0.3f, 1.0f);
+        graphics_resources.m_PerSceneConstantBufferData.light_direction = DirectX::XMFLOAT4(0.2f, 0.2f, 0.3f, 1.0f);
+        graphics_resources.m_PerSceneConstantBufferData.light_colour = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 
         memcpy(graphics_resources.m_pPerSceneCbvDataBegin,
                &graphics_resources.m_PerSceneConstantBufferData,

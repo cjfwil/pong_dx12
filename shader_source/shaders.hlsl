@@ -1,10 +1,9 @@
-// common.hlsl – Unified shader for standard UV and triplanar mapping
-// 
+// common.hlsl – Unified shader with directional lighting
 // Compile with -D TRIPLANAR for triplanar shading, otherwise standard UV mapping.
-// All constant buffer definitions and input structures are shared.
+// Both paths now compute world‑space normals and support a directional light.
 
 // ----------------------------------------------------------------------------
-// Constant buffers (identical in both shaders)
+// Constant buffers
 // ----------------------------------------------------------------------------
 cbuffer PerDrawRootConstants : register(b0)
 {
@@ -18,49 +17,58 @@ cbuffer PerFrameConstantBuffer : register(b1)
     float per_frame_padding[16 + 16];   // 256‑byte alignment
 };
 
+// Per‑scene constant buffer – now includes directional light data
 cbuffer PerSceneConstantBuffer : register(b2)
 {
+    // ambient colour (multiplied with texture)
     float4 ambient_colour;
-    float per_scene_padding[60];        // 256‑byte alignment
+
+    // directional light: direction points FROM surface TO light (world space)
+    float4 light_direction;   // .w unused, ensure float4 for alignment
+
+    // directional light colour (intensity, no alpha)
+    float4 light_colour;      // .w unused
+
+    // padding to keep 256‑byte alignment
+    float per_scene_padding[52];
 };
 
 Texture2D g_texture : register(t0);
 SamplerState g_sampler : register(s0);
 
 // ----------------------------------------------------------------------------
-// Common vertex input and output structures
+// Common vertex input / output
 // ----------------------------------------------------------------------------
 struct VSInput
 {
     float4 position : POSITION;
-    float3 norm    : NORMAL;
-    float2 uv      : TEXCOORD;
+    float3 norm     : NORMAL;
+    float2 uv       : TEXCOORD;
 };
 
 struct PSInput
 {
     float4 position : SV_POSITION;
-    float3 worldPos : POSITION2;   // world space position (used by triplanar)
-    float3 normal   : NORMAL;      // world space (triplanar) or object space (standard)
+    float3 worldPos : POSITION2;   // world space position (triplanar) / unused
+    float3 normal   : NORMAL;      // world space normal (normalised)
     float2 uv       : TEXCOORD;
 };
 
 // ----------------------------------------------------------------------------
-// Triplanar shading path (activated by #define TRIPLANAR)
+// Triplanar path
 // ----------------------------------------------------------------------------
-#define TRIPLANAR
 #ifdef TRIPLANAR
 
 PSInput VSMain(VSInput input)
 {
     PSInput result;
 
-    // Transform to world space (row‑major multiplication: vector * matrix)
+    // world position (row‑major: vector * matrix)
     float4 worldPosition = mul(input.position, world);
     result.position      = mul(mul(worldPosition, view), projection);
     result.worldPos      = worldPosition.xyz;
 
-    // Transform normal to world space (no translation)
+    // world space normal – assume world matrix has no non‑uniform scaling
     result.normal        = normalize(mul(input.norm, (float3x3)world));
 
     result.uv            = input.uv;
@@ -68,35 +76,27 @@ PSInput VSMain(VSInput input)
 }
 
 // Triplanar sampling parameters
-static const float g_Tiling          = 1.0f;   // texels per world metre
-static const float g_BlendSharpness = 1.0f;   // higher = sharper blend between axes
+static const float g_Tiling          = 1.0f;
+static const float g_BlendSharpness = 1.0f;
 
-float4 SampleTriplanar(Texture2D tex, SamplerState sam, float3 worldPos, float3 normal, float tiling)
+float4 SampleTriplanar(Texture2D tex, SamplerState sam,
+                       float3 worldPos, float3 normal, float tiling)
 {
     float3 wp = worldPos * tiling;
 
-    // Sample from three planar projections
-    float4 colX = tex.Sample(sam, wp.yz); // YZ plane (faces ±X)
-    float4 colY = tex.Sample(sam, wp.xz); // XZ plane (faces ±Y)
-    float4 colZ = tex.Sample(sam, wp.xy); // XY plane (faces ±Z)
+    float4 colX = tex.Sample(sam, wp.yz);
+    float4 colY = tex.Sample(sam, wp.xz);
+    float4 colZ = tex.Sample(sam, wp.xy);
 
-    // Compute blend weights from absolute normal
     float3 blend = abs(normal);
     blend = pow(blend, g_BlendSharpness);
-    blend /= (blend.x + blend.y + blend.z); // normalise
+    blend /= (blend.x + blend.y + blend.z);
 
     return colX * blend.x + colY * blend.y + colZ * blend.z;
 }
 
-float4 PSMain(PSInput input) : SV_TARGET
-{
-    float4 texColor = SampleTriplanar(g_texture, g_sampler,
-                                      input.worldPos, input.normal, g_Tiling);
-    return texColor * ambient_colour;
-}
-
 // ----------------------------------------------------------------------------
-// Standard UV mapping path (default)
+// Standard UV path
 // ----------------------------------------------------------------------------
 #else
 
@@ -104,23 +104,44 @@ PSInput VSMain(VSInput input)
 {
     PSInput result;
 
-    // Transform position through the full MVP chain (row‑major)
-    float4 pos = input.position;
-    pos = mul(pos, world);
-    pos = mul(pos, view);
-    pos = mul(pos, projection);
+    float4 pos = mul(input.position, world);
+    result.position = mul(mul(pos, view), projection);
+    result.worldPos = 0.0; // unused
 
-    result.position = pos;
-    result.worldPos = 0;            // unused in standard path
-    result.normal   = input.norm;   // keep object‑space normal (unused in pixel shader)
-    result.uv       = input.uv;
+    // world space normal – same transform as triplanar
+    result.normal = normalize(mul(input.norm, (float3x3)world));
+
+    result.uv = input.uv;
     return result;
 }
 
+#endif
+
+// ----------------------------------------------------------------------------
+// Pixel shader – common lighting for both paths
+// ----------------------------------------------------------------------------
 float4 PSMain(PSInput input) : SV_TARGET
 {
+    // Sample texture (path‑specific method)
+#ifdef TRIPLANAR
+    float4 texColor = SampleTriplanar(g_texture, g_sampler,
+                                      input.worldPos, input.normal, g_Tiling);
+#else
     float4 texColor = g_texture.Sample(g_sampler, input.uv);
-    return texColor * ambient_colour;
-}
-
 #endif
+
+    // Normalise interpolated normal (interpolation may shorten it)
+    float3 N = normalize(input.normal);
+
+    // Directional light: direction is FROM surface TO light (world space)
+    float3 L = normalize(light_direction.xyz);
+
+    // Diffuse contribution (clamped)
+    float NdotL = saturate(dot(N, L));
+
+    // Combine: ambient (multiply) + diffuse (additive)
+    float3 final = texColor.rgb * ambient_colour.rgb
+                 + texColor.rgb * light_colour.rgb * NdotL;
+
+    return float4(final, texColor.a);
+}
