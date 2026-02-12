@@ -1173,12 +1173,12 @@ bool LoadAssets()
         // Now load from DDS file
         DirectX::ScratchImage loadedImage;
         HRESULT hr = DirectX::LoadFromDDSFile(
-            L"assets/checkerboard.dds",
+            L"assets/secluded_beach_4k.dds",
             DirectX::DDS_FLAGS_NONE,
             nullptr,
             loadedImage);
 
-        if (!HRAssert(hr, "Failed to load checkerboard.dds"))
+        if (!HRAssert(hr, "Failed to load secluded_beach_4k.dds"))
             return false;
 
         const DirectX::TexMetadata &metadata = loadedImage.GetMetadata();

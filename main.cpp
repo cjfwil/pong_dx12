@@ -382,9 +382,10 @@ void Render(bool vsync = true)
 void Update()
 {
     DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
+    float rot = 0.0f;
     DirectX::XMStoreFloat4x4(
         &graphics_resources.m_RootConstants.world,
-        DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationAxis(axis, (float)program_state.timing.upTime)));
+        DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationAxis(axis, rot)));
 
     // DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r * sinf(program_state.timing.upTime), g_y, g_r * cosf(program_state.timing.upTime), 0.0f);
     DirectX::XMVECTOR eye = DirectX::XMVectorSet(0, g_y, g_r, 0.0f);
