@@ -382,7 +382,7 @@ void Render(bool vsync = true)
 void Update()
 {
     DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
-    float rot = 0.0f;
+    float rot = 3.1418f;
     DirectX::XMStoreFloat4x4(
         &graphics_resources.m_RootConstants.world,
         DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationAxis(axis, rot)));

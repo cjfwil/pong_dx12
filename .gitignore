@@ -8,3 +8,5 @@ release
 ds.py
 
 *.png
+
+*.hdr

@@ -835,16 +835,16 @@ std::vector<UINT8> GenerateTextureData()
 
         if (i % 2 == j % 2)
         {
-            pData[n] = 0x11;     // R
-            pData[n + 1] = 0x1c; // G
-            pData[n + 2] = 0xcc; // B
+            pData[n] = 0x55;     // R
+            pData[n + 1] = 0x55; // G
+            pData[n + 2] = 0x55; // B
             pData[n + 3] = 0xff; // A
         }
         else
         {
-            pData[n] = 0xcc;     // R
-            pData[n + 1] = 0xc1; // G
-            pData[n + 2] = 0x11; // B
+            pData[n] = 0x6c;     // R
+            pData[n + 1] = 0x6c; // G
+            pData[n + 2] = 0x6c; // B
             pData[n + 3] = 0xff; // A
         }
     }
@@ -885,9 +885,9 @@ bool LoadAssets()
         D3D12_STATIC_SAMPLER_DESC sampler = {};
         sampler.Filter = D3D12_FILTER_ANISOTROPIC;
         sampler.MaxAnisotropy = 16;
-        sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-        sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
-        sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+        sampler.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+        sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
         sampler.MipLODBias = 0;
         sampler.MaxAnisotropy = 0;
         sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
@@ -1173,12 +1173,12 @@ bool LoadAssets()
         // Now load from DDS file
         DirectX::ScratchImage loadedImage;
         HRESULT hr = DirectX::LoadFromDDSFile(
-            L"assets/secluded_beach_4k.dds",
+            L"assets/checkerboard.dds",
             DirectX::DDS_FLAGS_NONE,
             nullptr,
             loadedImage);
 
-        if (!HRAssert(hr, "Failed to load secluded_beach_4k.dds"))
+        if (!HRAssert(hr, "Failed to load checkerboard.dds"))
             return false;
 
         const DirectX::TexMetadata &metadata = loadedImage.GetMetadata();
