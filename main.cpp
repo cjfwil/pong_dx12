@@ -381,9 +381,9 @@ void Render(bool vsync = true)
 
 void Update()
 {
-    DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.234f, 1.0f, 0.0f);
+    DirectX::XMVECTOR axis = DirectX::XMVectorSet(0.0f, 0.0f, 1.0f, 0.0f);
     // float rot = 3.1418f;
-    float rot = program_state.timing.upTime * 0.5f;
+    float rot = (float)program_state.timing.upTime;
     DirectX::XMStoreFloat4x4(
         &graphics_resources.m_RootConstants.world,
         DirectX::XMMatrixTranspose(DirectX::XMMatrixRotationAxis(axis, rot)));

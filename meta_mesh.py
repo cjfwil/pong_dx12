@@ -49,7 +49,7 @@ def gen_cube():
         base += 4
     return vertices, indices
 
-def gen_cylinder(slices=12):
+def gen_cylinder(slices):
     """radius=0.5, height=1.0. Correct winding for caps."""
     vertices, indices = [], []
     radius, half_h = 0.5, 0.5
@@ -131,7 +131,7 @@ def gen_prism():
                         quad_start, quad_start+2, quad_start+3])
     return vertices, indices
 
-def gen_sphere(slices=20, stacks=12):
+def gen_sphere(slices, stacks):
     """UV sphere radius=0.5."""
     vertices, indices = [], []
     radius = 0.5
@@ -155,7 +155,7 @@ def gen_sphere(slices=20, stacks=12):
             indices.extend([a, d, b, a, c, d])
     return vertices, indices
 
-def gen_inverted_sphere(slices=20, stacks=12):
+def gen_inverted_sphere(slices, stacks):
     """Same vertices, reversed winding (for skyboxes)."""
     vertices, indices = [], []
     radius = 0.5
@@ -184,10 +184,10 @@ def gen_inverted_sphere(slices=20, stacks=12):
 # ----------------------------------------------------------------------
 PRIMITIVES = [
     ("cube",             gen_cube),
-    ("cylinder",         gen_cylinder, 12),
+    ("cylinder",         gen_cylinder, 32),
     ("prism",            gen_prism),
-    ("sphere",           gen_sphere, 20, 12),
-    ("inverted_sphere",  gen_inverted_sphere, 20, 12),
+    ("sphere",           gen_sphere, 64, 32),
+    ("inverted_sphere",  gen_inverted_sphere, 64, 32),
 ]
 
 # ----------------------------------------------------------------------

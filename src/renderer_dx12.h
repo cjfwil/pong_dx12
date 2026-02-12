@@ -1101,8 +1101,6 @@ bool LoadAssets()
 
     // Create the texture.
     {
-// First: Generate the texture data using your existing function
-
 // Save it as DDS (one-time operation)
 #if defined(_DEBUG)
         {
