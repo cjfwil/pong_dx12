@@ -1,58 +1,34 @@
 #!/usr/bin/env python3
 """
-Generate inline functions for config_ini_io.h with INI sections
+meta_config.py – Generate INI serialization for ConfigData.
+
+This script parses src/config_ini_io.h, extracts nested struct sections
+(DisplaySettings, GraphicsSettings, etc.) and generates
+src/generated/config_functions.h with Save/Load functions.
+
+Now uses common.py for logging, file I/O, header generation, and struct parsing.
 """
 
+import os
 import re
+import sys
+from pathlib import Path
 
-def parse_struct_fields(struct_body):
-    """Parse fields from a struct body, handling nested structs"""
-    fields = []
-    brace_depth = 0
-    current_line = ""
-    
-    lines = struct_body.strip().split('\n')
-    for line in lines:
-        line = line.strip()
-        if not line or line.startswith('//'):
-            continue
-            
-        # Handle braces for nested structs
-        brace_depth += line.count('{') - line.count('}')
-        
-        # Skip lines that are struct definitions themselves
-        if 'struct' in line and '{' in line and brace_depth == 1:
-            continue
-            
-        # Add to current line if we're inside braces or it's a continuation
-        if brace_depth > 0 or line.endswith(','):
-            current_line += " " + line
-            if not line.endswith(','):
-                # Parse the accumulated line
-                parts = current_line.strip(';').split()
-                if len(parts) >= 2:
-                    type_name = parts[0]
-                    var_names = ' '.join(parts[1:])
-                    for var_part in var_names.split(','):
-                        var_part = var_part.strip()
-                        if var_part:
-                            fields.append((type_name, var_part))
-                current_line = ""
-        else:
-            # Parse single line
-            parts = line.strip(';').split()
-            if len(parts) >= 2:
-                type_name = parts[0]
-                var_names = ' '.join(parts[1:])
-                for var_part in var_names.split(','):
-                    var_part = var_part.strip()
-                    if var_part:
-                        fields.append((type_name, var_part))
-    
-    return fields
+# ----------------------------------------------------------------------
+# Local imports (common must be in Python path)
+# ----------------------------------------------------------------------
+try:
+    import common
+except ImportError:
+    # If running as script, add parent directory or assume sibling
+    sys.path.insert(0, str(Path(__file__).parent))
+    import common
 
-def get_format_specifier(type_name):
-    """Get format specifier for a type"""
+# ----------------------------------------------------------------------
+# Format and parser helpers (could be moved to common later)
+# ----------------------------------------------------------------------
+def get_format_specifier(type_name: str) -> str:
+    """Return printf format specifier for a C type."""
     if 'float' in type_name:
         return '%f'
     elif 'double' in type_name:
@@ -66,132 +42,141 @@ def get_format_specifier(type_name):
     elif 'char' in type_name and '*' in type_name:
         return '%s'
     else:
-        return '%d'
+        return '%d'  # fallback
 
-def get_parser_function(type_name):
-    """Get parser function for a type"""
+def get_parser_function(type_name: str) -> str:
+    """Return SDL parser function name for a type."""
     if 'float' in type_name or 'double' in type_name:
         return 'SDL_atof'
     else:
         return 'SDL_atoi'
 
-def generate_config_functions():
-    """Generate config_functions.h with INI sections"""
-    
-    # Read the current src/config_ini_io.h
-    with open('src/config_ini_io.h', 'r') as f:
+# ----------------------------------------------------------------------
+# Main generator
+# ----------------------------------------------------------------------
+def generate_config_functions(
+    input_path: Path = Path("src/config_ini_io.h"),
+    output_path: Path = Path("src/generated/config_functions.h"),
+    force: bool = False
+) -> bool:
+    """
+    Generate config_functions.h from config_ini_io.h.
+    Returns True if file was written/updated, False otherwise.
+    """
+    # 1. Read input file
+    if not input_path.exists():
+        common.log_error(f"Input file not found: {input_path}")
+        return False
+
+    with open(input_path, 'r', encoding='utf-8') as f:
         content = f.read()
-    
-    # Parse the ConfigData struct and find all nested structs
-    sections = []
-    
-    # First, find the ConfigData struct
-    configdata_pattern = r'typedef\s+struct\s*\{([^}]+(?:{[^}]*}[^}]*)*)\}\s*ConfigData\s*;'
-    match = re.search(configdata_pattern, content, re.DOTALL)
-    
+
+    # 2. Extract ConfigData struct body
+    #    Pattern: typedef struct { ... } ConfigData;
+    pattern = r'typedef\s+struct\s*\{([^}]+(?:{[^}]*}[^}]*)*)\}\s*ConfigData\s*;'
+    match = re.search(pattern, content, re.DOTALL)
     if not match:
-        print("Error: Could not find ConfigData struct in src/config_ini_io.h")
-        return
-    
+        common.log_error(f"Could not find ConfigData struct in {input_path}")
+        return False
+
     config_body = match.group(1)
-    
-    # Look for nested structs in the form: struct { ... } SectionName;
-    # This pattern matches anonymous structs with a name
-    section_pattern = r'struct\s*\{([^}]+)\}\s*(\w+)\s*;'
-    
-    section_matches = re.findall(section_pattern, config_body, re.DOTALL)
-    
-    for section_body, section_name in section_matches:
-        fields = parse_struct_fields(section_body)
-        if fields:
-            sections.append({
-                'name': section_name,
-                'fields': fields
-            })
-    
-    print(f"Found {len(sections)} sections:")
-    for section in sections:
-        field_names = [name for _, name in section['fields']]
-        print(f"  [{section['name']}]: {field_names}")
-    
-    # Generate SaveConfig format string and arguments
+
+    # 3. Find all nested structs inside ConfigData (e.g. DisplaySettings)
+    #    common.parse_nested_structs returns dict: { member_name: list_of_fields }
+    nested = common.parse_nested_structs(config_body)
+
+    # Convert dict to list of sections with name and fields
+    sections = []
+    for name, fields in nested.items():
+        # fields are (type, name, is_array, array_size, is_pointer)
+        # we only need type and variable name
+        simple_fields = [(typ, var) for (typ, var, _, _, _) in fields]
+        sections.append({'name': name, 'fields': simple_fields})
+
+    if not sections:
+        common.log_warning("No nested structs found inside ConfigData")
+        return False
+
+    common.log_info(f"Found {len(sections)} config sections:")
+    for sec in sections:
+        field_names = [name for _, name in sec['fields']]
+        common.log_info(f"  [{sec['name']}]: {field_names}")
+
+    # 4. Generate SaveConfig format string and argument list
     format_parts = []
     arg_lines = []
-    
-    for section in sections:
-        format_parts.append(f"[{section['name']}]")
-        for type_name, var_name in section['fields']:
-            fmt = get_format_specifier(type_name)
-            format_parts.append(f"{var_name}={fmt}")
-            arg_lines.append(f"config->{section['name']}.{var_name}")
-        format_parts.append("")  # Empty line between sections
-    
-    # Remove last empty line
+
+    for sec in sections:
+        format_parts.append(f"[{sec['name']}]")
+        for typ, var in sec['fields']:
+            fmt = get_format_specifier(typ)
+            format_parts.append(f"{var}={fmt}")
+            arg_lines.append(f"config->{sec['name']}.{var}")
+        format_parts.append("")  # empty line between sections
+
+    # Remove trailing empty line
     if format_parts and format_parts[-1] == "":
         format_parts.pop()
-    
+
     format_string = '\\n'.join(format_parts) + '\\n'
     args_string = ',\n                 '.join(arg_lines)
-    
-    # Generate parsing blocks for LoadConfig
-    parse_blocks = []
-    current_section_var = None
-    
-    parse_blocks.append('    char* line = data;')
-    parse_blocks.append('    char current_section[64] = {0};')
-    parse_blocks.append('    ')
-    parse_blocks.append('    while (*line) {')
-    parse_blocks.append('        // Skip whitespace')
-    parse_blocks.append('        while (*line == \' \' || *line == \'\\t\') line++;')
-    parse_blocks.append('        ')
-    parse_blocks.append('        // Check for section header')
-    parse_blocks.append('        if (*line == \'[\') {')
-    parse_blocks.append('            char* section_end = SDL_strchr(line, \']\');')
-    parse_blocks.append('            if (section_end) {')
-    parse_blocks.append('                size_t len = section_end - line - 1;')
-    parse_blocks.append('                if (len < sizeof(current_section) - 1) {')
-    parse_blocks.append('                    SDL_strlcpy(current_section, line + 1, len + 1);')
-    parse_blocks.append('                }')
-    parse_blocks.append('                line = section_end + 1;')
-    parse_blocks.append('            }')
-    parse_blocks.append('        } else {')
-    parse_blocks.append('            // Parse key=value pairs')
-    
-    # Generate section-specific parsing
-    for section_idx, section in enumerate(sections):
-        section_condition = f'            if (SDL_strcmp(current_section, "{section["name"]}") == 0) {{'
-        parse_blocks.append(section_condition)
-        
-        for field_idx, (type_name, var_name) in enumerate(section['fields']):
-            length = len(var_name) + 1  # +1 for '='
-            parser = get_parser_function(type_name)
-            
+
+    # 5. Generate LoadConfig parsing logic
+    parse_lines = []
+    parse_lines.append('    char* line = data;')
+    parse_lines.append('    char current_section[64] = {0};')
+    parse_lines.append('')
+    parse_lines.append('    while (*line) {')
+    parse_lines.append('        // Skip whitespace')
+    parse_lines.append('        while (*line == \' \' || *line == \'\\t\') line++;')
+    parse_lines.append('')
+    parse_lines.append('        // Check for section header')
+    parse_lines.append('        if (*line == \'[\') {')
+    parse_lines.append('            char* section_end = SDL_strchr(line, \']\');')
+    parse_lines.append('            if (section_end) {')
+    parse_lines.append('                size_t len = section_end - line - 1;')
+    parse_lines.append('                if (len < sizeof(current_section) - 1) {')
+    parse_lines.append('                    SDL_strlcpy(current_section, line + 1, len + 1);')
+    parse_lines.append('                }')
+    parse_lines.append('                line = section_end + 1;')
+    parse_lines.append('            }')
+    parse_lines.append('        } else {')
+    parse_lines.append('            // Parse key=value pairs')
+
+    # Section-specific parsing
+    for sec_idx, sec in enumerate(sections):
+        condition = f'            if (SDL_strcmp(current_section, "{sec["name"]}") == 0) {{'
+        parse_lines.append(condition)
+
+        for field_idx, (typ, var) in enumerate(sec['fields']):
+            length = len(var) + 1  # '=' included
+            parser = get_parser_function(typ)
+
             if field_idx == 0:
-                parse_blocks.append(f'                if (SDL_strncmp(line, "{var_name}=", {length}) == 0) {{')
+                parse_lines.append(f'                if (SDL_strncmp(line, "{var}=", {length}) == 0) {{')
             else:
-                parse_blocks.append(f'                }} else if (SDL_strncmp(line, "{var_name}=", {length}) == 0) {{')
-            
-            parse_blocks.append(f'                    config->{section["name"]}.{var_name} = {parser}(line + {length});')
-        
-        # Close the if-else chain for this section
-        if section['fields']:
-            parse_blocks.append('                }')
-        
-        parse_blocks.append('            }')
-    
-    parse_blocks.append('            ')
-    parse_blocks.append('            // Skip to next line')
-    parse_blocks.append('            while (*line && *line != \'\\n\') line++;')
-    parse_blocks.append('        }')
-    parse_blocks.append('        ')
-    parse_blocks.append('        if (*line == \'\\n\') line++;')
-    parse_blocks.append('    }')
-    
-    parse_logic = '\n'.join(parse_blocks)
-    
-    # Write to config_functions.h
-    functions_content = f"""/* Generated by gen_config_functions.py - DO NOT EDIT MANUALLY */
-#pragma once
+                parse_lines.append(f'                }} else if (SDL_strncmp(line, "{var}=", {length}) == 0) {{')
+
+            parse_lines.append(f'                    config->{sec["name"]}.{var} = {parser}(line + {length});')
+
+        if sec['fields']:
+            parse_lines.append('                }')
+
+        parse_lines.append('            }')
+
+    parse_lines.append('')
+    parse_lines.append('            // Skip to next line')
+    parse_lines.append('            while (*line && *line != \'\\n\') line++;')
+    parse_lines.append('        }')
+    parse_lines.append('')
+    parse_lines.append('        if (*line == \'\\n\') line++;')
+    parse_lines.append('    }')
+
+    parse_logic = '\n'.join(parse_lines)
+
+    # 6. Assemble final content
+    header = common.make_header(tool_name="meta_config.py", comment="GENERATED CONFIG FUNCTIONS")
+    functions_content = header + f"""#pragma once
 #include <SDL3/SDL.h>
 
 /* Inline function to generate the config string with sections */
@@ -206,12 +191,30 @@ static inline void Generated_LoadConfigFromString(ConfigData* config, char* data
 {parse_logic}
 }}
 """
-    
-    with open('src/generated/config_functions.h', 'w') as f:
-        f.write(functions_content)
-    
-    print("\nGenerated config_functions.h with INI sections successfully!")
-    print("Include this file in your config_ini_io.h and call the generated functions.")
 
-if __name__ == "__main__":
-    generate_config_functions()
+    # 7. Write output atomically
+    return common.write_file_if_changed(output_path, functions_content)
+
+
+# ----------------------------------------------------------------------
+# CLI entry point
+# ----------------------------------------------------------------------
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description="Generate config_functions.h from config_ini_io.h")
+    common.add_common_args(parser)
+    parser.add_argument('--input', '-i', type=Path, default=Path("src/config_ini_io.h"),
+                        help="Input config header (default: src/config_ini_io.h)")
+    parser.add_argument('--output', '-o', type=Path, default=Path("src/generated/config_functions.h"),
+                        help="Output generated file (default: src/generated/config_functions.h)")
+    args = parser.parse_args()
+
+    # Configure verbose logging
+    if args.verbose:
+        # Replace log_info with more verbose? Not needed, common.log_info works.
+        pass
+
+    success = generate_config_functions(args.input, args.output, force=args.force)
+    if not success:
+        sys.exit(1)
+    sys.exit(0)

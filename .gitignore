@@ -5,8 +5,11 @@
 
 release
 
+# python stuff
 ds.py
+__pycache__
 
+# asset files
 *.png
-
 *.hdr
+

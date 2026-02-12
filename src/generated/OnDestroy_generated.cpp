@@ -1,3 +1,10 @@
+//------------------------------------------------------------------------
+// GENERATED ONDESTROY – DO NOT EDIT
+//   This file was automatically generated.
+//   by meta_ondestroy.py
+//   Generated: 2026-02-12 07:06:50
+//------------------------------------------------------------------------
+
 #pragma once
 #include "renderer_dx12.h"
 #define ONDESTROY_GENERATED_CPP

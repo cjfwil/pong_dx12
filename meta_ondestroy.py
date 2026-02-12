@@ -1,19 +1,39 @@
+#!/usr/bin/env python3
+"""
+meta_ondestroy.py – Generate OnDestroy_generated.cpp.
+
+Parses renderer_dx12.h, finds D3D12 COM pointers in known structs,
+orders them by dependency, emits cleanup code.
+
+Now uses common.py for logging, file I/O, and header generation,
+but retains its own specialised parser (the original one works).
+"""
+
 import re
+import sys
 from pathlib import Path
 
-def parse_dx12_resources(header_path):
-    """Parse the header file and extract D3D12 resource declarations."""
-    
-    with open(header_path, 'r') as f:
-        content = f.read()
-    
+# ----------------------------------------------------------------------
+# Local imports
+# ----------------------------------------------------------------------
+try:
+    import common
+except ImportError:
+    sys.path.insert(0, str(Path(__file__).parent))
+    import common
+
+# ----------------------------------------------------------------------
+# Parser – exact original, proven to work
+# ----------------------------------------------------------------------
+def parse_dx12_resources(content: str) -> list:
+    """Parse the header content and extract D3D12 resource declarations."""
     resources = []
     
     # Pattern to match COM pointer declarations in structs
     # Matches: ID3D12Something *name or ID3D12Something *name[N]
     pattern = r'(ID3D\w+|IDXGISwapChain\d*)\s*\*\s*(\w+)(\[[^\]]*\])?\s*(=\s*[^;]*)?;'
     
-    # Find all struct definitions with their names
+    # Find all static struct definitions with their names
     struct_pattern = r'static struct\s*\{(.+?)\}\s*(\w+);'
     
     for struct_match in re.finditer(struct_pattern, content, re.DOTALL):
@@ -44,80 +64,98 @@ def parse_dx12_resources(header_path):
                     'struct': struct_name,
                     'type': type_name,
                     'name': var_name,
-                    'is_array': False
+                    'is_array': False,
+                    'array_size': None
                 })
     
     return resources
 
-def determine_cleanup_order(resources):
-    """
-    Determine the correct cleanup order based on D3D12 dependency rules.
-    Generally: child resources before parents, in reverse creation order.
-    """
-    
-    # Define priority tiers (lower number = release earlier)
-    priority_map = {
-        # Release per-frame resources first
-        'constantBuffer': 1,
-        'm_constantBuffer': 1,
-        
-        # Release other graphics resources
-        'texture': 2,
-        'm_texture': 2,
-        'vertexBuffer': 2,
-        'm_vertexBuffer': 2,
-        'depthStencil': 2,
-        'm_depthStencil': 2,
-        
-        # Release pipeline state objects
-        'rootSignature': 3,
-        'm_rootSignature': 3,
-        'pipelineState': 3,
-        'm_pipelineState': 3,
-        'commandList': 3,
-        'm_commandList': 3,
-        
-        # Release per-frame command objects
-        'commandAllocators': 4,
-        'm_commandAllocators': 4,
-        'renderTargets': 4,
-        'm_renderTargets': 4,
-        
-        # Release descriptor heaps
-        'dsvHeap': 5,
-        'm_dsvHeap': 5,
-        'mainHeap': 5,
-        'm_mainHeap': 5,
-        'rtvHeap': 5,
-        'm_rtvHeap': 5,
-        
-        # Release swap chain
-        'swapChain': 6,
-        'm_swapChain': 6,
-        
-        # Release command queue
-        'commandQueue': 7,
-        'm_commandQueue': 7,
-        
-        # Release device last
-        'device': 8,
-        'm_device': 8,
-        
-        # Sync objects (fence is COM object too!)
-        'fence': 0,
-        'm_fence': 0,
-    }
-    
-    # Sort resources by priority
-    def get_priority(resource):
-        name = resource['name']
-        return priority_map.get(name, 999)  # Unknown resources go last
-    
-    return sorted(resources, key=get_priority)
+# ----------------------------------------------------------------------
+# Cleanup ordering – original priority map
+# ----------------------------------------------------------------------
+PRIORITY_MAP = {
+    # Sync objects (release first)
+    'fence': 0,
+    'm_fence': 0,
+    # Constant buffers (need Unmap)
+    'constantBuffer': 1,
+    'm_constantBuffer': 1,
+    # Graphics resources
+    'texture': 2,
+    'm_texture': 2,
+    'vertexBuffer': 2,
+    'm_vertexBuffer': 2,
+    'depthStencil': 2,
+    'm_depthStencil': 2,
+    # Pipeline objects
+    'rootSignature': 3,
+    'm_rootSignature': 3,
+    'pipelineState': 3,
+    'm_pipelineState': 3,
+    'commandList': 3,
+    'm_commandList': 3,
+    # Per-frame resources
+    'commandAllocators': 4,
+    'm_commandAllocators': 4,
+    'renderTargets': 4,
+    'm_renderTargets': 4,
+    # Descriptor heaps
+    'dsvHeap': 5,
+    'm_dsvHeap': 5,
+    'mainHeap': 5,
+    'm_mainHeap': 5,
+    'rtvHeap': 5,
+    'm_rtvHeap': 5,
+    # Swap chain
+    'swapChain': 6,
+    'm_swapChain': 6,
+    # Command queue
+    'commandQueue': 7,
+    'm_commandQueue': 7,
+    # Device (last)
+    'device': 8,
+    'm_device': 8,
+}
 
-def generate_cleanup_code(resources):
+def get_priority(resource: dict) -> int:
+    """Return priority value for sorting (lower = earlier cleanup)."""
+    name = resource['name']
+    return PRIORITY_MAP.get(name, 999)
+
+def get_category_comment(name: str) -> str:
+    """Return descriptive comment for a resource category."""
+    clean = name[2:] if name.startswith('m_') else name
+    categories = {
+        'fence': 'Release sync objects',
+        'texture': 'Release graphics resources',
+        'vertexBuffer': 'Release graphics resources',
+        'indexBuffer': 'Release graphics resources',
+        'depthStencil': 'Release graphics resources',
+        'rootSignature': 'Release pipeline objects',
+        'pipelineState': 'Release pipeline objects',
+        'commandList': 'Release pipeline objects',
+        'commandAllocators': 'Release per-frame resources',
+        'renderTargets': 'Release per-frame resources',
+        'dsvHeap': 'Release descriptor heaps',
+        'mainHeap': 'Release descriptor heaps',
+        'rtvHeap': 'Release descriptor heaps',
+        'swapChain': 'Release swap chain',
+        'commandQueue': 'Release command queue',
+        'device': 'Release device (last)',
+        'imguiHeap': 'Release other resources',
+        'msaaRtvHeap': 'Release other resources',
+        'msaaRenderTargets': 'Release other resources',
+        'msaaDepthStencil': 'Release other resources',
+        'PerSceneConstantBuffer': 'Release other resources',
+        'PerFrameConstantBuffer': 'Release other resources',
+    }
+    return categories.get(clean, 'Release other resources')
+
+# ----------------------------------------------------------------------
+# Code generation – original logic
+# ----------------------------------------------------------------------
+def generate_cleanup_code(resources: list) -> str:
     """Generate C++ cleanup code."""
-    
     lines = []
     lines.append("#pragma once")
     lines.append("#include \"renderer_dx12.h\"")
@@ -136,16 +174,16 @@ def generate_cleanup_code(resources):
         lines.append("    // Unmap and release constant buffers")
         for res in cb_resources:
             if res['is_array']:
-                lines.append(f"    for (UINT i = 0; i < {res['array_size']}; i++)")
+                arr_sz = res['array_size'] if res['array_size'] else 'g_FrameCount'
+                lines.append(f"    for (UINT i = 0; i < {arr_sz}; i++)")
                 lines.append("    {")
                 lines.append(f"        if ({res['struct']}.{res['name']}[i])")
                 lines.append("        {")
                 lines.append(f"            {res['struct']}.{res['name']}[i]->Unmap(0, nullptr);")
                 lines.append(f"            {res['struct']}.{res['name']}[i]->Release();")
                 lines.append(f"            {res['struct']}.{res['name']}[i] = nullptr;")
-                # Only add this line if the struct is graphics_resources
                 if res['struct'] == 'graphics_resources':
-                    lines.append(f"            {res['struct']}.m_pCbvDataBegin[i] = nullptr;")
+                    lines.append(f"            graphics_resources.m_pCbvDataBegin[i] = nullptr;")
                 lines.append("        }")
                 lines.append("    }")
             else:
@@ -171,7 +209,11 @@ def generate_cleanup_code(resources):
             current_category = category
         
         if res['is_array']:
-            lines.append(f"    for (UINT i = 0; i < {res['array_size']}; i++)")
+            arr_sz = res['array_size'] if res['array_size'] else 'g_FrameCount'
+            # Special case: pipeline_dx12.m_pipelineStates[4] has fixed size 4
+            if res['struct'] == 'pipeline_dx12' and res['name'] == 'm_pipelineStates':
+                arr_sz = '4'
+            lines.append(f"    for (UINT i = 0; i < {arr_sz}; i++)")
             lines.append("    {")
             lines.append(f"        if ({res['struct']}.{res['name']}[i])")
             lines.append("        {")
@@ -197,78 +239,64 @@ def generate_cleanup_code(resources):
     
     return '\n'.join(lines)
 
-def get_category_comment(name):
-    """Get a descriptive comment for the resource category."""
-    # Normalize name (remove m_ prefix if present)
-    clean_name = name[2:] if name.startswith('m_') else name
-    
-    if clean_name in ['fence']:
-        return "Release sync objects"
-    elif clean_name in ['texture', 'vertexBuffer', 'indexBuffer', 'depthStencil']:
-        return "Release graphics resources"
-    elif clean_name in ['rootSignature', 'pipelineState', 'commandList']:
-        return "Release pipeline objects"
-    elif clean_name in ['commandAllocators', 'renderTargets']:
-        return "Release per-frame resources"
-    elif clean_name in ['dsvHeap', 'mainHeap', 'rtvHeap']:
-        return "Release descriptor heaps"
-    elif clean_name == 'swapChain':
-        return "Release swap chain"
-    elif clean_name == 'commandQueue':
-        return "Release command queue"
-    elif clean_name == 'device':
-        return "Release device (last)"
-    else:
-        return "Release other resources"
+# ----------------------------------------------------------------------
+# Main generator function (for CLI and unified driver)
+# ----------------------------------------------------------------------
+def generate_cleanup(
+    input_path: Path = Path("src/renderer_dx12.h"),
+    output_path: Path = Path("src/generated/OnDestroy_generated.cpp"),
+    force: bool = False
+) -> bool:
+    """Parse header and write cleanup code. Returns True if file written/updated."""
+    if not input_path.exists():
+        common.log_error(f"Header not found: {input_path}")
+        return False
 
-def main():
-    # Path to your header file
-    header_path = Path("src/renderer_dx12.h")
-    
-    # Try both forward and backward slashes
-    if not header_path.exists():
-        header_path = Path("src\\renderer_dx12.h")
-    
-    if not header_path.exists():
-        # Try current directory
-        header_path = Path("renderer_dx12.h")
-    
-    if not header_path.exists():
-        print(f"Error: renderer_dx12.h not found!")
-        print("Tried:")
-        print("  - src/renderer_dx12.h")
-        print("  - src\\renderer_dx12.h")
-        print("  - renderer_dx12.h")
-        return
-    
-    print(f"Parsing header file: {header_path}")
-    resources = parse_dx12_resources(header_path)
-    
-    print(f"\nFound {len(resources)} COM resources:")
-    for res in resources:
-        array_info = f"[{res['array_size']}]" if res['is_array'] else ""
-        print(f"  - {res['struct']}.{res['name']}{array_info} ({res['type']})")
-    
-    print("\nDetermining cleanup order...")
-    ordered_resources = determine_cleanup_order(resources)
-    
-    print("\nGenerating cleanup code...")
-    cleanup_code = generate_cleanup_code(ordered_resources)
-    
-    # Write to file
-    output_dir = header_path.parent if header_path.parent.name == 'src' else Path('src')
-    if not output_dir.exists():
-        output_dir = Path('.')
-    
-    output_path = output_dir / "generated\\OnDestroy_generated.cpp"
-    with open(output_path, 'w') as f:
-        f.write(cleanup_code)
-    
-    print(f"\n✓ Generated cleanup code written to: {output_path}")    
-    # print("\nPreview:")
-    # print("=" * 80)
-    # print(cleanup_code)
-    # print("=" * 80)
+    with open(input_path, 'r', encoding='utf-8') as f:
+        content = f.read()
 
-if __name__ == "__main__":
-    main()
+    resources = parse_dx12_resources(content)
+    common.log_info(f"Found {len(resources)} COM resources")
+    
+    # Optional verbose listing
+    if common._USE_COLOR:  # cheap way to detect verbose? We'll just log at info level.
+        for res in resources:
+            arr = f"[{res['array_size']}]" if res['is_array'] else ""
+            common.log_info(f"  - {res['struct']}.{res['name']}{arr} ({res['type']})")
+
+    # Sort by priority
+    resources.sort(key=get_priority)
+
+    # Generate code
+    code = generate_cleanup_code(resources)
+
+    # Prepend standard header
+    header = common.make_header(tool_name="meta_ondestroy.py", comment="GENERATED ONDESTROY")
+    full_content = header + code
+
+    # Write atomically
+    return common.write_file_if_changed(output_path, full_content)
+
+# ----------------------------------------------------------------------
+# Convenience wrapper for unified driver (uses default paths)
+# ----------------------------------------------------------------------
+def generate(force: bool = False) -> bool:
+    return generate_cleanup(force=force)
+
+# ----------------------------------------------------------------------
+# CLI entry point
+# ----------------------------------------------------------------------
+if __name__ == '__main__':
+    import argparse
+    parser = argparse.ArgumentParser(description="Generate OnDestroy_generated.cpp")
+    common.add_common_args(parser)
+    parser.add_argument('--input', '-i', type=Path,
+                        default=Path("src/renderer_dx12.h"),
+                        help="Input header (default: src/renderer_dx12.h)")
+    parser.add_argument('--output', '-o', type=Path,
+                        default=Path("src/generated/OnDestroy_generated.cpp"),
+                        help="Output path (default: src/generated/OnDestroy_generated.cpp)")
+    args = parser.parse_args()
+
+    success = generate_cleanup(args.input, args.output, force=args.force)
+    sys.exit(0 if success else 1)
