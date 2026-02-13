@@ -36,6 +36,7 @@
 #include "local_error.h"
 #include "config_ini_io.h"
 #include "renderer_dx12.h"
+#include "ImGuizmo.h"
 
 static ConfigData g_liveConfigData = {};
 
@@ -244,7 +245,7 @@ static struct
         DirectX::XMFLOAT3 pos[g_draw_list_element_total];
         DirectX::XMFLOAT4 rot[g_draw_list_element_total];
         DirectX::XMFLOAT3 scale[g_draw_list_element_total];
-    } transforms;    
+    } transforms;
 } g_draw_list;
 
 static struct
@@ -422,16 +423,26 @@ static struct
 {
     struct
     {
-        struct { float x, y, z; } pos;
-        struct { float pitch, yaw, roll; } rot;
-        struct { float x = 1.0f, y = 1.0f, z = 1.0f; } scale;
-        PrimitiveType type = PRIMITIVE_CUBE;  // default to cube
+        struct
+        {
+            float x, y, z;
+        } pos;
+        struct
+        {
+            float pitch, yaw, roll;
+        } rot;
+        struct
+        {
+            float x = 1.0f, y = 1.0f, z = 1.0f;
+        } scale;
+        PrimitiveType type = PRIMITIVE_CUBE; // default to cube
     } objects[g_total_objects_count];
-    
+
     void write()
     {
-        SDL_IOStream* file = SDL_IOFromFile("scene.bin", "wb");
-        if (!file) return;
+        SDL_IOStream *file = SDL_IOFromFile("scene.bin", "wb");
+        if (!file)
+            return;
         SDL_WriteIO(file, objects, sizeof(objects));
         SDL_CloseIO(file);
     }
@@ -439,7 +450,7 @@ static struct
     void read()
     {
         size_t size;
-        void* data = SDL_LoadFile("scene.bin", &size);
+        void *data = SDL_LoadFile("scene.bin", &size);
         if (data && size == sizeof(objects))
         {
             SDL_memcpy(objects, data, sizeof(objects));
@@ -507,6 +518,31 @@ void Update()
     memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex],
            &graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex],
            sizeof(PerFrameConstantBuffer));
+}
+
+// Convert quaternion → pitch/yaw/roll (radians), order: pitch (X), yaw (Y), roll (Z)
+inline void QuaternionToEuler(DirectX::FXMVECTOR Q, float &pitch, float &yaw, float &roll)
+{
+    DirectX::XMFLOAT4 q;
+    DirectX::XMStoreFloat4(&q, Q);
+    float x = q.x, y = q.y, z = q.z, w = q.w;
+
+    // pitch (x-axis rotation)
+    float sinp = 2.0f * (w * x + y * z);
+    float cosp = 1.0f - 2.0f * (x * x + y * y);
+    pitch = atan2f(sinp, cosp);
+
+    // yaw (y-axis rotation)
+    float siny = 2.0f * (w * y - z * x);
+    if (fabsf(siny) >= 1.0f)
+        yaw = copysignf(3.14159265f / 2.0f, siny);
+    else
+        yaw = asinf(siny);
+
+    // roll (z-axis rotation)
+    float sinr = 2.0f * (w * z + x * y);
+    float cosr = 1.0f - 2.0f * (y * y + z * z);
+    roll = atan2f(sinr, cosr);
 }
 
 int main(void)
@@ -605,6 +641,71 @@ int main(void)
         ImGui_ImplDX12_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
+
+        // gizmos
+        // ============================================
+        // ImGuizmo – corrected: no transposes, pass row‑major
+        // ============================================
+        ImGuizmo::BeginFrame();
+        ImGuizmo::Enable(true);
+        ImGuizmo::SetRect(0, 0, (float)viewport_state.m_width, (float)viewport_state.m_height);
+
+        static int selectedObjectIndex = 0;
+        if (selectedObjectIndex >= 0 && selectedObjectIndex < g_total_objects_count)
+        {
+            auto &obj = g_total_objects_list_editable.objects[selectedObjectIndex];
+
+            // ---- Build world matrix (row‑major) ----
+            DirectX::XMMATRIX scale = DirectX::XMMatrixScaling(obj.scale.x, obj.scale.y, obj.scale.z);
+            float pitchRad = DirectX::XMConvertToRadians(obj.rot.pitch);
+            float yawRad = DirectX::XMConvertToRadians(obj.rot.yaw);
+            float rollRad = DirectX::XMConvertToRadians(obj.rot.roll);
+            DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationRollPitchYaw(pitchRad, yawRad, rollRad);
+            DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(obj.pos.x, obj.pos.y, obj.pos.z);
+            DirectX::XMMATRIX world = scale * rotation * translation; // row‑major
+
+            // ---- Compute view/proj directly from current camera (row‑major) ----
+            DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r * sinf(g_theta), g_y, g_r * cosf(g_theta), 0.0f);
+            DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+            DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+            DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(eye, at, up); // row‑major
+            DirectX::XMMATRIX proj = DirectX::XMMatrixPerspectiveFovLH(
+                DirectX::XMConvertToRadians(g_fov_deg),
+                viewport_state.m_aspectRatio,
+                0.01f, 1000.0f); // row‑major
+
+            // ---- ImGuizmo expects row‑major float[4][4] – pass directly ----
+            float *viewPtr = (float *)&view;
+            float *projPtr = (float *)&proj;
+            float *worldPtr = (float *)&world;
+
+            // ---- Draw gizmo ----
+            ImGuizmo::Manipulate(viewPtr, projPtr,
+                                 ImGuizmo::OPERATION::TRANSLATE | ImGuizmo::OPERATION::ROTATE | ImGuizmo::OPERATION::SCALE,
+                                 ImGuizmo::MODE::WORLD,
+                                 worldPtr);
+
+            // ---- Apply changes ----
+            if (ImGuizmo::IsUsing())
+            {
+                // world has been modified in place (still row‑major)
+                DirectX::XMVECTOR scaleVec, rotQuat, posVec;
+                DirectX::XMMatrixDecompose(&scaleVec, &rotQuat, &posVec, world);
+
+                // Position
+                DirectX::XMStoreFloat3((DirectX::XMFLOAT3 *)&obj.pos, posVec);
+
+                // Rotation: quaternion → Euler (degrees)
+                float pitchRad, yawRad, rollRad;
+                QuaternionToEuler(rotQuat, pitchRad, yawRad, rollRad);
+                obj.rot.pitch = DirectX::XMConvertToDegrees(pitchRad);
+                obj.rot.yaw = DirectX::XMConvertToDegrees(yawRad);
+                obj.rot.roll = DirectX::XMConvertToDegrees(rollRad);
+
+                // Scale
+                DirectX::XMStoreFloat3((DirectX::XMFLOAT3 *)&obj.scale, scaleVec);
+            }
+        }
 
         ImGui::Begin("Settings");
         ImGui::SliderFloat("r", &g_r, 0.3f, 10.0f);

@@ -15,7 +15,8 @@
                 "/Isrc",                                
                 "/Isrc/generated",
                 "/Fe${fileDirname}\\${fileBasenameNoExtension}.exe",
-                "${file}"
+                "${file}" ,
+                "ImGuizmo.cpp"
             ],
             "options": {
                 "cwd": "${fileDirname}"

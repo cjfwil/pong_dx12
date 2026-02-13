@@ -1,9 +1,6 @@
 ## license stuff
 write a program which automatically detects all required libraries, pulls all the required license texts from the internet and produces them in the release
 
-## basic lighting model with static directional light
-need normals generated in metaprogram
-
 ## visualise normals as lines
 needs multiple shaders at once
 
@@ -18,13 +15,13 @@ drop down of cube, torus, sphere etc...?
 parallelise later
 
 ## greyboxing?
-requires object list and saving/loading
+requires object list and saving/loading (done)
 
 ## gizmos for easy control over transform/rot/scaling greyboxes
 
-## fix UVs on cylinder
+## shader based UVs that get transformed by scale so greybox texture always 1m by 1m (done triplanar)
 
-## shader based UVs that get transformed by scale so greybox texture always 1m by 1m
+## fix triplanar normals
 
 ## generate greyboxing texture offline (bake in world dimensions)
 multiple textures, like one for the cube, the cylinder, sphere, prism etc...
