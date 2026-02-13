@@ -36,6 +36,7 @@ def generate_scene_json(input_h: Path, output_c: Path) -> bool:
         '#include "../scene_data.h"',
         '#include "mesh_data.h"',
         '#include <string.h>',
+        '#include <stdio.h>',          # <-- ADD for fprintf
         '',
         '// ------------------------------------------------------------',
         '// Serialise Scene → JSON string (caller must free with cJSON_free)',
@@ -71,7 +72,8 @@ def generate_scene_json(input_h: Path, output_c: Path) -> bool:
                     f'        cJSON_AddItemToObject(objJson, "{name}", {arr_var});'
                 ])
             elif typ == 'PrimitiveType':
-                lines.append(f'        cJSON_AddNumberToObject(objJson, "{name}", obj->{name});')
+                # <-- CHANGE: write as string using lookup table
+                lines.append(f'        cJSON_AddStringToObject(objJson, "{name}", g_primitiveNames[obj->{name}]);')
             else:
                 # fallback – treat as number (int/float)
                 lines.append(f'        cJSON_AddNumberToObject(objJson, "{name}", obj->{name});')
@@ -114,7 +116,7 @@ def generate_scene_json(input_h: Path, output_c: Path) -> bool:
     for typ, name, is_array, arr_size, is_ptr in obj_fields:
         if is_array and typ.startswith('char'):
             lines.append(f'            cJSON* {name}Item = cJSON_GetObjectItem(objJson, "{name}");')
-            lines.append(f'            if (cJSON_IsString({name}Item)) strncpy(obj->{name}, {name}Item->valuestring, sizeof(obj->{name})-1);')
+            lines.append(f'            if (cJSON_IsString({name}Item)) strncpy_s(obj->{name}, {name}Item->valuestring, sizeof(obj->{name})-1);')
         else:
             lines.append(f'            cJSON* {name}Item = cJSON_GetObjectItem(objJson, "{name}");')
             if typ == 'DirectX::XMFLOAT3':
@@ -132,7 +134,25 @@ def generate_scene_json(input_h: Path, output_c: Path) -> bool:
                     f'            }}',
                 ])
             elif typ == 'PrimitiveType':
-                lines.append(f'            if (cJSON_IsNumber({name}Item)) obj->{name} = (PrimitiveType){name}Item->valueint;')
+                # <-- CHANGE: handle both integer (old) and string (new)
+                lines.append(f'            // Handle PrimitiveType: can be integer (old) or string (new)')
+                lines.append(f'            if (cJSON_IsNumber({name}Item)) {{')
+                lines.append(f'                obj->{name} = (PrimitiveType){name}Item->valueint;')
+                lines.append(f'            }} else if (cJSON_IsString({name}Item)) {{')
+                lines.append(f'                const char* typeName = {name}Item->valuestring;')
+                lines.append(f'                int found = -1;')
+                lines.append(f'                for (int idx = 0; idx < PRIMITIVE_COUNT; idx++) {{')
+                lines.append(f'                    if (strcmp(typeName, g_primitiveNames[idx]) == 0) {{')
+                lines.append(f'                        found = idx;')
+                lines.append(f'                        break;')
+                lines.append(f'                    }}')
+                lines.append(f'                }}')
+                lines.append(f'                if (found != -1) obj->{name} = (PrimitiveType)found;')
+                lines.append(f'                else {{')
+                lines.append(f'                    obj->{name} = (PrimitiveType)0; // default to cube')
+                lines.append(f'                    fprintf(stderr, "Unknown primitive type \\"%s\\", defaulting to cube\\n", typeName);')
+                lines.append(f'                }}')
+                lines.append(f'            }}')
             else:
                 lines.append(f'            if (cJSON_IsNumber({name}Item)) obj->{name} = {name}Item->valuedouble;')
 

@@ -2,7 +2,7 @@
 // GENERATED – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_scene_json.py
-//   Generated: 2026-02-13 13:24:29
+//   Generated: 2026-02-13 13:33:01
 //------------------------------------------------------------------------
 
 
@@ -10,6 +10,7 @@
 #include "../scene_data.h"
 #include "mesh_data.h"
 #include <string.h>
+#include <stdio.h>
 
 // ------------------------------------------------------------
 // Serialise Scene → JSON string (caller must free with cJSON_free)
@@ -32,7 +33,7 @@ char* scene_to_json(const Scene* scene) {
         cJSON_AddItemToObject(objJson, "rot", rotArr);
         cJSON* scaleArr = cJSON_CreateFloatArray((float*)&obj->scale, 3);
         cJSON_AddItemToObject(objJson, "scale", scaleArr);
-        cJSON_AddNumberToObject(objJson, "type", obj->type);
+        cJSON_AddStringToObject(objJson, "type", g_primitiveNames[obj->type]);
         cJSON_AddItemToArray(objectsArray, objJson);
     }
     cJSON_AddItemToObject(root, "objects", objectsArray);
@@ -65,7 +66,7 @@ int scene_from_json(const char* json, Scene* scene) {
             cJSON* objJson = cJSON_GetArrayItem(objArray, i);
             SceneObject* obj = &scene->objects[i];
             cJSON* nametagItem = cJSON_GetObjectItem(objJson, "nametag");
-            if (cJSON_IsString(nametagItem)) strncpy(obj->nametag, nametagItem->valuestring, sizeof(obj->nametag)-1);
+            if (cJSON_IsString(nametagItem)) strncpy_s(obj->nametag, nametagItem->valuestring, sizeof(obj->nametag)-1);
             cJSON* posItem = cJSON_GetObjectItem(objJson, "pos");
             if (cJSON_IsArray(posItem) && cJSON_GetArraySize(posItem) == 3) {
                 for (int j = 0; j < 3; ++j)
@@ -82,7 +83,24 @@ int scene_from_json(const char* json, Scene* scene) {
                     ((float*)&obj->scale)[j] = (float)cJSON_GetArrayItem(scaleItem, j)->valuedouble;
             }
             cJSON* typeItem = cJSON_GetObjectItem(objJson, "type");
-            if (cJSON_IsNumber(typeItem)) obj->type = (PrimitiveType)typeItem->valueint;
+            // Handle PrimitiveType: can be integer (old) or string (new)
+            if (cJSON_IsNumber(typeItem)) {
+                obj->type = (PrimitiveType)typeItem->valueint;
+            } else if (cJSON_IsString(typeItem)) {
+                const char* typeName = typeItem->valuestring;
+                int found = -1;
+                for (int idx = 0; idx < PRIMITIVE_COUNT; idx++) {
+                    if (strcmp(typeName, g_primitiveNames[idx]) == 0) {
+                        found = idx;
+                        break;
+                    }
+                }
+                if (found != -1) obj->type = (PrimitiveType)found;
+                else {
+                    obj->type = (PrimitiveType)0; // default to cube
+                    fprintf(stderr, "Unknown primitive type \"%s\", defaulting to cube\n", typeName);
+                }
+            }
         }
         // Update objectCount if array was present
         if (arraySize > 0) scene->objectCount = arraySize;
