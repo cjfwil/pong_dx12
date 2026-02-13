@@ -84,6 +84,11 @@ def build():
 
     print("=== Done ===")
 
+    # # copy scene.bin
+    # shutil.copy("scene.bin", OUTPUT_DIR)
+    # print(f"✔ Copied scene.bin → {src.name}")
+
+
 
 if __name__ == "__main__":
     build()
