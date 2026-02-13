@@ -1,6 +1,14 @@
 ## license stuff
 write a program which automatically detects all required libraries, pulls all the required license texts from the internet and produces them in the release
 
+## move and look fly camera
+with mouse and controller
+
+## add a editiable string nametag 
+so in the editor it isnt just "GameObject 0: Cube", so i can edit that to be "stairs" or "column" etc...
+
+## include a .md document that dictates style and architecture etc...
+
 ## visualise normals as lines
 needs multiple shaders at once
 
@@ -10,14 +18,6 @@ needs multiple shaders at once
 
 # load and render a 3d model
 drop down of cube, torus, sphere etc...?
-
-## work on total object list -> draw list
-parallelise later
-
-## greyboxing?
-requires object list and saving/loading (done)
-
-## gizmos for easy control over transform/rot/scaling greyboxes
 
 ## shader based UVs that get transformed by scale so greybox texture always 1m by 1m (done triplanar)
 

@@ -82,8 +82,6 @@ def build():
         else:
             print(f"⚠ DLL not found: {dll}")
 
-    print("=== Done ===")
-
     # -----------------------------
     # Copy scene.bin if it exists
     # -----------------------------
@@ -94,6 +92,7 @@ def build():
     else:
         print("⚠ scene.bin not found – skipping")
 
+    print("=== Done ===")
 
 
 if __name__ == "__main__":

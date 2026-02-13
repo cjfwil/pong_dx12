@@ -37,14 +37,17 @@ python loc.py --verbose
 
 ### Code Organization
 
-- **main.cpp**: Entry point, SDL initialization, main render loop, ImGui integration
+- **main.cpp**: Entry point, SDL initialization, main render loop, ImGui integration, scene management
 - **src/renderer_dx12.h**: Complete DirectX 12 rendering pipeline (700+ lines)
   - Pipeline state, command objects, synchronization primitives
   - Resource creation and management
   - Contains `LoadPipeline()` and `LoadAssets()` functions
 - **src/local_error.h**: Error handling utilities for HRESULT, SDL errors
+- **src/config_ini_io.h**: Config struct definitions for INI serialization
 - **shader_source/shaders.hlsl**: Vertex and pixel shaders
-- **src/generated/OnDestroy_generated.cpp**: Auto-generated cleanup code (see Meta-Programming below)
+- **src/generated/OnDestroy_generated.cpp**: Auto-generated cleanup code
+- **src/generated/config_functions.h**: Auto-generated INI read/write functions
+- **src/generated/mesh_data.h**: Auto-generated primitive geometry data
 
 ### Global State Structures
 
@@ -104,7 +107,7 @@ Each frame in `PopulateCommandList()`:
 
 ### Meta-Programming
 
-Project uses two Python scripts to generate C code:
+Project uses three Python scripts to generate C code:
 
 #### 1. Resource Cleanup (`meta_ondestroy.py`)
 
@@ -157,17 +160,61 @@ Run `python meta_config.py` whenever you:
 - SaveConfig() called after user changes settings in ImGui
 - Stores: window dimensions, window mode, MSAA level, vsync
 
+#### 3. Mesh Generation (`meta_mesh.py`)
+
+Generates primitive geometry data with vertex normals for rendering.
+
+**How It Works:**
+1. Defines geometry generators (cube, cylinder, prism, sphere, inverted sphere)
+2. Each generator computes positions, normals, and UVs
+3. Generates `src/generated/mesh_data.h` with vertex/index arrays and lookup tables
+4. Creates `PrimitiveType` enum matching array order
+
+**When to Regenerate:**
+Run `python meta_mesh.py` whenever you:
+- Add new primitive shapes
+- Change vertex format (currently: position, normal, uv)
+- Modify geometry parameters (slice counts, dimensions)
+
+**Primitives:**
+- **Cube**: 24 vertices (hard edges, one normal per face)
+- **Cylinder**: Configurable slices, smooth sides, flat caps
+- **Prism**: Triangular prism with hard edges
+- **Sphere**: UV sphere with smooth normals
+- **Inverted Sphere**: Same as sphere but normals point inward (for skyboxes)
+
 **Never manually modify** generated files in `src/generated/` - your changes will be overwritten.
 
 ## Known Issues
 
-### Window Mode Switching Hang (Bug #1)
-**When**: Introduced during window mode switching and swap chain recreation development (06/02/2026)
-**Symptoms**: Static hang (no crash/assert) when switching window modes. Visual transition completes but program becomes unresponsive - triangle stops moving, ImGui frozen, Alt+F4 unresponsive.
-**Timing dependency**: If <5 seconds between switches or since program start, hang occurs. Waiting 5+ seconds between switches works fine.
-**Reproduce**: Switch to window mode rapidly.
+See `docs/bugs.md` for current bug tracking (currently empty - no active bugs).
 
-See bugs.md for full bug tracking.
+## Scene Management
+
+Scene objects stored in binary format (`scene.bin`):
+- Read/write via custom serialization
+- Objects have position, rotation, scale, primitive type
+- ImGuizmo provides 3D gizmo manipulation in editor
+- Scene persists between runs
+
+**ImGuizmo Integration:**
+- Linked via ImGuizmo.lib (separate debug/release builds)
+- Provides translate/rotate/scale gizmos for selected objects
+- Gizmos rendered in main loop after ImGui UI
+
+## Design Decisions
+
+Key architectural choices (see `docs/decisions.md`):
+
+**Display Modes:**
+- No exclusive fullscreen support
+- Internal resolution scaler: 50%-200% (planned)
+- Windowed mode: preset resolutions (4:3, 16:9, 21:9)
+- Borderless: always desktop resolution
+
+## Code Cleanup Reference
+
+`architecture_problems.md` documents 15 specific areas for reducing duplication and implicit dependencies while maintaining procedural style. Reference when refactoring.
 
 ## Shader Compilation
 
@@ -189,9 +236,12 @@ ImGui uses a custom descriptor allocator (`g_imguiHeap` struct in main.cpp) that
 ## Dependencies
 
 All dependencies are linked via pragma comment directives in main.cpp:
-- SDL3.lib
-- d3d12.lib, dxgi.lib, d3dcompiler.lib, dxcompiler.lib, dxguid.lib
-- imgui.lib
+- **SDL3.lib**: Windowing and input (SDL3.dll required at runtime)
+- **DirectX 12**: d3d12.lib, dxgi.lib, d3dcompiler.lib, dxcompiler.lib, dxguid.lib
+- **ImGui**: imgui.lib (UI framework)
+- **ImGuizmo.lib**: 3D gizmo manipulation (debug/release variants)
+- **DirectXTex**: Texture loading (DirectXTex.lib debug, DirectXTex_release.lib release)
+- **cgltf**: GLTF model loading (header-only, included in main.cpp)
 
 SDL3.dll must be available at runtime (copied by build.py for release builds).
 

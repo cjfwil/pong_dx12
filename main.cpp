@@ -483,8 +483,7 @@ void Update()
 {
     FillDrawList();
 
-    DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r * sinf(g_theta), g_y, g_r * cosf(g_theta), 0.0f);
-    // DirectX::XMVECTOR eye = DirectX::XMVectorSet(0, g_y, g_r, 0.0f);
+    DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r * sinf(g_theta), g_y, g_r * cosf(g_theta), 0.0f);    
     DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
     DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     DirectX::XMMATRIX view = DirectX::XMMatrixLookAtLH(eye, at, up);
