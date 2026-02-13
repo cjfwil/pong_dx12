@@ -10,6 +10,8 @@ so in the editor it isnt just "GameObject 0: Cube", so i can edit that to be "st
 ## include a .md document that dictates style and architecture etc...
 also dicate the project folder names and where files go. clean up this mess of a root project folder
 
+## make script that converts all american english to british english in non required places
+
 ## visualise normals as lines
 needs multiple shaders at once
 

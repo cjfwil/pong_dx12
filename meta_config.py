@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-meta_config.py – Generate INI serialization for ConfigData.
+meta_config.py - Generate INI serialization for ConfigData.
 
 This script parses src/config_ini_io.cpp, extracts nested struct sections
 (DisplaySettings, GraphicsSettings, etc.) and generates

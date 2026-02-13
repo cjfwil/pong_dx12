@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-meta_mesh.py – Generate mesh_data.h with primitive geometry + NORMALS.
+meta_mesh.py - Generate mesh_data.h with primitive geometry + NORMALS.
 
 Now outputs:
     position (float3)
@@ -25,7 +25,7 @@ except ImportError:
     import common
 
 # ----------------------------------------------------------------------
-# Geometry definitions – Vertex now includes normal
+# Geometry definitions - Vertex now includes normal
 # ----------------------------------------------------------------------
 Vertex = namedtuple('Vertex', ['position', 'normal', 'uv'])
 Vec3 = namedtuple('Vec3', ['x', 'y', 'z'])
@@ -54,7 +54,7 @@ def sub(a, b):
 # Cube
 # ----------------------------------------------------------------------
 def gen_cube():
-    """24 vertices, 36 indices. Hard edges – one normal per face."""
+    """24 vertices, 36 indices. Hard edges - one normal per face."""
     vertices = []
     indices = []
     s = 0.5
@@ -196,7 +196,7 @@ def gen_cylinder(slices):
 # Triangular Prism
 # ----------------------------------------------------------------------
 def gen_prism():
-    """Equilateral triangular prism. Hard edges – one normal per face."""
+    """Equilateral triangular prism. Hard edges - one normal per face."""
     vertices = []
     indices = []
     radius = 0.5
@@ -311,7 +311,7 @@ def gen_inverted_sphere(slices, stacks):
     return vertices, indices
 
 # ----------------------------------------------------------------------
-# Primitive registry – order determines enum values
+# Primitive registry - order determines enum values
 # ----------------------------------------------------------------------
 PRIMITIVES = [
     ("cube",             gen_cube),
@@ -322,7 +322,7 @@ PRIMITIVES = [
 ]
 
 # ----------------------------------------------------------------------
-# Header generator – now writes position, normal, uv
+# Header generator - now writes position, normal, uv
 # ----------------------------------------------------------------------
 def generate_mesh_header(
     output_path: Path = Path("src/generated/mesh_data.h"),
@@ -359,7 +359,7 @@ def generate_mesh_header(
     content += "    const uint32_t* indices;\n"
     content += "    UINT indexCount;\n};\n\n"
 
-    # Vertex/Index arrays – now includes normal
+    # Vertex/Index arrays - now includes normal
     for name, verts, idxs in primitives_data:
         array_name = ''.join(p.capitalize() for p in name.split('_'))
         vc = len(verts)
@@ -384,7 +384,7 @@ def generate_mesh_header(
         content += f"static const UINT k{array_name}IndexCount = {ic};\n\n"
 
     # Lookup table
-    content += "// Lookup table – order matches PrimitiveType\n"
+    content += "// Lookup table - order matches PrimitiveType\n"
     content += "static const PrimitiveMeshData kPrimitiveMeshData[PRIMITIVE_COUNT] =\n{\n"
     for name, _, _ in primitives_data:
         array_name = ''.join(p.capitalize() for p in name.split('_'))
@@ -392,7 +392,7 @@ def generate_mesh_header(
     content += "};\n\n"
 
     # Display names
-    content += "// Display names – order matches PrimitiveType\n"
+    content += "// Display names - order matches PrimitiveType\n"
     content += 'static const char* g_primitiveNames[PRIMITIVE_COUNT] =\n{\n'
     for name, _, _ in primitives_data:
         display = ' '.join(p.capitalize() for p in name.split('_'))

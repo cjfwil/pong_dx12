@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-meta_ondestroy.py – Generate OnDestroy_generated.cpp.
+meta_ondestroy.py - Generate OnDestroy_generated.cpp.
 
 Parses renderer_dx12.cpp, finds D3D12 COM pointers in known structs,
 orders them by dependency, emits cleanup code.
@@ -23,7 +23,7 @@ except ImportError:
     import common
 
 # ----------------------------------------------------------------------
-# Parser – exact original, proven to work
+# Parser - exact original, proven to work
 # ----------------------------------------------------------------------
 def parse_dx12_resources(content: str) -> list:
     """Parse the header content and extract D3D12 resource declarations."""
@@ -71,7 +71,7 @@ def parse_dx12_resources(content: str) -> list:
     return resources
 
 # ----------------------------------------------------------------------
-# Cleanup ordering – original priority map
+# Cleanup ordering - original priority map
 # ----------------------------------------------------------------------
 PRIORITY_MAP = {
     # Sync objects (release first)
@@ -152,7 +152,7 @@ def get_category_comment(name: str) -> str:
     return categories.get(clean, 'Release other resources')
 
 # ----------------------------------------------------------------------
-# Code generation – original logic
+# Code generation - original logic
 # ----------------------------------------------------------------------
 def generate_cleanup_code(resources: list) -> str:
     """Generate C++ cleanup code."""
