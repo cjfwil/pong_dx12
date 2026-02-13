@@ -234,9 +234,10 @@ static float g_fov_deg = 60.0f;
 static PrimitiveType g_viewPrimitive = PrimitiveType::PRIMITIVE_CUBE;
 
 // example for next
-const int g_draw_list_element_total = PrimitiveType::PRIMITIVE_COUNT;
+const int g_draw_list_element_total = 32;
 static struct
 {
+    int drawAmount = g_draw_list_element_total; // this should not be greater than g_draw_list_element_total
     PrimitiveType types[g_draw_list_element_total] = {};
     struct
     {
@@ -251,7 +252,7 @@ static struct
         for (int i = 0; i < g_draw_list_element_total; ++i)
         {
             types[i] = (PrimitiveType)(i % PrimitiveType::PRIMITIVE_COUNT);
-            
+
             float angle = 2.0f * 3.14159f * (float)i / (float)g_draw_list_element_total;
             transforms.pos[i].x = radius * cosf(angle);
             transforms.pos[i].y = 0.0f;
@@ -261,7 +262,7 @@ static struct
             transforms.rot[i].y = 0.0f;
             transforms.rot[i].z = 0.0f;
             transforms.rot[i].w = 1.0f;
-            
+
             transforms.scale[i].x = 1.0f;
             transforms.scale[i].y = 1.0f;
             transforms.scale[i].z = 1.0f;
@@ -360,7 +361,7 @@ bool PopulateCommandList()
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
     PerDrawRootConstants currentDrawConstants = {};
-    for (int i = 0; i < g_draw_list_element_total; ++i)
+    for (int i = 0; i < g_draw_list.drawAmount; ++i)
     {
         PrimitiveType currentPrimitiveToDraw = g_draw_list.types[i];
 
@@ -439,48 +440,68 @@ void Render(bool vsync = true)
     HRAssert(pipeline_dx12.m_swapChain->Present(syncInterval, syncFlags));
 }
 
-void UpdateDrawList(float time)
+static const int g_total_objects_count = 16;
+static struct
 {
-    float baseRadius = 5.0f;
+    struct
+    {
+        struct
+        {
+            float x, y, z;
+        } pos;
+        struct
+        {
+            float pitch, yaw, roll;
+        } rot;
+        struct
+        {
+            float x = 1.0f;
+            float y = 1.0f;
+            float z = 1.0f;
+        } scale;
+        PrimitiveType type;
+    } objects[g_total_objects_count];
+} g_total_objects_list_editable;
+
+void FillDrawList()
+{
     for (int i = 0; i < g_draw_list_element_total; ++i)
     {
-        // 1. POSITION - elliptical path + vertical bob
-        float angleOffset = 2.0f * 3.14159f * i / g_draw_list_element_total;
-        // Radius pulses individually
-        float radius = baseRadius + 1.5f * sinf(time * 1.5f + i * 1.2f);
-        // Elliptical squash/stretch
-        float xScale = 1.0f + 0.3f * sinf(time * 0.7f + i);
-        float zScale = 1.0f + 0.3f * cosf(time * 0.8f + i * 1.3f);
-        
-        g_draw_list.transforms.pos[i].x = radius * cosf(angleOffset) * xScale;
-        g_draw_list.transforms.pos[i].z = radius * sinf(angleOffset) * zScale;
-        // Vertical sine wave – each at different phase
-        g_draw_list.transforms.pos[i].y = 2.0f * sinf(time * 2.0f + i * 0.9f);
+        if (i < g_total_objects_count)
+        {
+            g_draw_list.transforms.pos[i].x = g_total_objects_list_editable.objects[i].pos.x;
+            g_draw_list.transforms.pos[i].y = g_total_objects_list_editable.objects[i].pos.y;
+            g_draw_list.transforms.pos[i].z = g_total_objects_list_editable.objects[i].pos.z;
 
-        // 2. ROTATION – spin around Y axis at different speeds
-        float spinSpeed = 1.2f + 0.5f * ((float)(10*i)/(float)g_draw_list_element_total);
-        float rotAngle = time * spinSpeed;
-        // Quaternion for rotation around Y axis
-        g_draw_list.transforms.rot[i].x = 0.0f;
-        g_draw_list.transforms.rot[i].y = sinf(rotAngle * 0.5f);
-        g_draw_list.transforms.rot[i].z = 0.0f;
-        g_draw_list.transforms.rot[i].w = cosf(rotAngle * 0.5f);
+            // TODO: what is the formulat that takes pitch, yaw, roll into quaternion
+            // g_draw_list.transforms.rot[i].x = ?;
+            // g_draw_list.transforms.rot[i].y = ?;
+            // g_draw_list.transforms.rot[i].z = ?;
+            // g_draw_list.transforms.rot[i].w = ?;
 
-        // 3. SCALE – pulse individually
-        float pulse = 0.8f + 0.4f * sinf(time * 3.0f + i * 2.1f);
-        g_draw_list.transforms.scale[i].x = pulse;
-        g_draw_list.transforms.scale[i].y = pulse*pulse;
-        g_draw_list.transforms.scale[i].z = pulse*pulse*pulse;
+            float pitchRad = DirectX::XMConvertToRadians(g_total_objects_list_editable.objects[i].rot.pitch);
+            float yawRad = DirectX::XMConvertToRadians(g_total_objects_list_editable.objects[i].rot.yaw);
+            float rollRad = DirectX::XMConvertToRadians(g_total_objects_list_editable.objects[i].rot.roll);
+
+            DirectX::XMVECTOR quat = DirectX::XMQuaternionRotationRollPitchYaw(pitchRad, yawRad, rollRad);
+            DirectX::XMStoreFloat4(&g_draw_list.transforms.rot[i], quat);
+
+            g_draw_list.transforms.scale[i].x = g_total_objects_list_editable.objects[i].scale.x;
+            g_draw_list.transforms.scale[i].y = g_total_objects_list_editable.objects[i].scale.y;
+            g_draw_list.transforms.scale[i].z = g_total_objects_list_editable.objects[i].scale.z;
+
+            g_draw_list.types[i] = g_total_objects_list_editable.objects[i].type;
+        }
     }
+    if (g_total_objects_count < g_draw_list_element_total)
+        g_draw_list.drawAmount = g_total_objects_count;
+    else
+        g_draw_list.drawAmount = g_draw_list_element_total;
 }
 
 void Update()
 {
-    // UpdateDrawList((float)program_state.timing.upTime);
-    for (int i = 0; i < PRIMITIVE_COUNT; ++i) {
-        g_draw_list.transforms.scale[i].x = g_scale_x;
-    }
-    
+    FillDrawList();
 
     DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r * sinf(g_theta), g_y, g_r * cosf(g_theta), 0.0f);
     // DirectX::XMVECTOR eye = DirectX::XMVectorSet(0, g_y, g_r, 0.0f);
@@ -580,7 +601,7 @@ int main(void)
     }
 
     // draw list init
-    g_draw_list.fill_init();
+    // g_draw_list.fill_init();
 
     while (program_state.isRunning)
     {
@@ -604,7 +625,7 @@ int main(void)
         ImGui::Begin("Settings");
         ImGui::SliderFloat("r", &g_r, 0.3f, 10.0f);
         ImGui::SliderFloat("y", &g_y, -10.0f, 10.0f);
-        ImGui::SliderFloat("theta", &g_theta, 0.0f, 2*3.14159f);
+        ImGui::SliderFloat("theta", &g_theta, 0.0f, 2 * 3.14159f);
         ImGui::SliderFloat("global scale x", &g_scale_x, 0.1f, 10.0f);
         ImGui::SliderFloat("fov_deg", &g_fov_deg, 60.0f, 120.0f);
         ImGui::Text("Frametime %.3f ms (%.2f FPS)",
@@ -789,6 +810,55 @@ int main(void)
         if (ImGui::Combo("Shape", &currentPrimitive, g_primitiveNames, IM_ARRAYSIZE(g_primitiveNames)))
         {
             g_viewPrimitive = (PrimitiveType)currentPrimitive;
+        }
+
+        ImGui::End();
+
+        // ============================================
+        // Scene Objects Editor – editing g_total_objects_list_editable
+        // ============================================
+
+        // We extend the struct with a primitive type – add this to your definition:
+        // struct { ... int type; } objects[g_total_objects_count];
+        // Make sure g_total_objects_list_editable.objects[i].type is initialised.
+
+        ImGui::Begin("Scene Objects");
+        ImGui::Text("Total objects: %d", g_total_objects_count);
+
+        for (int i = 0; i < g_total_objects_count; ++i)
+        {
+            ImGui::PushID(i);
+
+            // Get object reference
+            auto &obj = g_total_objects_list_editable.objects[i];
+
+            // Header shows index and current primitive type
+            char headerLabel[64];
+            snprintf(headerLabel, sizeof(headerLabel), "Object %d: %s",
+                     i, g_primitiveNames[obj.type]);
+
+            if (ImGui::CollapsingHeader(headerLabel, ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                // ---- Primitive type dropdown ----
+                int currentType = obj.type;
+                if (ImGui::Combo("Primitive", &currentType,
+                                 g_primitiveNames, IM_ARRAYSIZE(g_primitiveNames)))
+                {
+                    obj.type = (PrimitiveType)currentType;
+                }
+
+                ImGui::DragFloat3("Position", &obj.pos.x, 0.1f);
+
+                // ---- Rotation as Euler angles (degrees) ----
+                ImGui::DragFloat("Pitch", &obj.rot.pitch, 0.5f, -180.0f, 180.0f, "%.1f°");
+                ImGui::DragFloat("Yaw", &obj.rot.yaw, 0.5f, -180.0f, 180.0f, "%.1f°");
+                ImGui::DragFloat("Roll", &obj.rot.roll, 0.5f, -180.0f, 180.0f, "%.1f°");
+
+                ImGui::DragFloat3("Scale", &obj.scale.x, 0.01f, 0.01f, 10.0f);
+            }
+
+            ImGui::PopID();
+            ImGui::Separator();
         }
 
         ImGui::End();

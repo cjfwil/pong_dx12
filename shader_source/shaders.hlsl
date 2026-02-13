@@ -19,16 +19,10 @@ cbuffer PerFrameConstantBuffer : register(b1)
 
 // Per‑scene constant buffer – now includes directional light data
 cbuffer PerSceneConstantBuffer : register(b2)
-{
-    // ambient colour (multiplied with texture)
-    float4 ambient_colour;
-
-    // directional light: direction points FROM surface TO light (world space)
-    float4 light_direction;   // .w unused, ensure float4 for alignment
-
-    // directional light colour (intensity, no alpha)
-    float4 light_colour;      // .w unused
-
+{    
+    float4 ambient_colour;    
+    float4 light_direction;
+    float4 light_colour;
     // padding to keep 256‑byte alignment
     float per_scene_padding[52];
 };
@@ -129,17 +123,11 @@ float4 PSMain(PSInput input) : SV_TARGET
 #else
     float4 texColor = g_texture.Sample(g_sampler, input.uv);
 #endif
-
-    // Normalise interpolated normal (interpolation may shorten it)
+    
     float3 N = normalize(input.normal);
-
-    // Directional light: direction is FROM surface TO light (world space)
-    float3 L = normalize(light_direction.xyz);
-
-    // Diffuse contribution (clamped)
+    float3 L = normalize(light_direction.xyz);    
     float NdotL = saturate(dot(N, L));
-
-    // Combine: ambient (multiply) + diffuse (additive)
+    
     float3 final = texColor.rgb * ambient_colour.rgb
                  + texColor.rgb * light_colour.rgb * NdotL;
 
