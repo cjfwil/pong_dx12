@@ -13,8 +13,10 @@
 
 #if defined(_DEBUG)
 #pragma comment(lib, "DirectXTex.lib")
+#pragma comment(lib, "debug/ImGuizmo.lib")
 #else
 #pragma comment(lib, "DirectXTex_release.lib")
+#pragma comment(lib, "release/ImGuizmo.lib")
 #endif
 
 #pragma warning(push, 0)
@@ -29,6 +31,7 @@
 #include <imgui.h>
 #include <backends/imgui_impl_sdl3.h>
 #include <backends/imgui_impl_dx12.h>
+#include <ImGuizmo.h>
 
 #include <cgltf.h>
 #pragma warning(pop)
@@ -36,7 +39,6 @@
 #include "local_error.h"
 #include "config_ini_io.h"
 #include "renderer_dx12.h"
-#include "ImGuizmo.h"
 
 static ConfigData g_liveConfigData = {};
 
@@ -230,7 +232,6 @@ struct window_state
 static float g_r = 0.7f;
 static float g_y = 0.0f;
 static float g_theta = 0.7f;
-static float g_scale_x = 1.0f;
 static float g_fov_deg = 60.0f;
 static PrimitiveType g_viewPrimitive = PrimitiveType::PRIMITIVE_CUBE;
 
@@ -418,9 +419,12 @@ void Render(bool vsync = true)
     HRAssert(pipeline_dx12.m_swapChain->Present(syncInterval, syncFlags));
 }
 
+// todo change this to a "scene" patter
 static const int g_total_objects_count = 16;
 static struct
 {
+    // todo: add ambient colour
+    // add one skybox set    
     struct
     {
         DirectX::XMFLOAT3 pos;
@@ -689,8 +693,7 @@ int main(void)
         ImGui::Begin("Settings");
         ImGui::SliderFloat("r", &g_r, 0.3f, 10.0f);
         ImGui::SliderFloat("y", &g_y, -10.0f, 10.0f);
-        ImGui::SliderFloat("theta", &g_theta, 0.0f, 2 * 3.14159f);
-        ImGui::SliderFloat("global scale x", &g_scale_x, 0.1f, 10.0f);
+        ImGui::SliderFloat("theta", &g_theta, 0.0f, 2 * 3.14159f);        
         ImGui::SliderFloat("fov_deg", &g_fov_deg, 60.0f, 120.0f);
         ImGui::Text("Frametime %.3f ms (%.2f FPS)",
                     1000.0f / ImGui::GetIO().Framerate,
@@ -940,8 +943,8 @@ int main(void)
                     float p = DirectX::XMConvertToRadians(pitchDeg);
                     float y = DirectX::XMConvertToRadians(yawDeg);
                     float r = DirectX::XMConvertToRadians(rollDeg);
-                    DirectX::XMVECTOR Q = DirectX::XMQuaternionRotationRollPitchYaw(p, y, r);
-                    XMStoreFloat4(&obj.rot, Q);
+                    DirectX::XMVECTOR Q_ = DirectX::XMQuaternionRotationRollPitchYaw(p, y, r);
+                    XMStoreFloat4(&obj.rot, Q_);
                 }
 
                 ImGui::DragFloat3("Scale", &obj.scale.x, 0.01f, 0.01f, 10.0f);

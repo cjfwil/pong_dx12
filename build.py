@@ -84,9 +84,15 @@ def build():
 
     print("=== Done ===")
 
-    # # copy scene.bin
-    # shutil.copy("scene.bin", OUTPUT_DIR)
-    # print(f"✔ Copied scene.bin → {src.name}")
+    # -----------------------------
+    # Copy scene.bin if it exists
+    # -----------------------------
+    scene_bin = Path("scene.bin")
+    if scene_bin.exists():
+        shutil.copy(scene_bin, OUTPUT_DIR)
+        print(f"✔ Copied scene.bin → {OUTPUT_DIR / scene_bin.name}")
+    else:
+        print("⚠ scene.bin not found – skipping")
 
 
 
