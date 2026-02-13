@@ -244,30 +244,7 @@ static struct
         DirectX::XMFLOAT3 pos[g_draw_list_element_total];
         DirectX::XMFLOAT4 rot[g_draw_list_element_total];
         DirectX::XMFLOAT3 scale[g_draw_list_element_total];
-    } transforms;
-
-    void fill_init()
-    {
-        float radius = 5.0f;
-        for (int i = 0; i < g_draw_list_element_total; ++i)
-        {
-            types[i] = (PrimitiveType)(i % PrimitiveType::PRIMITIVE_COUNT);
-
-            float angle = 2.0f * 3.14159f * (float)i / (float)g_draw_list_element_total;
-            transforms.pos[i].x = radius * cosf(angle);
-            transforms.pos[i].y = 0.0f;
-            transforms.pos[i].z = radius * sinf(angle);
-
-            transforms.rot[i].x = 0.0f;
-            transforms.rot[i].y = 0.0f;
-            transforms.rot[i].z = 0.0f;
-            transforms.rot[i].w = 1.0f;
-
-            transforms.scale[i].x = 1.0f;
-            transforms.scale[i].y = 1.0f;
-            transforms.scale[i].z = 1.0f;
-        }
-    }
+    } transforms;    
 } g_draw_list;
 
 static struct
@@ -445,22 +422,30 @@ static struct
 {
     struct
     {
-        struct
-        {
-            float x, y, z;
-        } pos;
-        struct
-        {
-            float pitch, yaw, roll;
-        } rot;
-        struct
-        {
-            float x = 1.0f;
-            float y = 1.0f;
-            float z = 1.0f;
-        } scale;
-        PrimitiveType type;
+        struct { float x, y, z; } pos;
+        struct { float pitch, yaw, roll; } rot;
+        struct { float x = 1.0f, y = 1.0f, z = 1.0f; } scale;
+        PrimitiveType type = PRIMITIVE_CUBE;  // default to cube
     } objects[g_total_objects_count];
+    
+    void write()
+    {
+        SDL_IOStream* file = SDL_IOFromFile("scene.bin", "wb");
+        if (!file) return;
+        SDL_WriteIO(file, objects, sizeof(objects));
+        SDL_CloseIO(file);
+    }
+
+    void read()
+    {
+        size_t size;
+        void* data = SDL_LoadFile("scene.bin", &size);
+        if (data && size == sizeof(objects))
+        {
+            SDL_memcpy(objects, data, sizeof(objects));
+        }
+        SDL_free(data);
+    }
 } g_total_objects_list_editable;
 
 void FillDrawList()
@@ -600,8 +585,7 @@ int main(void)
         ImGui_ImplDX12_Init(&init_info);
     }
 
-    // draw list init
-    // g_draw_list.fill_init();
+    g_total_objects_list_editable.read();
 
     while (program_state.isRunning)
     {
@@ -818,10 +802,6 @@ int main(void)
         // Scene Objects Editor – editing g_total_objects_list_editable
         // ============================================
 
-        // We extend the struct with a primitive type – add this to your definition:
-        // struct { ... int type; } objects[g_total_objects_count];
-        // Make sure g_total_objects_list_editable.objects[i].type is initialised.
-
         ImGui::Begin("Scene Objects");
         ImGui::Text("Total objects: %d", g_total_objects_count);
 
@@ -855,6 +835,8 @@ int main(void)
                 ImGui::DragFloat("Roll", &obj.rot.roll, 0.5f, -180.0f, 180.0f, "%.1f°");
 
                 ImGui::DragFloat3("Scale", &obj.scale.x, 0.01f, 0.01f, 10.0f);
+
+                g_total_objects_list_editable.write();
             }
 
             ImGui::PopID();
