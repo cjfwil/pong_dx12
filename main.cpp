@@ -423,19 +423,10 @@ static struct
 {
     struct
     {
-        struct
-        {
-            float x, y, z;
-        } pos;
-        struct
-        {
-            float pitch, yaw, roll;
-        } rot;
-        struct
-        {
-            float x = 1.0f, y = 1.0f, z = 1.0f;
-        } scale;
-        PrimitiveType type = PRIMITIVE_CUBE; // default to cube
+        DirectX::XMFLOAT3 pos;
+        DirectX::XMFLOAT4 rot = {0, 0, 0, 1}; // quaternion (default identity)
+        DirectX::XMFLOAT3 scale = {1, 1, 1};  // default {1,1,1}
+        PrimitiveType type = PrimitiveType::PRIMITIVE_CUBE;
     } objects[g_total_objects_count];
 
     void write()
@@ -469,18 +460,7 @@ void FillDrawList()
             g_draw_list.transforms.pos[i].y = g_total_objects_list_editable.objects[i].pos.y;
             g_draw_list.transforms.pos[i].z = g_total_objects_list_editable.objects[i].pos.z;
 
-            // TODO: what is the formulat that takes pitch, yaw, roll into quaternion
-            // g_draw_list.transforms.rot[i].x = ?;
-            // g_draw_list.transforms.rot[i].y = ?;
-            // g_draw_list.transforms.rot[i].z = ?;
-            // g_draw_list.transforms.rot[i].w = ?;
-
-            float pitchRad = DirectX::XMConvertToRadians(g_total_objects_list_editable.objects[i].rot.pitch);
-            float yawRad = DirectX::XMConvertToRadians(g_total_objects_list_editable.objects[i].rot.yaw);
-            float rollRad = DirectX::XMConvertToRadians(g_total_objects_list_editable.objects[i].rot.roll);
-
-            DirectX::XMVECTOR quat = DirectX::XMQuaternionRotationRollPitchYaw(pitchRad, yawRad, rollRad);
-            DirectX::XMStoreFloat4(&g_draw_list.transforms.rot[i], quat);
+            g_draw_list.transforms.rot[i] = g_total_objects_list_editable.objects[i].rot;
 
             g_draw_list.transforms.scale[i].x = g_total_objects_list_editable.objects[i].scale.x;
             g_draw_list.transforms.scale[i].y = g_total_objects_list_editable.objects[i].scale.y;
@@ -544,6 +524,9 @@ inline void QuaternionToEuler(DirectX::FXMVECTOR Q, float &pitch, float &yaw, fl
     float cosr = 1.0f - 2.0f * (y * y + z * z);
     roll = atan2f(sinr, cosr);
 }
+
+// editor state
+static int g_selectedObjectIndex = 0;
 
 int main(void)
 {
@@ -644,23 +627,20 @@ int main(void)
 
         // gizmos
         // ============================================
-        // ImGuizmo – corrected: no transposes, pass row‑major
+        // ImGuizmo – using stored quaternion directly
         // ============================================
         ImGuizmo::BeginFrame();
         ImGuizmo::Enable(true);
         ImGuizmo::SetRect(0, 0, (float)viewport_state.m_width, (float)viewport_state.m_height);
 
-        static int selectedObjectIndex = 0;
-        if (selectedObjectIndex >= 0 && selectedObjectIndex < g_total_objects_count)
+        if (g_selectedObjectIndex >= 0 && g_selectedObjectIndex < g_total_objects_count)
         {
-            auto &obj = g_total_objects_list_editable.objects[selectedObjectIndex];
+            auto &obj = g_total_objects_list_editable.objects[g_selectedObjectIndex];
 
-            // ---- Build world matrix (row‑major) ----
+            // ---- Build world matrix from pos, quaternion, scale (row‑major) ----
             DirectX::XMMATRIX scale = DirectX::XMMatrixScaling(obj.scale.x, obj.scale.y, obj.scale.z);
-            float pitchRad = DirectX::XMConvertToRadians(obj.rot.pitch);
-            float yawRad = DirectX::XMConvertToRadians(obj.rot.yaw);
-            float rollRad = DirectX::XMConvertToRadians(obj.rot.roll);
-            DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationRollPitchYaw(pitchRad, yawRad, rollRad);
+            DirectX::XMVECTOR rotQuat = DirectX::XMLoadFloat4(&obj.rot);
+            DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(rotQuat);
             DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(obj.pos.x, obj.pos.y, obj.pos.z);
             DirectX::XMMATRIX world = scale * rotation * translation; // row‑major
 
@@ -689,21 +669,20 @@ int main(void)
             if (ImGuizmo::IsUsing())
             {
                 // world has been modified in place (still row‑major)
-                DirectX::XMVECTOR scaleVec, rotQuat, posVec;
-                DirectX::XMMatrixDecompose(&scaleVec, &rotQuat, &posVec, world);
+                DirectX::XMVECTOR scaleVec, rotQuatNew, posVec;
+                DirectX::XMMatrixDecompose(&scaleVec, &rotQuatNew, &posVec, world);
 
                 // Position
-                DirectX::XMStoreFloat3((DirectX::XMFLOAT3 *)&obj.pos, posVec);
+                DirectX::XMStoreFloat3(&obj.pos, posVec);
 
-                // Rotation: quaternion → Euler (degrees)
-                float pitchRad, yawRad, rollRad;
-                QuaternionToEuler(rotQuat, pitchRad, yawRad, rollRad);
-                obj.rot.pitch = DirectX::XMConvertToDegrees(pitchRad);
-                obj.rot.yaw = DirectX::XMConvertToDegrees(yawRad);
-                obj.rot.roll = DirectX::XMConvertToDegrees(rollRad);
+                // Rotation – store quaternion directly (no Euler conversion!)
+                DirectX::XMStoreFloat4(&obj.rot, rotQuatNew);
 
                 // Scale
-                DirectX::XMStoreFloat3((DirectX::XMFLOAT3 *)&obj.scale, scaleVec);
+                DirectX::XMStoreFloat3(&obj.scale, scaleVec);
+
+                // Persist change
+                g_total_objects_list_editable.write();
             }
         }
 
@@ -909,16 +888,29 @@ int main(void)
         for (int i = 0; i < g_total_objects_count; ++i)
         {
             ImGui::PushID(i);
-
-            // Get object reference
             auto &obj = g_total_objects_list_editable.objects[i];
 
-            // Header shows index and current primitive type
+            // Header label
             char headerLabel[64];
             snprintf(headerLabel, sizeof(headerLabel), "Object %d: %s",
                      i, g_primitiveNames[obj.type]);
 
-            if (ImGui::CollapsingHeader(headerLabel, ImGuiTreeNodeFlags_DefaultOpen))
+            // --- TreeNode with selection support ---
+            ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_OpenOnArrow |
+                                            ImGuiTreeNodeFlags_OpenOnDoubleClick |
+                                            ImGuiTreeNodeFlags_SpanAvailWidth;
+            if (i == g_selectedObjectIndex)
+                node_flags |= ImGuiTreeNodeFlags_Selected;
+
+            bool node_open = ImGui::TreeNodeEx(headerLabel, node_flags);
+
+            // --- Click selection (only if not toggling open/close) ---
+            if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen())
+            {
+                g_selectedObjectIndex = i;
+            }
+
+            if (node_open)
             {
                 // ---- Primitive type dropdown ----
                 int currentType = obj.type;
@@ -930,18 +922,38 @@ int main(void)
 
                 ImGui::DragFloat3("Position", &obj.pos.x, 0.1f);
 
-                // ---- Rotation as Euler angles (degrees) ----
-                ImGui::DragFloat("Pitch", &obj.rot.pitch, 0.5f, -180.0f, 180.0f, "%.1f°");
-                ImGui::DragFloat("Yaw", &obj.rot.yaw, 0.5f, -180.0f, 180.0f, "%.1f°");
-                ImGui::DragFloat("Roll", &obj.rot.roll, 0.5f, -180.0f, 180.0f, "%.1f°");
+                // ---- Rotation (quaternion → Euler sliders) ----
+                DirectX::XMFLOAT4 q = obj.rot;
+                DirectX::XMVECTOR Q = XMLoadFloat4(&q);
+                float pitch, yaw, roll;
+                QuaternionToEuler(Q, pitch, yaw, roll);
+                float pitchDeg = DirectX::XMConvertToDegrees(pitch);
+                float yawDeg = DirectX::XMConvertToDegrees(yaw);
+                float rollDeg = DirectX::XMConvertToDegrees(roll);
+
+                ImGui::DragFloat("Pitch", &pitchDeg, 0.5f, -180, 180, "%.1f°");
+                ImGui::DragFloat("Yaw", &yawDeg, 0.5f, -180, 180, "%.1f°");
+                ImGui::DragFloat("Roll", &rollDeg, 0.5f, -180, 180, "%.1f°");
+
+                if (ImGui::IsItemDeactivatedAfterEdit())
+                {
+                    float p = DirectX::XMConvertToRadians(pitchDeg);
+                    float y = DirectX::XMConvertToRadians(yawDeg);
+                    float r = DirectX::XMConvertToRadians(rollDeg);
+                    DirectX::XMVECTOR Q = DirectX::XMQuaternionRotationRollPitchYaw(p, y, r);
+                    XMStoreFloat4(&obj.rot, Q);
+                }
 
                 ImGui::DragFloat3("Scale", &obj.scale.x, 0.01f, 0.01f, 10.0f);
 
+                // Persist changes
                 g_total_objects_list_editable.write();
+
+                ImGui::TreePop();
             }
 
-            ImGui::PopID();
             ImGui::Separator();
+            ImGui::PopID();
         }
 
         ImGui::End();
