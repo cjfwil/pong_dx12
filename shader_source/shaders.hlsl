@@ -72,7 +72,7 @@ PSInput VSMain(VSInput input)
 
 // Triplanar sampling parameters
 static const float g_Tiling          = 1.0f;
-static const float g_BlendSharpness = 1.0f;
+static const float g_BlendSharpness = 16.0f;
 
 float4 SampleTriplanar(Texture2D tex, SamplerState sam,
                        float3 worldPos, float3 normal, float tiling)
