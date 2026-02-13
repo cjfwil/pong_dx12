@@ -14,9 +14,11 @@
 #if defined(_DEBUG)
 #pragma comment(lib, "DirectXTex.lib")
 #pragma comment(lib, "debug/ImGuizmo.lib")
+#pragma comment(lib, "debug/cJSON.lib")
 #else
 #pragma comment(lib, "DirectXTex_release.lib")
 #pragma comment(lib, "release/ImGuizmo.lib")
+#pragma comment(lib, "release/cJSON.lib")
 #endif
 
 #pragma warning(push, 0)
@@ -34,13 +36,41 @@
 #include <ImGuizmo.h>
 
 #include <cgltf.h>
+#include <cJSON.h>
 #pragma warning(pop)
 
 #include "local_error.h"
 #include "config_ini_io.cpp"
 #include "renderer_dx12.cpp"
+#include "scene_data.h"
+#include "generated/scene_json.cpp"
 
 static ConfigData g_liveConfigData = {};
+static Scene g_scene;
+
+void write_scene()
+{
+    char* json = scene_to_json(&g_scene);
+    if (!json) return;
+    
+    SDL_IOStream* file = SDL_IOFromFile("scene.json", "wb");
+    if (file) {
+        SDL_WriteIO(file, json, SDL_strlen(json));
+        SDL_CloseIO(file);
+    }
+    
+    cJSON_free(json);  // cJSON provides its own free function
+}
+
+void read_scene()
+{
+    size_t size;
+    void* data = SDL_LoadFile("scene.json", &size);
+    if (!data) return;
+    
+    scene_from_json((const char*)data, &g_scene);
+    SDL_free(data);
+}
 
 static struct
 {
@@ -423,63 +453,27 @@ void Render(bool vsync = true)
     HRAssert(pipeline_dx12.m_swapChain->Present(syncInterval, syncFlags));
 }
 
-// todo change this to a "scene" pattern
-static const int g_total_objects_count = 16;
-static struct
-{
-    // todo: add ambient colour
-    // add one skybox set
-    struct
-    {
-        char nametag[128] = "Unamed";
-        DirectX::XMFLOAT3 pos;
-        DirectX::XMFLOAT4 rot = {0, 0, 0, 1}; // quaternion (default identity)
-        DirectX::XMFLOAT3 scale = {1, 1, 1};  // default {1,1,1}
-        PrimitiveType type = PrimitiveType::PRIMITIVE_CUBE;
-    } objects[g_total_objects_count];
-
-    void write()
-    {
-        SDL_IOStream *file = SDL_IOFromFile("scene.bin", "wb");
-        if (!file)
-            return;
-        SDL_WriteIO(file, objects, sizeof(objects));
-        SDL_CloseIO(file);
-    }
-
-    void read()
-    {
-        size_t size;
-        void *data = SDL_LoadFile("scene.bin", &size);
-        if (data && size == sizeof(objects))
-        {
-            SDL_memcpy(objects, data, sizeof(objects));
-        }
-        SDL_free(data);
-    }
-} g_total_objects_list_editable;
-
 void FillDrawList()
 {
     for (int i = 0; i < g_draw_list_element_total; ++i)
     {
-        if (i < g_total_objects_count)
+        if (i < g_scene.objectCount)
         {
-            g_draw_list.transforms.pos[i].x = g_total_objects_list_editable.objects[i].pos.x;
-            g_draw_list.transforms.pos[i].y = g_total_objects_list_editable.objects[i].pos.y;
-            g_draw_list.transforms.pos[i].z = g_total_objects_list_editable.objects[i].pos.z;
+            g_draw_list.transforms.pos[i].x = g_scene.objects[i].pos.x;
+            g_draw_list.transforms.pos[i].y = g_scene.objects[i].pos.y;
+            g_draw_list.transforms.pos[i].z = g_scene.objects[i].pos.z;
 
-            g_draw_list.transforms.rot[i] = g_total_objects_list_editable.objects[i].rot;
+            g_draw_list.transforms.rot[i] = g_scene.objects[i].rot;
 
-            g_draw_list.transforms.scale[i].x = g_total_objects_list_editable.objects[i].scale.x;
-            g_draw_list.transforms.scale[i].y = g_total_objects_list_editable.objects[i].scale.y;
-            g_draw_list.transforms.scale[i].z = g_total_objects_list_editable.objects[i].scale.z;
+            g_draw_list.transforms.scale[i].x = g_scene.objects[i].scale.x;
+            g_draw_list.transforms.scale[i].y = g_scene.objects[i].scale.y;
+            g_draw_list.transforms.scale[i].z = g_scene.objects[i].scale.z;
 
-            g_draw_list.types[i] = g_total_objects_list_editable.objects[i].type;
+            g_draw_list.types[i] = g_scene.objects[i].type;
         }
     }
-    if (g_total_objects_count < g_draw_list_element_total)
-        g_draw_list.drawAmount = g_total_objects_count;
+    if (g_scene.objectCount < g_draw_list_element_total)
+        g_draw_list.drawAmount = g_scene.objectCount;
     else
         g_draw_list.drawAmount = g_draw_list_element_total;
 }
@@ -614,7 +608,10 @@ int main(void)
         ImGui_ImplDX12_Init(&init_info);
     }
 
-    g_total_objects_list_editable.read();
+    // g_scene.read();
+    // write_scene();
+        
+    read_scene();
 
     while (program_state.isRunning)
     {
@@ -652,9 +649,9 @@ int main(void)
             ImGuizmo::Enable(true);
             ImGuizmo::SetRect(0, 0, (float)viewport_state.m_width, (float)viewport_state.m_height);
 
-            if (g_selectedObjectIndex >= 0 && g_selectedObjectIndex < g_total_objects_count)
+            if (g_selectedObjectIndex >= 0 && g_selectedObjectIndex < g_scene.objectCount)
             {
-                auto &obj = g_total_objects_list_editable.objects[g_selectedObjectIndex];
+                auto &obj = g_scene.objects[g_selectedObjectIndex];
 
                 // ---- Build world matrix from pos, quaternion, scale (row‑major) ----
                 DirectX::XMMATRIX scale = DirectX::XMMatrixScaling(obj.scale.x, obj.scale.y, obj.scale.z);
@@ -691,7 +688,7 @@ int main(void)
                     DirectX::XMStoreFloat3(&obj.scale, scaleVec);
 
                     // Persist change
-                    g_total_objects_list_editable.write();
+                    write_scene();
                 }
             }
 
@@ -880,16 +877,16 @@ int main(void)
             ImGui::End();
 
             // ============================================
-            // Scene Objects Editor – editing g_total_objects_list_editable
+            // Scene Objects Editor – editing g_scene
             // ============================================
 
             ImGui::Begin("Scene Objects");
-            ImGui::Text("Total objects: %d", g_total_objects_count);
+            ImGui::Text("Total objects: %d", g_scene.objectCount);
 
-            for (int i = 0; i < g_total_objects_count; ++i)
+            for (int i = 0; i < g_scene.objectCount; ++i)
             {
                 ImGui::PushID(i);
-                auto &obj = g_total_objects_list_editable.objects[i];
+                auto &obj = g_scene.objects[i];
 
                 // --- TreeNode with fixed label + name display ---
                 ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_OpenOnArrow |
@@ -920,11 +917,11 @@ int main(void)
                     if (ImGui::InputText("Name", obj.nametag, IM_ARRAYSIZE(obj.nametag)))
                     {
                         // optional: auto-save as you type?
-                        // g_total_objects_list_editable.write(); // uncomment to save on every keystroke
+                        // write_scene(); // uncomment to save on every keystroke
                     }
                     if (ImGui::IsItemDeactivatedAfterEdit())
                     {
-                        g_total_objects_list_editable.write(); // save when focus leaves the field
+                        write_scene(); // save when focus leaves the field
                     }
 
                     // ---- Primitive type dropdown ----
@@ -937,32 +934,34 @@ int main(void)
 
                     ImGui::DragFloat3("Position", &obj.pos.x, 0.1f);
 
-                    // ---- Rotation (quaternion → Euler sliders) ----
+                    // ---- Rotation (quaternion → Euler sliders with immediate update) ----
                     DirectX::XMFLOAT4 q = obj.rot;
                     DirectX::XMVECTOR Q = XMLoadFloat4(&q);
                     float pitch, yaw, roll;
                     QuaternionToEuler(Q, pitch, yaw, roll);
+
                     float pitchDeg = DirectX::XMConvertToDegrees(pitch);
                     float yawDeg = DirectX::XMConvertToDegrees(yaw);
                     float rollDeg = DirectX::XMConvertToDegrees(roll);
 
-                    ImGui::DragFloat("Pitch", &pitchDeg, 0.5f, -180, 180, "%.1f°");
-                    ImGui::DragFloat("Yaw", &yawDeg, 0.5f, -180, 180, "%.1f°");
-                    ImGui::DragFloat("Roll", &rollDeg, 0.5f, -180, 180, "%.1f°");
+                    bool rotationChanged = false;
+                    rotationChanged |= ImGui::DragFloat("Pitch", &pitchDeg, 0.5f, -180.0f, 180.0f, "%.1f°");
+                    rotationChanged |= ImGui::DragFloat("Yaw", &yawDeg, 0.5f, -180.0f, 180.0f, "%.1f°");
+                    rotationChanged |= ImGui::DragFloat("Roll", &rollDeg, 0.5f, -180.0f, 180.0f, "%.1f°");
 
-                    if (ImGui::IsItemDeactivatedAfterEdit())
+                    if (rotationChanged)
                     {
                         float p = DirectX::XMConvertToRadians(pitchDeg);
                         float y = DirectX::XMConvertToRadians(yawDeg);
                         float r = DirectX::XMConvertToRadians(rollDeg);
                         DirectX::XMVECTOR Q_ = DirectX::XMQuaternionRotationRollPitchYaw(p, y, r);
-                        XMStoreFloat4(&obj.rot, Q_);
+                        XMStoreFloat4(&obj.rot, Q_);                        
                     }
 
                     ImGui::DragFloat3("Scale", &obj.scale.x, 0.01f, 0.01f, 10.0f);
 
                     // Persist changes
-                    g_total_objects_list_editable.write();
+                    write_scene();
 
                     ImGui::TreePop();
                 }

@@ -1,0 +1,100 @@
+{
+	"objectCount":	16,
+	"objects":	[{
+			"nametag":	"floor",
+			"pos":	[0, -1, 0],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[10, 1, 10],
+			"type":	0
+		}, {
+			"nametag":	"Centre box",
+			"pos":	[0, 1.5, 0],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[5, 4, 5],
+			"type":	0
+		}, {
+			"nametag":	"entablature",
+			"pos":	[0, 3.7000000476837158, 0],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[9, 0.5, 9],
+			"type":	0
+		}, {
+			"nametag":	"Column A",
+			"pos":	[0, 1.5, 4.5],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"type":	1
+		}, {
+			"nametag":	"Column B",
+			"pos":	[-4.5, 1.5, 4.5],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"type":	1
+		}, {
+			"nametag":	"Column C",
+			"pos":	[4.5, 1.5, 4.5],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"type":	1
+		}, {
+			"nametag":	"Column D",
+			"pos":	[4.5, 1.5, 0],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"type":	1
+		}, {
+			"nametag":	"Column E",
+			"pos":	[-4.5, 1.5, 0],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"type":	1
+		}, {
+			"nametag":	"Column E",
+			"pos":	[0, 1.5, -4.5],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"type":	1
+		}, {
+			"nametag":	"pediment",
+			"pos":	[0, 4.1999998092651367, 0.010818870738148689],
+			"rot":	[-0.70710676908493042, 0, 0, 0.70710670948028564],
+			"scale":	[11, 9.9999427795410156, 0.99999350309371948],
+			"type":	2
+		}, {
+			"nametag":	"Col",
+			"pos":	[4.5, 1.5, -4.5],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"type":	1
+		}, {
+			"nametag":	"Col",
+			"pos":	[-4.5, 1.5, -4.5],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"type":	1
+		}, {
+			"nametag":	"Unamed",
+			"pos":	[0, 0, 0],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 1, 1],
+			"type":	0
+		}, {
+			"nametag":	"Unamed",
+			"pos":	[0, 0, 0],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 1, 1],
+			"type":	0
+		}, {
+			"nametag":	"Unamed",
+			"pos":	[0, 0, 0],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 1, 1],
+			"type":	0
+		}, {
+			"nametag":	"Unamed",
+			"pos":	[0, 0, 0],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 1, 1],
+			"type":	0
+		}]
+}

@@ -11,6 +11,8 @@ so in the editor it isnt just "GameObject 0: Cube", so i can edit that to be "st
 also dicate the project folder names and where files go. clean up this mess of a root project folder
 generated code goes in src/generated
 
+## somehow persistent scene data when scene struct changes because it will change a lot
+
 # merge all the scripts into a common folder
 
 ## modify loc.py to separate written code from the generated code
