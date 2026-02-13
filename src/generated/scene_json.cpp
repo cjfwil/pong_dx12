@@ -2,12 +2,12 @@
 // GENERATED – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_scene_json.py
-//   Generated: 2026-02-13 13:33:01
+//   Generated: 2026-02-13 13:54:22
 //------------------------------------------------------------------------
 
 
 #include <cJSON.h>
-#include "../scene_data.h"
+#include "src/scene_data.h"
 #include "mesh_data.h"
 #include <string.h>
 #include <stdio.h>

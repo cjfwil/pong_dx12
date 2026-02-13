@@ -606,10 +606,7 @@ int main(void)
         init_info.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo *, D3D12_CPU_DESCRIPTOR_HANDLE cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE gpu_handle)
         { return g_imguiHeap.Free(cpu_handle, gpu_handle); };
         ImGui_ImplDX12_Init(&init_info);
-    }
-
-    // g_scene.read();
-    // write_scene();
+    }    
         
     read_scene();
 

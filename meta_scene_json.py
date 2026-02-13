@@ -33,10 +33,10 @@ def generate_scene_json(input_h: Path, output_c: Path) -> bool:
     header = common.make_header("meta_scene_json.py")
     lines = [
         '#include <cJSON.h>',
-        '#include "../scene_data.h"',
+        '#include "src/scene_data.h"',
         '#include "mesh_data.h"',
         '#include <string.h>',
-        '#include <stdio.h>',          # <-- ADD for fprintf
+        '#include <stdio.h>',          
         '',
         '// ------------------------------------------------------------',
         '// Serialise Scene → JSON string (caller must free with cJSON_free)',
@@ -133,8 +133,7 @@ def generate_scene_json(input_h: Path, output_c: Path) -> bool:
                     f'                    ((float*)&obj->{name})[j] = (float)cJSON_GetArrayItem({name}Item, j)->valuedouble;',
                     f'            }}',
                 ])
-            elif typ == 'PrimitiveType':
-                # <-- CHANGE: handle both integer (old) and string (new)
+            elif typ == 'PrimitiveType':                
                 lines.append(f'            // Handle PrimitiveType: can be integer (old) or string (new)')
                 lines.append(f'            if (cJSON_IsNumber({name}Item)) {{')
                 lines.append(f'                obj->{name} = (PrimitiveType){name}Item->valueint;')
