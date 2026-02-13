@@ -2,7 +2,7 @@
 """
 meta_config.py – Generate INI serialization for ConfigData.
 
-This script parses src/config_ini_io.h, extracts nested struct sections
+This script parses src/config_ini_io.cpp, extracts nested struct sections
 (DisplaySettings, GraphicsSettings, etc.) and generates
 src/generated/config_functions.h with Save/Load functions.
 
@@ -55,12 +55,12 @@ def get_parser_function(type_name: str) -> str:
 # Main generator
 # ----------------------------------------------------------------------
 def generate_config_functions(
-    input_path: Path = Path("src/config_ini_io.h"),
+    input_path: Path = Path("src/config_ini_io.cpp"),
     output_path: Path = Path("src/generated/config_functions.h"),
     force: bool = False
 ) -> bool:
     """
-    Generate config_functions.h from config_ini_io.h.
+    Generate config_functions.h from config_ini_io.cpp.
     Returns True if file was written/updated, False otherwise.
     """
     # 1. Read input file
@@ -201,10 +201,10 @@ static inline void Generated_LoadConfigFromString(ConfigData* config, char* data
 # ----------------------------------------------------------------------
 if __name__ == '__main__':
     import argparse
-    parser = argparse.ArgumentParser(description="Generate config_functions.h from config_ini_io.h")
+    parser = argparse.ArgumentParser(description="Generate config_functions.h from config_ini_io.cpp")
     common.add_common_args(parser)
-    parser.add_argument('--input', '-i', type=Path, default=Path("src/config_ini_io.h"),
-                        help="Input config header (default: src/config_ini_io.h)")
+    parser.add_argument('--input', '-i', type=Path, default=Path("src/config_ini_io.cpp"),
+                        help="Input config header (default: src/config_ini_io.cpp)")
     parser.add_argument('--output', '-o', type=Path, default=Path("src/generated/config_functions.h"),
                         help="Output generated file (default: src/generated/config_functions.h)")
     args = parser.parse_args()

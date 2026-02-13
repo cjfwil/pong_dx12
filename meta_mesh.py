@@ -344,7 +344,7 @@ def generate_mesh_header(
     header = common.make_header(tool_name="meta_mesh.py", comment="GENERATED MESH DATA")
     content = header
     content += "#pragma once\n"
-    content += '#include "renderer_dx12.h"  // for Vertex\n\n'
+    content += '#include "renderer_dx12.cpp"  // for Vertex\n\n'
 
     # Enum
     content += "enum PrimitiveType\n{\n"

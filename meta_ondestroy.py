@@ -2,7 +2,7 @@
 """
 meta_ondestroy.py – Generate OnDestroy_generated.cpp.
 
-Parses renderer_dx12.h, finds D3D12 COM pointers in known structs,
+Parses renderer_dx12.cpp, finds D3D12 COM pointers in known structs,
 orders them by dependency, emits cleanup code.
 
 Now uses common.py for logging, file I/O, and header generation,
@@ -158,7 +158,7 @@ def generate_cleanup_code(resources: list) -> str:
     """Generate C++ cleanup code."""
     lines = []
     lines.append("#pragma once")
-    lines.append("#include \"renderer_dx12.h\"")
+    lines.append("#include \"renderer_dx12.cpp\"")
     lines.append("#define ONDESTROY_GENERATED_CPP")
     lines.append("")
     lines.append("void OnDestroy()")
@@ -243,7 +243,7 @@ def generate_cleanup_code(resources: list) -> str:
 # Main generator function (for CLI and unified driver)
 # ----------------------------------------------------------------------
 def generate_cleanup(
-    input_path: Path = Path("src/renderer_dx12.h"),
+    input_path: Path = Path("src/renderer_dx12.cpp"),
     output_path: Path = Path("src/generated/OnDestroy_generated.cpp"),
     force: bool = False
 ) -> bool:
@@ -291,8 +291,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Generate OnDestroy_generated.cpp")
     common.add_common_args(parser)
     parser.add_argument('--input', '-i', type=Path,
-                        default=Path("src/renderer_dx12.h"),
-                        help="Input header (default: src/renderer_dx12.h)")
+                        default=Path("src/renderer_dx12.cpp"),
+                        help="Input header (default: src/renderer_dx12.cpp)")
     parser.add_argument('--output', '-o', type=Path,
                         default=Path("src/generated/OnDestroy_generated.cpp"),
                         help="Output path (default: src/generated/OnDestroy_generated.cpp)")

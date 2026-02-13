@@ -8,6 +8,7 @@ with mouse and controller
 so in the editor it isnt just "GameObject 0: Cube", so i can edit that to be "stairs" or "column" etc...
 
 ## include a .md document that dictates style and architecture etc...
+also dicate the project folder names and where files go. clean up this mess of a root project folder
 
 ## visualise normals as lines
 needs multiple shaders at once

@@ -1,0 +1,6 @@
+src\renderer_dx12.h:19:5: error: Code 'DirectX::XMFLOAT3' is invalid C code. [syntaxError]
+    DirectX::XMFLOAT3 position;
+    ^
+main.cpp:852:38: warning: Potentially invalid type conversion in old-style C cast, clarify/fix with C++ cast [dangerousTypeCast]
+        if (ImGui::Checkbox("Vsync", (bool *)&g_liveConfigData.GraphicsSettings.vsync))
+                                     ^

@@ -37,8 +37,8 @@
 #pragma warning(pop)
 
 #include "local_error.h"
-#include "config_ini_io.h"
-#include "renderer_dx12.h"
+#include "config_ini_io.cpp"
+#include "renderer_dx12.cpp"
 
 static ConfigData g_liveConfigData = {};
 

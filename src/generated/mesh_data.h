@@ -2,11 +2,11 @@
 // GENERATED MESH DATA – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_mesh.py
-//   Generated: 2026-02-12 14:48:25
+//   Generated: 2026-02-13 08:08:49
 //------------------------------------------------------------------------
 
 #pragma once
-#include "renderer_dx12.h"  // for Vertex
+#include "renderer_dx12.cpp"  // for Vertex
 
 enum PrimitiveType
 {
