@@ -16,11 +16,11 @@
 			"nametag":	"entablature",
 			"pos":	[0, 3.7000000476837158, 0],
 			"rot":	[0, 0, 0, 1],
-			"scale":	[9, 0.5, 9],
+			"scale":	[9.5, 0.5, 9.5],
 			"type":	"Cube"
 		}, {
 			"nametag":	"Column A",
-			"pos":	[0, 1.5, 4.5],
+			"pos":	[4.5, 1.5000005960464478, 2.25],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[1, 4, 1],
 			"type":	"Cylinder"
@@ -73,28 +73,28 @@
 			"scale":	[1, 4, 1],
 			"type":	"Cylinder"
 		}, {
-			"nametag":	"Unamed",
-			"pos":	[0, 0, 0],
+			"nametag":	"col",
+			"pos":	[2.25, 1.5, 4.5],
 			"rot":	[0, 0, 0, 1],
-			"scale":	[1, 1, 1],
-			"type":	"Cube"
+			"scale":	[1, 4, 1],
+			"type":	"Cylinder"
 		}, {
-			"nametag":	"Unamed",
-			"pos":	[0, 0, 0],
+			"nametag":	"col",
+			"pos":	[-2.5, 1.5, 4.5],
 			"rot":	[0, 0, 0, 1],
-			"scale":	[1, 1, 1],
-			"type":	"Cube"
+			"scale":	[1, 4, 1],
+			"type":	"Cylinder"
 		}, {
-			"nametag":	"Unamed",
-			"pos":	[0, 0, 0],
+			"nametag":	"col",
+			"pos":	[-2.25, 1.5, -4.5],
 			"rot":	[0, 0, 0, 1],
-			"scale":	[1, 1, 1],
-			"type":	"Cube"
+			"scale":	[1, 4, 1],
+			"type":	"Cylinder"
 		}, {
-			"nametag":	"Unamed",
-			"pos":	[0, 0, 0],
+			"nametag":	"col",
+			"pos":	[2.25, 1.5, -4.5],
 			"rot":	[0, 0, 0, 1],
-			"scale":	[1, 1, 1],
-			"type":	"Cube"
+			"scale":	[1, 4, 1],
+			"type":	"Cylinder"
 		}]
 }

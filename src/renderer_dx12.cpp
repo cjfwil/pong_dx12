@@ -868,11 +868,7 @@ bool LoadAssets()
         if (FAILED(pipeline_dx12.m_device->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &featureData, sizeof(featureData))))
         {
             featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
-        }
-
-        // CD3DX12_DESCRIPTOR_RANGE1 ranges[2];
-        // ranges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
-        // ranges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+        }        
 
         CD3DX12_DESCRIPTOR_RANGE1 cbvRange;
         cbvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
@@ -923,9 +919,7 @@ bool LoadAssets()
 #else
         UINT compileFlags = 0;
 #endif
-        ID3DBlob *shader_error_blob = nullptr;
-
-        // todo print the shader error on fail
+        ID3DBlob *shader_error_blob = nullptr;        
         if (FAILED(D3DCompileFromFile(L"shader_source\\shaders.hlsl", nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vertexShader, &shader_error_blob)))
         {
             if (shader_error_blob)
@@ -1081,8 +1075,7 @@ bool LoadAssets()
             (INT)(DescriptorIndices::PER_SCENE_CBV),
             cbvSrvDescriptorSize);
         pipeline_dx12.m_device->CreateConstantBufferView(&perSceneCbvDesc, perSceneCbvHandle);
-
-        // todo: figure out if i am allowed to unmap?
+        
         // todo: abstract this so i can call it from main when i want it updated
         // Map and initialize the per-scene constant buffer
         CD3DX12_RANGE readRange(0, 0);

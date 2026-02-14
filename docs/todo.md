@@ -14,6 +14,11 @@ generated code goes in src/generated
 ## somehow persistent scene data when scene struct changes because it will change a lot (done)
 
 ## merge PrimitiveType and g_primitiveTypeNames into the same KVP hash table?
+have a giant list which includes all geometry, the KVP primtive names map to the index in that list. when more geometry is loaded or generated at runtime it gets added to that list.
+
+## prebaked static AO
+needs multiple vertex types, so lots of requirements there (forgot which ones though)
+or maybe light probes?
 
 ## todo heightmap as a primitive? or maybe 1 heightmap per scene only?
 

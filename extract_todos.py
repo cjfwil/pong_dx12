@@ -152,8 +152,8 @@ def main():
     )
     parser.add_argument('--src', '-s', type=Path, default=Path('.'),
                         help='Root directory to scan (default: current directory)')
-    parser.add_argument('--out', '-o', type=Path, default=Path('TODO_report.md'),
-                        help='Output Markdown file (default: TODO_report.md)')
+    parser.add_argument('--out', '-o', type=Path, default=Path('docs/TODO_report.md'),
+                        help='Output Markdown file (default: docs/TODO_report.md)')
     parser.add_argument('--context', '-c', type=int, default=2,
                         help='Number of context lines before/after (default: 2)')
     parser.add_argument('--ext', '-e', type=str,
