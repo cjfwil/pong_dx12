@@ -3,13 +3,17 @@ import shutil
 import subprocess
 from pathlib import Path
 
+import common
+
 # -----------------------------
 # Configuration
 # -----------------------------
-SOURCE_FILE = "main.cpp"
-OUTPUT_DIR = Path("release")
-SHADER_DIR = Path("shader_source")
-ASSET_DIR = Path("assets")
+
+ROOT_DIR = ""
+SOURCE_FILE = ROOT_DIR + "main.cpp"
+OUTPUT_DIR = Path(ROOT_DIR + "release")
+SHADER_DIR = Path(ROOT_DIR + "shader_source")
+ASSET_DIR = Path(ROOT_DIR + "assets")
 
 DLLS_TO_COPY = [
     r"C:\WINDOWS\system32\SDL3.dll"
@@ -22,8 +26,8 @@ CL_FLAGS = [
     "/EHsc",        # C++ exceptions    
     "/MD",          # Release runtime library
     "/nologo",      # No MSVC banner
-    "/I", "src", 
-    "/I", "src/generated",
+    "/I", ROOT_DIR + "src", 
+    "/I", ROOT_DIR + "src/generated",
     "/Fe" + str(OUTPUT_DIR / "pong_dx12.exe")
 ]
 
@@ -85,12 +89,22 @@ def build():
     # -----------------------------
     # Copy scene.bin if it exists
     # -----------------------------
-    scene_bin = Path("scene.bin")
+    scene_bin = Path(ROOT_DIR + "scene.bin")
     if scene_bin.exists():
         shutil.copy(scene_bin, OUTPUT_DIR)
         print(f"✔ Copied scene.bin → {OUTPUT_DIR / scene_bin.name}")
     else:
-        print("⚠ scene.bin not found – skipping")
+        print("⚠ scene.bin not found - skipping")
+    
+    # -----------------------------
+    # Copy scene.json if it exists
+    # -----------------------------
+    scene_bin = Path(ROOT_DIR + "scene.json")
+    if scene_bin.exists():
+        shutil.copy(scene_bin, OUTPUT_DIR)
+        print(f"✔ Copied scene.json → {OUTPUT_DIR / scene_bin.name}")
+    else:
+        print("⚠ scene.json not found - skipping")
 
     print("=== Done ===")
 

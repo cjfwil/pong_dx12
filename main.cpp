@@ -50,25 +50,28 @@ static Scene g_scene;
 
 void write_scene()
 {
-    char* json = scene_to_json(&g_scene);
-    if (!json) return;
-    
-    SDL_IOStream* file = SDL_IOFromFile("scene.json", "wb");
-    if (file) {
+    char *json = scene_to_json(&g_scene);
+    if (!json)
+        return;
+
+    SDL_IOStream *file = SDL_IOFromFile("scene.json", "wb");
+    if (file)
+    {
         SDL_WriteIO(file, json, SDL_strlen(json));
         SDL_CloseIO(file);
     }
-    
-    cJSON_free(json);  // cJSON provides its own free function
+
+    cJSON_free(json); // cJSON provides its own free function
 }
 
 void read_scene()
 {
     size_t size;
-    void* data = SDL_LoadFile("scene.json", &size);
-    if (!data) return;
-    
-    scene_from_json((const char*)data, &g_scene);
+    void *data = SDL_LoadFile("scene.json", &size);
+    if (!data)
+        return;
+
+    scene_from_json((const char *)data, &g_scene);
     SDL_free(data);
 }
 
@@ -259,9 +262,6 @@ struct window_state
 };
 
 // basically the game state
-static float g_r = 0.7f;
-static float g_y = 0.0f;
-static float g_theta = 0.7f;
 static float g_fov_deg = 60.0f;
 
 static bool g_view_editor = true;
@@ -481,12 +481,74 @@ void FillDrawList()
 static DirectX::XMMATRIX g_view;
 static DirectX::XMMATRIX g_projection;
 
+static struct
+{
+    bool mouseCaptured = false;
+    bool keys[512] = {false};
+    // SDL_GameController *gamepad = nullptr;
+} g_input;
+
+struct FlyCamera
+{
+    DirectX::XMFLOAT3 position = {0.0f, 2.0f, -5.0f};
+    float yaw = 0.0f;
+    float pitch = 0.0f;
+    float moveSpeed = 5.0f;
+    float lookSpeed = 0.002f;
+    float padSpeed = 1.5f;
+
+    void UpdateFlyCamera(float deltaTime)
+    {
+        DirectX::XMVECTOR forward = DirectX::XMVectorSet(
+            sinf(g_camera.yaw) * cosf(g_camera.pitch),
+            sinf(g_camera.pitch),
+            cosf(g_camera.yaw) * cosf(g_camera.pitch),
+            0.0f);
+        DirectX::XMVECTOR right = DirectX::XMVector3Cross(DirectX::XMVectorSet(0, 1, 0, 0), forward); // cross(up, forward)
+        DirectX::XMVECTOR up = DirectX::XMVectorSet(0, 1, 0, 0);
+        forward = DirectX::XMVector3Normalize(forward);
+        right = DirectX::XMVector3Normalize(right);
+
+        DirectX::XMVECTOR moveDelta = DirectX::XMVectorZero();
+        if (g_input.keys[SDL_SCANCODE_W])
+            moveDelta = DirectX::XMVectorAdd(moveDelta, forward);
+        if (g_input.keys[SDL_SCANCODE_S])
+            moveDelta = DirectX::XMVectorSubtract(moveDelta, forward);
+        if (g_input.keys[SDL_SCANCODE_A])
+            moveDelta = DirectX::XMVectorSubtract(moveDelta, right);
+        if (g_input.keys[SDL_SCANCODE_D])
+            moveDelta = DirectX::XMVectorAdd(moveDelta, right);
+        if (g_input.keys[SDL_SCANCODE_Q])
+            moveDelta = DirectX::XMVectorSubtract(moveDelta, up); // down
+        if (g_input.keys[SDL_SCANCODE_E])
+            moveDelta = DirectX::XMVectorAdd(moveDelta, up); // up
+
+        // Apply movement scaled by deltaTime and speed
+        if (!DirectX::XMVector3Equal(moveDelta, DirectX::XMVectorZero()))
+        {
+            moveDelta = DirectX::XMVector3Normalize(moveDelta);
+            moveDelta = DirectX::XMVectorScale(moveDelta, deltaTime * g_camera.moveSpeed);
+            DirectX::XMVECTOR pos = XMLoadFloat3(&g_camera.position);
+            pos = DirectX::XMVectorAdd(pos, moveDelta);
+            XMStoreFloat3(&g_camera.position, pos);
+        }
+    }
+} g_camera;
+
 void Update()
 {
     FillDrawList();
 
-    DirectX::XMVECTOR eye = DirectX::XMVectorSet(g_r * sinf(g_theta), g_y, g_r * cosf(g_theta), 0.0f);
-    DirectX::XMVECTOR at = DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 0.0f);
+    // g_input.mouseCaptured = !g_view_editor;
+    g_camera.UpdateFlyCamera((float)program_state.timing.deltaTime);
+
+    DirectX::XMVECTOR eye = DirectX::XMLoadFloat3(&g_camera.position);
+    DirectX::XMVECTOR forward = DirectX::XMVectorSet(
+        sinf(g_camera.yaw) * cosf(g_camera.pitch),
+        sinf(g_camera.pitch),
+        cosf(g_camera.yaw) * cosf(g_camera.pitch),
+        0.0f);
+    DirectX::XMVECTOR at = DirectX::XMVectorAdd(eye, forward);
     DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
     g_view = DirectX::XMMatrixLookAtLH(eye, at, up);
     g_projection = DirectX::XMMatrixPerspectiveFovLH(
@@ -495,9 +557,11 @@ void Update()
         0.01f,
         1000.0f);
 
-    // TRANSPOSE before storing because dx shader does not use row major by default
-    DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].view, DirectX::XMMatrixTranspose(g_view));
-    DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].projection, DirectX::XMMatrixTranspose(g_projection));
+    // TRANSPOSE before storing (shader expects column‑major)
+    DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].view,
+                             DirectX::XMMatrixTranspose(g_view));
+    DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].projection,
+                             DirectX::XMMatrixTranspose(g_projection));
 
     memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex],
            &graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex],
@@ -507,6 +571,9 @@ void Update()
 // Convert quaternion → pitch/yaw/roll (radians), order: pitch (X), yaw (Y), roll (Z)
 inline void QuaternionToEuler(DirectX::FXMVECTOR Q, float &pitch, float &yaw, float &roll)
 {
+    constexpr float PI = 3.14159265358979323846f;
+    constexpr float HALF_PI = PI * 0.5f;
+
     DirectX::XMFLOAT4 q;
     DirectX::XMStoreFloat4(&q, Q);
     float x = q.x, y = q.y, z = q.z, w = q.w;
@@ -514,19 +581,49 @@ inline void QuaternionToEuler(DirectX::FXMVECTOR Q, float &pitch, float &yaw, fl
     // pitch (x-axis rotation)
     float sinp = 2.0f * (w * x + y * z);
     float cosp = 1.0f - 2.0f * (x * x + y * y);
-    pitch = atan2f(sinp, cosp);
+
+    if (cosp == 0.0f)
+    {
+        pitch = (sinp >= 0.0f) ? HALF_PI : -HALF_PI;
+    }
+    else
+    {
+        pitch = atanf(sinp / cosp);
+        if (cosp < 0.0f)
+        {
+            if (sinp >= 0.0f)
+                pitch += PI;
+            else
+                pitch -= PI;
+        }
+    }
 
     // yaw (y-axis rotation)
     float siny = 2.0f * (w * y - z * x);
     if (fabsf(siny) >= 1.0f)
-        yaw = copysignf(3.14159265f / 2.0f, siny);
+        yaw = copysignf(HALF_PI, siny);
     else
         yaw = asinf(siny);
 
     // roll (z-axis rotation)
     float sinr = 2.0f * (w * z + x * y);
     float cosr = 1.0f - 2.0f * (y * y + z * z);
-    roll = atan2f(sinr, cosr);
+
+    if (cosr == 0.0f)
+    {
+        roll = (sinr >= 0.0f) ? HALF_PI : -HALF_PI;
+    }
+    else
+    {
+        roll = atanf(sinr / cosr);
+        if (cosr < 0.0f)
+        {
+            if (sinr >= 0.0f)
+                roll += PI;
+            else
+                roll -= PI;
+        }
+    }
 }
 
 // editor state
@@ -606,8 +703,8 @@ int main(void)
         init_info.SrvDescriptorFreeFn = [](ImGui_ImplDX12_InitInfo *, D3D12_CPU_DESCRIPTOR_HANDLE cpu_handle, D3D12_GPU_DESCRIPTOR_HANDLE gpu_handle)
         { return g_imguiHeap.Free(cpu_handle, gpu_handle); };
         ImGui_ImplDX12_Init(&init_info);
-    }    
-        
+    }
+
     read_scene();
 
     while (program_state.isRunning)
@@ -621,7 +718,49 @@ int main(void)
             case SDL_EVENT_KEY_DOWN:
             {
                 if (sdlEvent.key.key == SDLK_F1)
+                {
                     g_view_editor = !g_view_editor;
+                }
+                if (sdlEvent.key.scancode < 512)
+                    g_input.keys[sdlEvent.key.scancode] = true;
+            }
+            break;
+            case SDL_EVENT_KEY_UP:
+            {
+                if (sdlEvent.key.scancode < 512)
+                    g_input.keys[sdlEvent.key.scancode] = false;
+            }
+            break;
+            case SDL_EVENT_MOUSE_MOTION:
+            {
+                if (g_input.mouseCaptured)
+                {
+                    g_camera.yaw += sdlEvent.motion.xrel * g_camera.lookSpeed;
+                    g_camera.pitch -= sdlEvent.motion.yrel * g_camera.lookSpeed;
+                    const float maxPitch = DirectX::XMConvertToRadians(89.0f);
+                    if (g_camera.pitch > maxPitch)
+                        g_camera.pitch = maxPitch;
+                    if (g_camera.pitch < -maxPitch)
+                        g_camera.pitch = -maxPitch;
+                }
+            }
+            break;
+            case SDL_EVENT_MOUSE_BUTTON_DOWN:
+            {
+                if (sdlEvent.button.button == SDL_BUTTON_RIGHT && !g_view_editor)
+                {
+                    SDL_SetWindowRelativeMouseMode(program_state.window.window, true);
+                    g_input.mouseCaptured = true;
+                }
+            }
+            break;
+            case SDL_EVENT_MOUSE_BUTTON_UP:
+            {
+                if (sdlEvent.button.button == SDL_BUTTON_RIGHT && g_input.mouseCaptured)
+                {
+                    SDL_SetWindowRelativeMouseMode(program_state.window.window, false);
+                    g_input.mouseCaptured = false;
+                }
             }
             break;
             case SDL_EVENT_QUIT:
@@ -689,10 +828,7 @@ int main(void)
                 }
             }
 
-            ImGui::Begin("Settings");
-            ImGui::SliderFloat("r", &g_r, 0.3f, 10.0f);
-            ImGui::SliderFloat("y", &g_y, -10.0f, 10.0f);
-            ImGui::SliderFloat("theta", &g_theta, 0.0f, 2 * 3.14159f);
+            ImGui::Begin("Settings");            
             ImGui::SliderFloat("fov_deg", &g_fov_deg, 60.0f, 120.0f);
             ImGui::Text("Frametime %.3f ms (%.2f FPS)",
                         1000.0f / ImGui::GetIO().Framerate,
@@ -952,7 +1088,7 @@ int main(void)
                         float y = DirectX::XMConvertToRadians(yawDeg);
                         float r = DirectX::XMConvertToRadians(rollDeg);
                         DirectX::XMVECTOR Q_ = DirectX::XMQuaternionRotationRollPitchYaw(p, y, r);
-                        XMStoreFloat4(&obj.rot, Q_);                        
+                        XMStoreFloat4(&obj.rot, Q_);
                     }
 
                     ImGui::DragFloat3("Scale", &obj.scale.x, 0.01f, 0.01f, 10.0f);
