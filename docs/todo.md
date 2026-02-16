@@ -1,17 +1,9 @@
 ## license stuff
 write a program which automatically detects all required libraries, pulls all the required license texts from the internet and produces them in the release
 
-## move and look fly camera
-with mouse and controller
-
-## add a editiable string nametag 
-so in the editor it isnt just "GameObject 0: Cube", so i can edit that to be "stairs" or "column" etc...
-
 ## include a .md document that dictates style and architecture etc...
 also dicate the project folder names and where files go. clean up this mess of a root project folder
 generated code goes in src/generated
-
-## somehow persistent scene data when scene struct changes because it will change a lot (done)
 
 ## merge PrimitiveType and g_primitiveTypeNames into the same KVP hash table?
 have a giant list which includes all geometry, the KVP primtive names map to the index in that list. when more geometry is loaded or generated at runtime it gets added to that list.

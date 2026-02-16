@@ -94,7 +94,8 @@ def scan_folder(root: Path, excludes, verbose=False):
         "code": 0,
         "cpp_code": 0,
         "hlsl_code": 0,
-        "python_code": 0   # ← NEW
+        "python_code": 0,
+        "generated_cpp_code": 0,   # ← NEW
     }
     per_file = []
 
@@ -119,9 +120,19 @@ def scan_folder(root: Path, excludes, verbose=False):
         group = EXT_GROUPS[ext]
         if group == "cpp":
             totals["cpp_code"] += co
+
+            # Check if this file is under "src/generated" (case‑insensitive)
+            parts_lower = [part.lower() for part in p.parts]
+            is_generated = any(
+                parts_lower[i] == "src" and parts_lower[i+1] == "generated"
+                for i in range(len(parts_lower) - 1)
+            )
+            if is_generated:
+                totals["generated_cpp_code"] += co
+
         elif group == "hlsl":
             totals["hlsl_code"] += co
-        elif group == "python":     # ← NEW
+        elif group == "python":
             totals["python_code"] += co
 
         per_file.append((p, group, t, b, c, co))
@@ -179,9 +190,11 @@ def main():
     print(f"Comment lines: {totals['comment']}")
     print(f"Blank lines:   {totals['blank']}")
     print()
-    print(f"C/C++:  {totals['cpp_code']} LOC")
-    print(f"HLSL:   {totals['hlsl_code']} LOC")
-    print(f"Python: {totals['python_code']} LOC")   # ← NEW
+    print(f"C/C++ total:        {totals['cpp_code']} LOC")
+    print(f"  Generated C/C++:  {totals['generated_cpp_code']} LOC")
+    print(f"  Non-Gen. C/C++:   {totals['cpp_code']-totals['generated_cpp_code']} LOC")
+    print(f"HLSL:               {totals['hlsl_code']} LOC")
+    print(f"Python:             {totals['python_code']} LOC")
 
 
 if __name__ == '__main__':

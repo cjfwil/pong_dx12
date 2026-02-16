@@ -51,7 +51,7 @@ struct PSInput
 // ----------------------------------------------------------------------------
 // Triplanar path
 // ----------------------------------------------------------------------------
-#define TRIPLANAR
+// #define TRIPLANAR
 #ifdef TRIPLANAR
 
 PSInput VSMain(VSInput input)
