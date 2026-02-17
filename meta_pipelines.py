@@ -45,6 +45,13 @@ def generate_pipeline_code(output_path: Path) -> bool:
     lines.append(common.make_header("meta_pipelines.py", "PIPELINE CREATION"))
     lines.append("// This file is included inside LoadAssets() – do not edit manually.\n")
 
+    lines.append("// This file is meant to be included inside LoadAssets() in renderer_dx12.cpp.")
+    lines.append("// It expects the following to be in scope:")
+    lines.append("//   - msaa_state, pipeline_dx12 (global structs)")
+    lines.append("//   - inputElementDescs (local array)")
+    lines.append("//   - msaa_state.m_supported, msaa_state.m_sampleCounts")
+    lines.append("//   - pipeline_dx12.m_pipelineStates[tech][msaaIdx]\n")
+
     # Declare arrays for vertex and pixel shader blobs, indexed by pipeline enum
     lines.append("ID3DBlob* vertexShaders[RENDER_COUNT] = {};")
     lines.append("ID3DBlob* pixelShaders[RENDER_COUNT] = {};\n")

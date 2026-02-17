@@ -2,11 +2,18 @@
 // PIPELINE CREATION – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_pipelines.py
-//   Generated: 2026-02-17 10:06:23
+//   Generated: 2026-02-17 10:16:11
 //------------------------------------------------------------------------
 
 
 // This file is included inside LoadAssets() – do not edit manually.
+
+// This file is meant to be included inside LoadAssets() in renderer_dx12.cpp.
+// It expects the following to be in scope:
+//   - msaa_state, pipeline_dx12 (global structs)
+//   - inputElementDescs (local array)
+//   - msaa_state.m_supported, msaa_state.m_sampleCounts
+//   - pipeline_dx12.m_pipelineStates[tech][msaaIdx]
 
 ID3DBlob* vertexShaders[RENDER_COUNT] = {};
 ID3DBlob* pixelShaders[RENDER_COUNT] = {};
