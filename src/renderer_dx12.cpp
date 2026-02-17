@@ -26,8 +26,6 @@ struct Vertex
 static ID3D12Resource *g_vertexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
 static ID3D12Resource *g_indexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
 
-
-
 bool CreatePrimitiveMeshBuffers(
     ID3D12Device *device,
     ID3D12GraphicsCommandList *cmdList,
@@ -955,121 +953,14 @@ bool LoadAssets()
     }
 
     // Create the pipeline states, which includes compiling and loading shaders.
-    {
-        ID3DBlob *vertexShaderDefaultTechnique = nullptr;
-        ID3DBlob *pixelShaderDefaultTechnique = nullptr;
-        if (!CompileShader(L"shader_source\\shaders.hlsl", "VSMain", "vs_5_0", &vertexShaderDefaultTechnique))
+    // Define the vertex input layout (currently fixed, can be extended later)
+    D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
         {
-            HRAssert(E_FAIL);
-            return false;
-        }
+            {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
+            {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}};
 
-        D3D_SHADER_MACRO triplanarDefines[] = {{"TRIPLANAR", "1"}, {nullptr, nullptr}};
-        ID3DBlob *vertexShaderTriplanarTechnique = nullptr;
-        if (!CompileShader(L"shader_source\\shaders.hlsl", "VSMain", "vs_5_0", &vertexShaderTriplanarTechnique, triplanarDefines))
-        {
-            HRAssert(E_FAIL);
-            return false;
-        }
-        if (!CompileShader(L"shader_source\\shaders.hlsl", "PSMain", "ps_5_0", &pixelShaderDefaultTechnique))
-        {
-            HRAssert(E_FAIL);
-            return false;
-        }
-
-        ID3DBlob *pixelShaderTriplanarTechnique = nullptr;
-        if (!CompileShader(L"shader_source\\shaders.hlsl", "PSMain", "ps_5_0", &pixelShaderTriplanarTechnique, triplanarDefines))
-        {
-            HRAssert(E_FAIL);
-            return false;
-        }
-
-        // Compile heightfield shader variant
-        D3D_SHADER_MACRO heightfieldDefines[] = {{"HEIGHTFIELD", "1"}, {nullptr, nullptr}};
-
-        ID3DBlob *vertexShaderHeightfield = nullptr;
-        ID3DBlob *pixelShaderHeightfield = nullptr;
-
-        if (!CompileShader(L"shader_source\\shaders.hlsl", "VSMain", "vs_5_0", &vertexShaderHeightfield, heightfieldDefines))
-        {
-            HRAssert(E_FAIL);
-            return false;
-        }
-
-        if (!CompileShader(L"shader_source\\shaders.hlsl", "PSMain", "ps_5_0", &pixelShaderHeightfield, heightfieldDefines))
-        {
-            HRAssert(E_FAIL);
-            return false;
-        }
-
-        // Define the vertex input layout.
-        D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
-            {
-                {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-                {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
-                {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}};
-
-        // Create PSO for each supported MSAA level
-        for (UINT i = 0; i < 4; i++) // i = MSAA index
-        {
-            if (!msaa_state.m_supported[i])
-            {
-                pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][i] = nullptr;
-                pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_TRIPLANAR][i] = nullptr;
-                continue;
-            }
-
-            D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
-            psoDesc.InputLayout = {inputElementDescs, _countof(inputElementDescs)};
-            psoDesc.pRootSignature = pipeline_dx12.m_rootSignature;
-            psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderDefaultTechnique);
-
-            // identical with default pipeline TODO: abstract this
-            psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-            psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
-            psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-            psoDesc.DepthStencilState.DepthEnable = true;
-            psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
-            psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;
-            psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-            psoDesc.SampleMask = UINT_MAX;
-            psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-            psoDesc.NumRenderTargets = 1;
-            psoDesc.RTVFormats[0] = g_screenFormat;
-            psoDesc.SampleDesc.Count = msaa_state.m_sampleCounts[i];
-            psoDesc.SampleDesc.Quality = 0;
-
-            // psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
-
-            // Create default PSO (standard)
-            psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderDefaultTechnique);
-            psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderDefaultTechnique);
-            HRAssert(pipeline_dx12.m_device->CreateGraphicsPipelineState(
-                &psoDesc,
-                IID_PPV_ARGS(&pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][i])));
-
-            // Create triplanar PSO
-            psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderTriplanarTechnique);
-            psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderTriplanarTechnique);
-            HRAssert(pipeline_dx12.m_device->CreateGraphicsPipelineState(
-                &psoDesc,
-                IID_PPV_ARGS(&pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_TRIPLANAR][i])));
-
-            // Heightfield PSO
-            psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderHeightfield);
-            psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderHeightfield);
-            HRAssert(pipeline_dx12.m_device->CreateGraphicsPipelineState(
-                &psoDesc,
-                IID_PPV_ARGS(&pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_HEIGHTFIELD][i])));
-        }
-
-        vertexShaderDefaultTechnique->Release();
-        vertexShaderTriplanarTechnique->Release();
-        pixelShaderDefaultTechnique->Release();
-        pixelShaderTriplanarTechnique->Release();
-        vertexShaderHeightfield->Release();
-        pixelShaderHeightfield->Release();
-    }
+    #include "generated/pipeline_creation.inl"
 
     // Create the command lists
     for (UINT i = 0; i < g_FrameCount; ++i)
