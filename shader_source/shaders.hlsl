@@ -63,6 +63,7 @@ PSInput VSMain(VSInput input)
     result.worldPos      = worldPosition.xyz;
 
     // world space normal – assume world matrix has no non‑uniform scaling
+    // TODO: factor in non-uniform scaling?
     result.normal        = normalize(mul(input.norm, (float3x3)world));
 
     result.uv            = input.uv;

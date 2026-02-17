@@ -1015,14 +1015,8 @@ int main(void)
 
             ImGui::Separator();
             ImGui::Text("Shading Technique");
-            if (ImGui::RadioButton("Standard UV", (int *)&g_currentTechnique, RENDERTECH_DEFAULT))
-            {
-            }
-            ImGui::SameLine();
-            if (ImGui::RadioButton("Triplanar", (int *)&g_currentTechnique, RENDERTECH_TRIPLANAR))
-            {
-            }
-
+            const char *techniqueNames[] = {"Default", "Triplanar"}; // TODO: enforce match RENDERTECH_DEFAULT, RENDERTECH_TRIPLANAR
+            ImGui::Combo("##Technique", (int *)&g_currentTechnique, techniqueNames, IM_ARRAYSIZE(techniqueNames));
             ImGui::Separator();
 
             ImGui::End();
@@ -1046,7 +1040,7 @@ int main(void)
                 if (i == g_selectedObjectIndex)
                     node_flags |= ImGuiTreeNodeFlags_Selected;
 
-                // Use FIXED label "Object" - identity never changes
+                // Use FIXED label "Object" - identity never changes NOTE: DONT CHANGE THIS LABEL TO ANYTHING ELSE!!!!!!!
                 bool node_open = ImGui::TreeNodeEx("Object", node_flags);
 
                 // Check for click on the tree node
@@ -1065,11 +1059,7 @@ int main(void)
                 if (node_open)
                 {
                     // Editable name field
-                    if (ImGui::InputText("Name", obj.nametag, IM_ARRAYSIZE(obj.nametag)))
-                    {
-                        // optional: auto-save as you type?
-                        // write_scene(); // uncomment to save on every keystroke
-                    }
+                    ImGui::InputText("Name", obj.nametag, IM_ARRAYSIZE(obj.nametag));
                     if (ImGui::IsItemDeactivatedAfterEdit())
                     {
                         write_scene(); // save when focus leaves the field
