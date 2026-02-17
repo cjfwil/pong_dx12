@@ -14,13 +14,13 @@ cbuffer PerFrameConstantBuffer : register(b1)
 {
     float4x4 view;
     float4x4 projection;
-    float per_frame_padding[16 + 16];   // 256‑byte alignment
+    float per_frame_padding[16 + 16]; // 256‑byte alignment
 };
 
 // Per‑scene constant buffer – now includes directional light data
 cbuffer PerSceneConstantBuffer : register(b2)
-{    
-    float4 ambient_colour;    
+{
+    float4 ambient_colour;
     float4 light_direction;
     float4 light_colour;
     // padding to keep 256‑byte alignment
@@ -28,6 +28,7 @@ cbuffer PerSceneConstantBuffer : register(b2)
 };
 
 Texture2D g_texture : register(t0);
+Texture2D g_heightmap : register(t1);
 SamplerState g_sampler : register(s0);
 
 // ----------------------------------------------------------------------------
@@ -36,21 +37,21 @@ SamplerState g_sampler : register(s0);
 struct VSInput
 {
     float4 position : POSITION;
-    float3 norm     : NORMAL;
-    float2 uv       : TEXCOORD;
+    float3 norm : NORMAL;
+    float2 uv : TEXCOORD;
 };
 
 struct PSInput
 {
     float4 position : SV_POSITION;
-    float3 worldPos : POSITION2;   // world space position (triplanar) / unused
-    float3 normal   : NORMAL;      // world space normal (normalised)
-    float2 uv       : TEXCOORD;
+    float3 worldPos : POSITION2; // world space position (triplanar) / unused
+    float3 normal : NORMAL;      // world space normal (normalised)
+    float2 uv : TEXCOORD;
 };
 
 #ifdef TRIPLANAR
 // Triplanar sampling parameters
-static const float g_Tiling          = 1.0f;
+static const float g_Tiling = 1.0f;
 static const float g_BlendSharpness = 16.0f;
 
 float4 SampleTriplanar(Texture2D tex, SamplerState sam,
@@ -76,15 +77,12 @@ PSInput VSMain(VSInput input)
     PSInput result;
 
 #ifdef HEIGHTFIELD
-    // ----- Heightfield displacement (procedural) -----
-    float heightScale = 2.2f; // displacement amount
-    float frequency = 15.5f;   // wave frequency
+    // ----- Heightfield displacement (texture‑based) -----
+    float heightScale = 2.2f; // displacement amount (tune as needed)
+    float heightBias = 0.0f;
 
-    // Transform vertex to world space (world matrix is already in root constants)
-    float4 worldPos = mul(input.position, world);
-
-    // Compute height based on world XZ coordinates (simple sine‑cosine wave)
-    float h = sin(worldPos.x * frequency) * cos(worldPos.z * frequency) * heightScale;
+    // Sample heightmap using the input UV (clamped sampling)
+    float h = g_heightmap.SampleLevel(g_sampler, input.uv, 0).r * heightScale + heightBias;
 
     // Compute world normal (assuming no non‑uniform scaling)
     float3 worldNormal = normalize(mul(input.norm, (float3x3)world));
@@ -96,10 +94,11 @@ PSInput VSMain(VSInput input)
     float4 finalWorldPos = mul(float4(displacedPos, 1.0f), world);
     result.position = mul(mul(finalWorldPos, view), projection);
     result.worldPos = finalWorldPos.xyz;
-    result.normal = worldNormal; // world normal unchanged (simplified – real normal would need recomputation)
+    result.normal = worldNormal;
     result.uv = input.uv;
+#endif
 
-#elif defined(TRIPLANAR)
+#ifdef TRIPLANAR
     // ----- Triplanar path -----
     float4 worldPosition = mul(input.position, world);
     result.position = mul(mul(worldPosition, view), projection);
@@ -123,20 +122,19 @@ PSInput VSMain(VSInput input)
 // Pixel shader – common lighting for both paths
 // ----------------------------------------------------------------------------
 float4 PSMain(PSInput input) : SV_TARGET
-{    
+{
 #ifdef TRIPLANAR
     float4 texColor = SampleTriplanar(g_texture, g_sampler,
                                       input.worldPos, input.normal, g_Tiling);
 #else
-    float4 texColor = g_texture.Sample(g_sampler, input.uv);
+    float4 texColor = g_heightmap.Sample(g_sampler, input.uv);
 #endif
-    
+
     float3 N = normalize(input.normal);
-    float3 L = normalize(light_direction.xyz);    
+    float3 L = normalize(light_direction.xyz);
     float NdotL = saturate(dot(N, L));
-    
-    float3 final = texColor.rgb * ambient_colour.rgb
-                 + texColor.rgb * light_colour.rgb * NdotL;
+
+    float3 final = texColor.rgb * ambient_colour.rgb + texColor.rgb * light_colour.rgb * NdotL;
 
     return float4(final, texColor.a);
 }

@@ -20,10 +20,7 @@ or maybe light probes?
 
 ## todo heightmap as a primitive? or maybe 1 heightmap per scene only? (basic version done)
 gen heightmap on vertex shader
-
-## change renderpipeline to per object in scene (done)
-
-## metaprogram all the renderpipeline/shader loading stuff (done)
+->>> sample texture that is editable
 
 ## make custom ingester which outputs the whole project and structure to a text file for copy/paste
 
@@ -59,3 +56,5 @@ use above to have a skelelton for spheremapped textures
 should allow for different kinds of vertices?
 
 ## figure out how to speed up intellisense vscode
+
+## global debug mode that temporarily overrides rendering (wireframe, normals visualisation)
