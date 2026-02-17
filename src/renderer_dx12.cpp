@@ -25,11 +25,11 @@ struct Vertex
 static ID3D12Resource *g_vertexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
 static ID3D12Resource *g_indexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
 
-enum RenderTech : UINT
+enum RenderPipeline : UINT
 {
-    RENDERTECH_DEFAULT = 0, // standard UV mapping
-    RENDERTECH_TRIPLANAR,   // triplanar mapping
-    RENDERTECH_COUNT
+    RENDER_DEFAULT = 0, // standard UV mapping
+    RENDER_TRIPLANAR,   // triplanar mapping
+    RENDER_COUNT
 };
 
 bool CreatePrimitiveMeshBuffers(
@@ -212,7 +212,7 @@ static struct
     ID3D12DescriptorHeap *m_dsvHeap;
     ID3D12Resource *m_depthStencil;
 
-    ID3D12PipelineState *m_pipelineStates[RenderTech::RENDERTECH_COUNT][4]; // 1x, 2x, 4x, 8x
+    ID3D12PipelineState *m_pipelineStates[RenderPipeline::RENDER_COUNT][4]; // 1x, 2x, 4x, 8x
 
     // MSAA resources
     ID3D12DescriptorHeap *m_msaaRtvHeap;
@@ -236,7 +236,7 @@ static struct
         HRAssert(
             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->Reset(
                 pipeline_dx12.m_commandAllocators[sync_state.m_frameIndex],
-                pipeline_dx12.m_pipelineStates[RenderTech::RENDERTECH_DEFAULT][psoIndex]));
+                pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][psoIndex]));
     }
 } pipeline_dx12;
 
@@ -1001,8 +1001,8 @@ bool LoadAssets()
         {
             if (!msaa_state.m_supported[i])
             {
-                pipeline_dx12.m_pipelineStates[RenderTech::RENDERTECH_DEFAULT][i] = nullptr;
-                pipeline_dx12.m_pipelineStates[RenderTech::RENDERTECH_TRIPLANAR][i] = nullptr;
+                pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][i] = nullptr;
+                pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_TRIPLANAR][i] = nullptr;
                 continue;
             }
 
@@ -1031,14 +1031,14 @@ bool LoadAssets()
             psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderDefaultTechnique);
             HRAssert(pipeline_dx12.m_device->CreateGraphicsPipelineState(
                 &psoDesc,
-                IID_PPV_ARGS(&pipeline_dx12.m_pipelineStates[RenderTech::RENDERTECH_DEFAULT][i])));
+                IID_PPV_ARGS(&pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][i])));
 
             // Create triplanar PSO
             psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderTriplanarTechnique);
             psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderTriplanarTechnique);
             HRAssert(pipeline_dx12.m_device->CreateGraphicsPipelineState(
                 &psoDesc,
-                IID_PPV_ARGS(&pipeline_dx12.m_pipelineStates[RenderTech::RENDERTECH_TRIPLANAR][i])));
+                IID_PPV_ARGS(&pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_TRIPLANAR][i])));
         }
 
         vertexShaderDefaultTechnique->Release();
@@ -1054,7 +1054,7 @@ bool LoadAssets()
             pipeline_dx12.m_device->CreateCommandList(
                 0, D3D12_COMMAND_LIST_TYPE_DIRECT,
                 pipeline_dx12.m_commandAllocators[i],
-                pipeline_dx12.m_pipelineStates[RenderTech::RENDERTECH_DEFAULT][0],
+                pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][0],
                 IID_PPV_ARGS(&pipeline_dx12.m_commandList[i])));
         HRAssert(pipeline_dx12.m_commandList[i]->Close());
     }
@@ -1062,7 +1062,7 @@ bool LoadAssets()
     // Reset the first command list for setup recording
     HRAssert(pipeline_dx12.m_commandList[0]->Reset(
         pipeline_dx12.m_commandAllocators[0],
-        pipeline_dx12.m_pipelineStates[RenderTech::RENDERTECH_DEFAULT][0]));
+        pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][0]));
 
     for (UINT i = 0; i < PrimitiveType::PRIMITIVE_COUNT; ++i)
     {

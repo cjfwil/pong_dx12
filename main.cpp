@@ -47,7 +47,8 @@
 
 static ConfigData g_liveConfigData = {};
 static Scene g_scene;
-static RenderTech g_currentTechnique = RENDERTECH_DEFAULT;
+
+static RenderPipeline g_currentTechnique = RENDER_DEFAULT;
 
 void write_scene()
 {
@@ -633,6 +634,340 @@ inline void QuaternionToEuler(DirectX::FXMVECTOR Q, float &pitch, float &yaw, fl
 
 // editor state
 static int g_selectedObjectIndex = 0;
+void DrawEditorGUI()
+{
+    ImGui::NewFrame();
+
+    // gizmos
+    // ============================================
+    // ImGuizmo – using stored quaternion directly
+    // ============================================
+    ImGuizmo::BeginFrame();
+    ImGuizmo::Enable(true);
+    ImGuizmo::SetRect(0, 0, (float)viewport_state.m_width, (float)viewport_state.m_height);
+
+    if (g_selectedObjectIndex >= 0 && g_selectedObjectIndex < g_scene.objectCount)
+    {
+        auto &obj = g_scene.objects[g_selectedObjectIndex];
+
+        // ---- Build world matrix from pos, quaternion, scale (row‑major) ----
+        DirectX::XMMATRIX scale = DirectX::XMMatrixScaling(obj.scale.x, obj.scale.y, obj.scale.z);
+        DirectX::XMVECTOR rotQuat = DirectX::XMLoadFloat4(&obj.rot);
+        DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(rotQuat);
+        DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(obj.pos.x, obj.pos.y, obj.pos.z);
+        DirectX::XMMATRIX world = scale * rotation * translation; // row‑major
+
+        // ---- ImGuizmo expects row‑major float[4][4] – pass directly ----
+        float *viewPtr = (float *)&g_view;
+        float *projPtr = (float *)&g_projection;
+        float *worldPtr = (float *)&world;
+
+        // ---- Draw gizmo ----
+        ImGuizmo::Manipulate(viewPtr, projPtr,
+                             ImGuizmo::OPERATION::TRANSLATE | (ImGuizmo::ROTATE_X | ImGuizmo::ROTATE_Y | ImGuizmo::ROTATE_Z) | ImGuizmo::OPERATION::SCALE,
+                             ImGuizmo::MODE::WORLD,
+                             worldPtr);
+
+        // ---- Apply changes ----
+        if (ImGuizmo::IsUsing())
+        {
+            // world has been modified in place (still row‑major)
+            DirectX::XMVECTOR scaleVec, rotQuatNew, posVec;
+            DirectX::XMMatrixDecompose(&scaleVec, &rotQuatNew, &posVec, world);
+
+            // Position
+            DirectX::XMStoreFloat3(&obj.pos, posVec);
+
+            // Rotation – store quaternion directly (no Euler conversion!)
+            DirectX::XMStoreFloat4(&obj.rot, rotQuatNew);
+
+            // Scale
+            DirectX::XMStoreFloat3(&obj.scale, scaleVec);
+
+            // Persist change
+            write_scene();
+        }
+    }
+
+    ImGui::Begin("Settings");
+    ImGui::SliderFloat("fov_deg", &g_fov_deg, 60.0f, 120.0f);
+    ImGui::Text("Frametime %.3f ms (%.2f FPS)",
+                1000.0f / ImGui::GetIO().Framerate,
+                ImGui::GetIO().Framerate);
+
+    if (ImGui::Button("Exit"))
+    {
+        program_state.isRunning = false;
+    }
+
+    // MSAA settings
+    ImGui::Separator();
+    ImGui::Text("MSAA");
+
+    UINT oldIndex = msaa_state.m_currentSampleIndex;
+
+    // Build the current selection string
+    char currentSelection[32];
+    if (msaa_state.m_currentSampleIndex == 0)
+    {
+        snprintf(currentSelection, sizeof(currentSelection), "Disabled (1x)");
+    }
+    else
+    {
+        snprintf(currentSelection, sizeof(currentSelection), "%dx MSAA",
+                 msaa_state.m_sampleCounts[msaa_state.m_currentSampleIndex]);
+    }
+
+    if (ImGui::BeginCombo("Anti-aliasing", currentSelection))
+    {
+        {
+            bool isSelected = (msaa_state.m_currentSampleIndex == 0);
+            if (ImGui::Selectable("Disabled (1x)", isSelected))
+            {
+                msaa_state.m_currentSampleIndex = 0;
+                msaa_state.m_currentSampleCount = 1;
+                msaa_state.m_enabled = false;
+            }
+            if (isSelected)
+            {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+
+        // Show MSAA options
+        for (UINT i = 1; i < 4; i++)
+        {
+            bool isSelected = (msaa_state.m_currentSampleIndex == i);
+            bool isSupported = msaa_state.m_supported[i];
+
+            char itemLabel[32];
+            if (isSupported)
+            {
+                snprintf(itemLabel, sizeof(itemLabel), "%dx MSAA", msaa_state.m_sampleCounts[i]);
+            }
+            else
+            {
+                snprintf(itemLabel, sizeof(itemLabel), "%dx MSAA (unsupported)", msaa_state.m_sampleCounts[i]);
+                ImGui::BeginDisabled();
+            }
+
+            if (ImGui::Selectable(itemLabel, isSelected) && isSupported)
+            {
+                msaa_state.m_currentSampleIndex = i;
+                msaa_state.m_currentSampleCount = msaa_state.m_sampleCounts[i];
+                msaa_state.m_enabled = true;
+            }
+
+            if (!isSupported)
+            {
+                ImGui::EndDisabled();
+            }
+
+            if (isSelected)
+            {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndCombo();
+    }
+
+    // Handle MSAA changes
+    if (oldIndex != msaa_state.m_currentSampleIndex)
+    {
+        SDL_Log("MSAA settings changed: %s, %dx",
+                msaa_state.m_enabled ? "enabled" : "disabled",
+                msaa_state.m_currentSampleCount);
+        RecreateMSAAResources();
+        if (msaa_state.m_enabled)
+        {
+            g_liveConfigData.GraphicsSettings.msaa_level = (int)msaa_state.m_currentSampleCount;
+        }
+        else
+        {
+            g_liveConfigData.GraphicsSettings.msaa_level = 1;
+        }
+        SaveConfig(&g_liveConfigData);
+    }
+
+    ImGui::Separator();
+
+    ImGui::Text("Window Mode");
+
+    static const char *windowModeNames[(const uint32_t)WindowMode::NUM_WINDOW_MODES] = {"Windowed", "Borderless"};
+    if (ImGui::BeginCombo("Mode", windowModeNames[(UINT)program_state.window.m_currentMode]))
+    {
+        for (int i = 0; i < (const uint32_t)WindowMode::NUM_WINDOW_MODES; i++)
+        {
+            bool isSelected = (program_state.window.m_currentMode == (WindowMode)i);
+            if (ImGui::Selectable(windowModeNames[i], isSelected))
+            {
+                window_request.requestedMode = (WindowMode)i;
+                window_request.applyWindowRequest = true;
+            }
+            if (isSelected)
+            {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndCombo();
+    }
+
+    ImGui::Separator();
+
+    static int currentResItem = -1;
+    static const int numSupportedResolutions = 6;
+    static struct
+    {
+        char *resNames[numSupportedResolutions] = {"1280x720", "1920x1080", "640x480", "1024x768", "1680x720", "1280x800 (steamdeck)"};
+        uint32_t w[numSupportedResolutions] = {1280, 1920, 640, 1024, 1680, 1280};
+        uint32_t h[numSupportedResolutions] = {720, 1080, 480, 768, 720, 800};
+    } supported_window_dimensions;
+    if (program_state.window.m_currentMode == WindowMode::WINDOWED &&
+        ImGui::BeginCombo("Resolution", (currentResItem == -1) ? "." : supported_window_dimensions.resNames[currentResItem]))
+    {
+        for (int i = 0; i < numSupportedResolutions; i++)
+        {
+            bool isSelected = (i == currentResItem);
+            if (ImGui::Selectable(supported_window_dimensions.resNames[i], isSelected))
+            {
+                if (currentResItem != i)
+                {
+                    window_request.applyWindowRequest = true;
+                    program_state.window.m_windowWidth = supported_window_dimensions.w[i];
+                    program_state.window.m_windowHeight = supported_window_dimensions.h[i];
+                }
+                currentResItem = i;
+            }
+            if (isSelected)
+            {
+                ImGui::SetItemDefaultFocus();
+            }
+        }
+        ImGui::EndCombo();
+    }
+
+    if (ImGui::Checkbox("Vsync", (bool *)&g_liveConfigData.GraphicsSettings.vsync))
+    {
+        SaveConfig(&g_liveConfigData);
+    }
+    ImGui::Separator();
+
+    ImGui::End();
+
+    ImGui::Begin("Globals");
+    static float g_ambient_color[3] = {0.0f, 0.0f, 0.0f};
+    ImGui::Text("Ambient Color");
+    if (ImGui::ColorEdit3("Ambient", g_ambient_color))
+    {
+        // Update the per-scene constant buffer when color changes
+        graphics_resources.m_PerSceneConstantBufferData.ambient_colour =
+            DirectX::XMFLOAT4(g_ambient_color[0], g_ambient_color[1], g_ambient_color[2], 1.0f);
+
+        // Copy to GPU memory
+        memcpy(graphics_resources.m_pPerSceneCbvDataBegin,
+               &graphics_resources.m_PerSceneConstantBufferData,
+               sizeof(graphics_resources.m_PerSceneConstantBufferData));
+    }
+
+    ImGui::Separator();
+    ImGui::Text("Render Pipeline");
+    const char *renderPipelineNames[] = {"Default", "Triplanar"}; // TODO: enforce match RENDERTECH_DEFAULT, RENDERTECH_TRIPLANAR
+    ImGui::Combo("##Technique", (int *)&g_currentTechnique, renderPipelineNames, IM_ARRAYSIZE(renderPipelineNames));
+    ImGui::Separator();
+
+    ImGui::End();
+
+    // ============================================
+    // Scene Objects Editor – editing g_scene
+    // ============================================
+
+    ImGui::Begin("Scene Objects");
+    ImGui::Text("Total objects: %d", g_scene.objectCount);
+
+    for (int i = 0; i < g_scene.objectCount; ++i)
+    {
+        ImGui::PushID(i);
+        auto &obj = g_scene.objects[i];
+
+        // --- TreeNode with fixed label + name display ---
+        ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_OpenOnArrow |
+                                        ImGuiTreeNodeFlags_OpenOnDoubleClick |
+                                        ImGuiTreeNodeFlags_SpanAvailWidth;
+        if (i == g_selectedObjectIndex)
+            node_flags |= ImGuiTreeNodeFlags_Selected;
+
+        // Use FIXED label "Object" - identity never changes NOTE: DONT CHANGE THIS LABEL TO ANYTHING ELSE!!!!!!!
+        bool node_open = ImGui::TreeNodeEx("Object", node_flags);
+
+        // Check for click on the tree node
+        if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen())
+        {
+            g_selectedObjectIndex = i;
+        }
+
+        // Show the actual name on the same line
+        ImGui::SameLine();
+        if (obj.nametag[0] != '\0' && strcmp(obj.nametag, "Unamed") != 0)
+            ImGui::TextUnformatted(obj.nametag);
+        else
+            ImGui::Text("Unnamed");
+
+        if (node_open)
+        {
+            // Editable name field
+            ImGui::InputText("Name", obj.nametag, IM_ARRAYSIZE(obj.nametag));
+            if (ImGui::IsItemDeactivatedAfterEdit())
+            {
+                write_scene(); // save when focus leaves the field
+            }
+
+            // ---- Primitive type dropdown ----
+            int currentType = obj.type;
+            if (ImGui::Combo("Primitive", &currentType,
+                             g_primitiveNames, IM_ARRAYSIZE(g_primitiveNames)))
+            {
+                obj.type = (PrimitiveType)currentType;
+            }
+
+            ImGui::DragFloat3("Position", &obj.pos.x, 0.1f);
+
+            // ---- Rotation (quaternion → Euler sliders with immediate update) ----
+            DirectX::XMFLOAT4 q = obj.rot;
+            DirectX::XMVECTOR Q = XMLoadFloat4(&q);
+            float pitch, yaw, roll;
+            QuaternionToEuler(Q, pitch, yaw, roll);
+
+            float pitchDeg = DirectX::XMConvertToDegrees(pitch);
+            float yawDeg = DirectX::XMConvertToDegrees(yaw);
+            float rollDeg = DirectX::XMConvertToDegrees(roll);
+
+            bool rotationChanged = false;
+            rotationChanged |= ImGui::DragFloat("Pitch", &pitchDeg, 0.5f, -180.0f, 180.0f, "%.1f°");
+            rotationChanged |= ImGui::DragFloat("Yaw", &yawDeg, 0.5f, -180.0f, 180.0f, "%.1f°");
+            rotationChanged |= ImGui::DragFloat("Roll", &rollDeg, 0.5f, -180.0f, 180.0f, "%.1f°");
+
+            if (rotationChanged)
+            {
+                float p = DirectX::XMConvertToRadians(pitchDeg);
+                float y = DirectX::XMConvertToRadians(yawDeg);
+                float r = DirectX::XMConvertToRadians(rollDeg);
+                DirectX::XMVECTOR Q_ = DirectX::XMQuaternionRotationRollPitchYaw(p, y, r);
+                XMStoreFloat4(&obj.rot, Q_);
+            }
+
+            ImGui::DragFloat3("Scale", &obj.scale.x, 0.01f, 0.01f, 10.0f);
+
+            // Persist changes
+            write_scene();
+
+            ImGui::TreePop();
+        }
+
+        ImGui::Separator();
+        ImGui::PopID();
+    }
+    ImGui::End();
+}
 
 int main(void)
 {
@@ -780,337 +1115,7 @@ int main(void)
         ImGui_ImplSDL3_NewFrame();
         if (g_view_editor)
         {
-            ImGui::NewFrame();
-
-            // gizmos
-            // ============================================
-            // ImGuizmo – using stored quaternion directly
-            // ============================================
-            ImGuizmo::BeginFrame();
-            ImGuizmo::Enable(true);
-            ImGuizmo::SetRect(0, 0, (float)viewport_state.m_width, (float)viewport_state.m_height);
-
-            if (g_selectedObjectIndex >= 0 && g_selectedObjectIndex < g_scene.objectCount)
-            {
-                auto &obj = g_scene.objects[g_selectedObjectIndex];
-
-                // ---- Build world matrix from pos, quaternion, scale (row‑major) ----
-                DirectX::XMMATRIX scale = DirectX::XMMatrixScaling(obj.scale.x, obj.scale.y, obj.scale.z);
-                DirectX::XMVECTOR rotQuat = DirectX::XMLoadFloat4(&obj.rot);
-                DirectX::XMMATRIX rotation = DirectX::XMMatrixRotationQuaternion(rotQuat);
-                DirectX::XMMATRIX translation = DirectX::XMMatrixTranslation(obj.pos.x, obj.pos.y, obj.pos.z);
-                DirectX::XMMATRIX world = scale * rotation * translation; // row‑major
-
-                // ---- ImGuizmo expects row‑major float[4][4] – pass directly ----
-                float *viewPtr = (float *)&g_view;
-                float *projPtr = (float *)&g_projection;
-                float *worldPtr = (float *)&world;
-
-                // ---- Draw gizmo ----
-                ImGuizmo::Manipulate(viewPtr, projPtr,
-                                     ImGuizmo::OPERATION::TRANSLATE | (ImGuizmo::ROTATE_X | ImGuizmo::ROTATE_Y | ImGuizmo::ROTATE_Z) | ImGuizmo::OPERATION::SCALE,
-                                     ImGuizmo::MODE::WORLD,
-                                     worldPtr);
-
-                // ---- Apply changes ----
-                if (ImGuizmo::IsUsing())
-                {
-                    // world has been modified in place (still row‑major)
-                    DirectX::XMVECTOR scaleVec, rotQuatNew, posVec;
-                    DirectX::XMMatrixDecompose(&scaleVec, &rotQuatNew, &posVec, world);
-
-                    // Position
-                    DirectX::XMStoreFloat3(&obj.pos, posVec);
-
-                    // Rotation – store quaternion directly (no Euler conversion!)
-                    DirectX::XMStoreFloat4(&obj.rot, rotQuatNew);
-
-                    // Scale
-                    DirectX::XMStoreFloat3(&obj.scale, scaleVec);
-
-                    // Persist change
-                    write_scene();
-                }
-            }
-
-            ImGui::Begin("Settings");
-            ImGui::SliderFloat("fov_deg", &g_fov_deg, 60.0f, 120.0f);
-            ImGui::Text("Frametime %.3f ms (%.2f FPS)",
-                        1000.0f / ImGui::GetIO().Framerate,
-                        ImGui::GetIO().Framerate);
-
-            if (ImGui::Button("Exit"))
-            {
-                program_state.isRunning = false;
-            }
-
-            // MSAA settings
-            ImGui::Separator();
-            ImGui::Text("MSAA");
-
-            UINT oldIndex = msaa_state.m_currentSampleIndex;
-
-            // Build the current selection string
-            char currentSelection[32];
-            if (msaa_state.m_currentSampleIndex == 0)
-            {
-                snprintf(currentSelection, sizeof(currentSelection), "Disabled (1x)");
-            }
-            else
-            {
-                snprintf(currentSelection, sizeof(currentSelection), "%dx MSAA",
-                         msaa_state.m_sampleCounts[msaa_state.m_currentSampleIndex]);
-            }
-
-            if (ImGui::BeginCombo("Anti-aliasing", currentSelection))
-            {
-                {
-                    bool isSelected = (msaa_state.m_currentSampleIndex == 0);
-                    if (ImGui::Selectable("Disabled (1x)", isSelected))
-                    {
-                        msaa_state.m_currentSampleIndex = 0;
-                        msaa_state.m_currentSampleCount = 1;
-                        msaa_state.m_enabled = false;
-                    }
-                    if (isSelected)
-                    {
-                        ImGui::SetItemDefaultFocus();
-                    }
-                }
-
-                // Show MSAA options
-                for (UINT i = 1; i < 4; i++)
-                {
-                    bool isSelected = (msaa_state.m_currentSampleIndex == i);
-                    bool isSupported = msaa_state.m_supported[i];
-
-                    char itemLabel[32];
-                    if (isSupported)
-                    {
-                        snprintf(itemLabel, sizeof(itemLabel), "%dx MSAA", msaa_state.m_sampleCounts[i]);
-                    }
-                    else
-                    {
-                        snprintf(itemLabel, sizeof(itemLabel), "%dx MSAA (unsupported)", msaa_state.m_sampleCounts[i]);
-                        ImGui::BeginDisabled();
-                    }
-
-                    if (ImGui::Selectable(itemLabel, isSelected) && isSupported)
-                    {
-                        msaa_state.m_currentSampleIndex = i;
-                        msaa_state.m_currentSampleCount = msaa_state.m_sampleCounts[i];
-                        msaa_state.m_enabled = true;
-                    }
-
-                    if (!isSupported)
-                    {
-                        ImGui::EndDisabled();
-                    }
-
-                    if (isSelected)
-                    {
-                        ImGui::SetItemDefaultFocus();
-                    }
-                }
-                ImGui::EndCombo();
-            }
-
-            // Handle MSAA changes
-            if (oldIndex != msaa_state.m_currentSampleIndex)
-            {
-                SDL_Log("MSAA settings changed: %s, %dx",
-                        msaa_state.m_enabled ? "enabled" : "disabled",
-                        msaa_state.m_currentSampleCount);
-                RecreateMSAAResources();
-                if (msaa_state.m_enabled)
-                {
-                    g_liveConfigData.GraphicsSettings.msaa_level = (int)msaa_state.m_currentSampleCount;
-                }
-                else
-                {
-                    g_liveConfigData.GraphicsSettings.msaa_level = 1;
-                }
-                SaveConfig(&g_liveConfigData);
-            }
-
-            ImGui::Separator();
-
-            ImGui::Text("Window Mode");
-
-            static const char *windowModeNames[(const uint32_t)WindowMode::NUM_WINDOW_MODES] = {"Windowed", "Borderless"};
-            if (ImGui::BeginCombo("Mode", windowModeNames[(UINT)program_state.window.m_currentMode]))
-            {
-                for (int i = 0; i < (const uint32_t)WindowMode::NUM_WINDOW_MODES; i++)
-                {
-                    bool isSelected = (program_state.window.m_currentMode == (WindowMode)i);
-                    if (ImGui::Selectable(windowModeNames[i], isSelected))
-                    {
-                        window_request.requestedMode = (WindowMode)i;
-                        window_request.applyWindowRequest = true;
-                    }
-                    if (isSelected)
-                    {
-                        ImGui::SetItemDefaultFocus();
-                    }
-                }
-                ImGui::EndCombo();
-            }
-
-            ImGui::Separator();
-
-            static int currentResItem = -1;
-            static const int numSupportedResolutions = 6;
-            static struct
-            {
-                char *resNames[numSupportedResolutions] = {"1280x720", "1920x1080", "640x480", "1024x768", "1680x720", "1280x800 (steamdeck)"};
-                uint32_t w[numSupportedResolutions] = {1280, 1920, 640, 1024, 1680, 1280};
-                uint32_t h[numSupportedResolutions] = {720, 1080, 480, 768, 720, 800};
-            } supported_window_dimensions;
-            if (program_state.window.m_currentMode == WindowMode::WINDOWED &&
-                ImGui::BeginCombo("Resolution", (currentResItem == -1) ? "." : supported_window_dimensions.resNames[currentResItem]))
-            {
-                for (int i = 0; i < numSupportedResolutions; i++)
-                {
-                    bool isSelected = (i == currentResItem);
-                    if (ImGui::Selectable(supported_window_dimensions.resNames[i], isSelected))
-                    {
-                        if (currentResItem != i)
-                        {
-                            window_request.applyWindowRequest = true;
-                            program_state.window.m_windowWidth = supported_window_dimensions.w[i];
-                            program_state.window.m_windowHeight = supported_window_dimensions.h[i];
-                        }
-                        currentResItem = i;
-                    }
-                    if (isSelected)
-                    {
-                        ImGui::SetItemDefaultFocus();
-                    }
-                }
-                ImGui::EndCombo();
-            }
-
-            if (ImGui::Checkbox("Vsync", (bool *)&g_liveConfigData.GraphicsSettings.vsync))
-            {
-                SaveConfig(&g_liveConfigData);
-            }
-            ImGui::Separator();
-
-            ImGui::End();
-
-            ImGui::Begin("Globals");
-            static float g_ambient_color[3] = {0.0f, 0.0f, 0.0f};
-            ImGui::Text("Ambient Color");
-            if (ImGui::ColorEdit3("Ambient", g_ambient_color))
-            {
-                // Update the per-scene constant buffer when color changes
-                graphics_resources.m_PerSceneConstantBufferData.ambient_colour =
-                    DirectX::XMFLOAT4(g_ambient_color[0], g_ambient_color[1], g_ambient_color[2], 1.0f);
-
-                // Copy to GPU memory
-                memcpy(graphics_resources.m_pPerSceneCbvDataBegin,
-                       &graphics_resources.m_PerSceneConstantBufferData,
-                       sizeof(graphics_resources.m_PerSceneConstantBufferData));
-            }
-
-            ImGui::Separator();
-            ImGui::Text("Shading Technique");
-            const char *techniqueNames[] = {"Default", "Triplanar"}; // TODO: enforce match RENDERTECH_DEFAULT, RENDERTECH_TRIPLANAR
-            ImGui::Combo("##Technique", (int *)&g_currentTechnique, techniqueNames, IM_ARRAYSIZE(techniqueNames));
-            ImGui::Separator();
-
-            ImGui::End();
-
-            // ============================================
-            // Scene Objects Editor – editing g_scene
-            // ============================================
-
-            ImGui::Begin("Scene Objects");
-            ImGui::Text("Total objects: %d", g_scene.objectCount);
-
-            for (int i = 0; i < g_scene.objectCount; ++i)
-            {
-                ImGui::PushID(i);
-                auto &obj = g_scene.objects[i];
-
-                // --- TreeNode with fixed label + name display ---
-                ImGuiTreeNodeFlags node_flags = ImGuiTreeNodeFlags_OpenOnArrow |
-                                                ImGuiTreeNodeFlags_OpenOnDoubleClick |
-                                                ImGuiTreeNodeFlags_SpanAvailWidth;
-                if (i == g_selectedObjectIndex)
-                    node_flags |= ImGuiTreeNodeFlags_Selected;
-
-                // Use FIXED label "Object" - identity never changes NOTE: DONT CHANGE THIS LABEL TO ANYTHING ELSE!!!!!!!
-                bool node_open = ImGui::TreeNodeEx("Object", node_flags);
-
-                // Check for click on the tree node
-                if (ImGui::IsItemClicked() && !ImGui::IsItemToggledOpen())
-                {
-                    g_selectedObjectIndex = i;
-                }
-
-                // Show the actual name on the same line
-                ImGui::SameLine();
-                if (obj.nametag[0] != '\0' && strcmp(obj.nametag, "Unamed") != 0)
-                    ImGui::TextUnformatted(obj.nametag);
-                else
-                    ImGui::Text("Unnamed");
-
-                if (node_open)
-                {
-                    // Editable name field
-                    ImGui::InputText("Name", obj.nametag, IM_ARRAYSIZE(obj.nametag));
-                    if (ImGui::IsItemDeactivatedAfterEdit())
-                    {
-                        write_scene(); // save when focus leaves the field
-                    }
-
-                    // ---- Primitive type dropdown ----
-                    int currentType = obj.type;
-                    if (ImGui::Combo("Primitive", &currentType,
-                                     g_primitiveNames, IM_ARRAYSIZE(g_primitiveNames)))
-                    {
-                        obj.type = (PrimitiveType)currentType;
-                    }
-
-                    ImGui::DragFloat3("Position", &obj.pos.x, 0.1f);
-
-                    // ---- Rotation (quaternion → Euler sliders with immediate update) ----
-                    DirectX::XMFLOAT4 q = obj.rot;
-                    DirectX::XMVECTOR Q = XMLoadFloat4(&q);
-                    float pitch, yaw, roll;
-                    QuaternionToEuler(Q, pitch, yaw, roll);
-
-                    float pitchDeg = DirectX::XMConvertToDegrees(pitch);
-                    float yawDeg = DirectX::XMConvertToDegrees(yaw);
-                    float rollDeg = DirectX::XMConvertToDegrees(roll);
-
-                    bool rotationChanged = false;
-                    rotationChanged |= ImGui::DragFloat("Pitch", &pitchDeg, 0.5f, -180.0f, 180.0f, "%.1f°");
-                    rotationChanged |= ImGui::DragFloat("Yaw", &yawDeg, 0.5f, -180.0f, 180.0f, "%.1f°");
-                    rotationChanged |= ImGui::DragFloat("Roll", &rollDeg, 0.5f, -180.0f, 180.0f, "%.1f°");
-
-                    if (rotationChanged)
-                    {
-                        float p = DirectX::XMConvertToRadians(pitchDeg);
-                        float y = DirectX::XMConvertToRadians(yawDeg);
-                        float r = DirectX::XMConvertToRadians(rollDeg);
-                        DirectX::XMVECTOR Q_ = DirectX::XMQuaternionRotationRollPitchYaw(p, y, r);
-                        XMStoreFloat4(&obj.rot, Q_);
-                    }
-
-                    ImGui::DragFloat3("Scale", &obj.scale.x, 0.01f, 0.01f, 10.0f);
-
-                    // Persist changes
-                    write_scene();
-
-                    ImGui::TreePop();
-                }
-
-                ImGui::Separator();
-                ImGui::PopID();
-            }
-            ImGui::End();
+            DrawEditorGUI();
         }
 
         program_state.timing.UpdateTimer();
