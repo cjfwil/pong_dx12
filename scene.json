@@ -1,106 +1,130 @@
 {
-	"objectCount":	17,
+	"objectCount":	18,
 	"objects":	[{
 			"nametag":	"floor",
 			"pos":	[-6.1656446962537e-23, -1, -2.09576232955807e-25],
 			"rot":	[-1.6738376092102832e-24, -2.73606741429819e-24, 0, 1],
 			"scale":	[10.000009536743164, 0.99999964237213135, 9.9999942779541],
-			"type":	"Cube"
+			"type":	"Cube",
+			"pipeline":	"Default"
 		}, {
 			"nametag":	"Centre box",
 			"pos":	[0, 1.5, 0],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[5, 4, 5],
-			"type":	"Cube"
+			"type":	"Cube",
+			"pipeline":	"Default"
 		}, {
 			"nametag":	"entablature",
 			"pos":	[0, 3.7000000476837158, 0],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[9.5, 0.5, 9.5],
-			"type":	"Cube"
+			"type":	"Cube",
+			"pipeline":	"Default"
 		}, {
 			"nametag":	"Column A",
 			"pos":	[4.5, 1.5000005960464478, 2.25],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[1, 4, 1],
-			"type":	"Cylinder"
+			"type":	"Cylinder",
+			"pipeline":	"Default"
 		}, {
 			"nametag":	"Column B",
 			"pos":	[-4.5, 1.5, 4.5],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[1, 4, 1],
-			"type":	"Cylinder"
+			"type":	"Cylinder",
+			"pipeline":	"Default"
 		}, {
 			"nametag":	"Column C",
 			"pos":	[4.5, 1.5, 4.5],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[1, 4, 1],
-			"type":	"Cylinder"
+			"type":	"Cylinder",
+			"pipeline":	"Default"
 		}, {
 			"nametag":	"Column D",
 			"pos":	[4.5, 1.5, 0],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[1, 4, 1],
-			"type":	"Cylinder"
+			"type":	"Cylinder",
+			"pipeline":	"Default"
 		}, {
 			"nametag":	"Column E",
 			"pos":	[-4.5, 1.5, 0],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[1, 4, 1],
-			"type":	"Cylinder"
+			"type":	"Cylinder",
+			"pipeline":	"Default"
 		}, {
 			"nametag":	"Column E",
 			"pos":	[0, 1.5, -4.5],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[1, 4, 1],
-			"type":	"Cylinder"
+			"type":	"Cylinder",
+			"pipeline":	"Default"
 		}, {
 			"nametag":	"pediment",
 			"pos":	[0, 4.1999998092651367, 0.010818870738148689],
 			"rot":	[-0.70710676908493042, 0, 0, 0.70710670948028564],
 			"scale":	[11, 9.9999427795410156, 0.99999350309371948],
-			"type":	"Prism"
+			"type":	"Prism",
+			"pipeline":	"Default"
 		}, {
 			"nametag":	"Col",
 			"pos":	[4.5, 1.5, -4.5],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[1, 4, 1],
-			"type":	"Cylinder"
+			"type":	"Cylinder",
+			"pipeline":	"Default"
 		}, {
 			"nametag":	"Col",
 			"pos":	[-4.5, 1.5, -4.5],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[1, 4, 1],
-			"type":	"Cylinder"
+			"type":	"Cylinder",
+			"pipeline":	"Default"
 		}, {
 			"nametag":	"col",
 			"pos":	[2.25, 1.5, 4.5],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[1, 4, 1],
-			"type":	"Cylinder"
+			"type":	"Cylinder",
+			"pipeline":	"Default"
 		}, {
 			"nametag":	"col",
 			"pos":	[-2.5, 1.5, 4.5],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[1, 4, 1],
-			"type":	"Cylinder"
+			"type":	"Cylinder",
+			"pipeline":	"Default"
 		}, {
 			"nametag":	"col",
 			"pos":	[-2.25, 1.5, -4.5],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[1, 4, 1],
-			"type":	"Cylinder"
+			"type":	"Cylinder",
+			"pipeline":	"Default"
 		}, {
 			"nametag":	"col",
 			"pos":	[2.25, 1.5, -4.5],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[1, 4, 1],
-			"type":	"Cylinder"
+			"type":	"Cylinder",
+			"pipeline":	"Default"
 		}, {
 			"nametag":	"ground",
 			"pos":	[0, -4.74730396270752, 0],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[1, 1, 1],
-			"type":	"Heightfield"
+			"type":	"Heightfield",
+			"pipeline":	"Default"
+		}, {
+			"nametag":	"",
+			"pos":	[0, 0, 0],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 1, 1],
+			"type":	"Cube",
+			"pipeline":	"Default"
 		}]
 }

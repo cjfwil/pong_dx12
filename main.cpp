@@ -48,7 +48,7 @@
 static ConfigData g_liveConfigData = {};
 static Scene g_scene;
 
-static RenderPipeline g_currentTechnique = RENDER_DEFAULT;
+static RenderPipeline g_currentRenderPipeline = RENDER_DEFAULT;
 
 void write_scene()
 {
@@ -297,7 +297,7 @@ bool PopulateCommandList()
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRootSignature(pipeline_dx12.m_rootSignature);
 
     UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
-    ID3D12PipelineState *currentPSO = pipeline_dx12.m_pipelineStates[g_currentTechnique][psoIndex];
+    ID3D12PipelineState *currentPSO = pipeline_dx12.m_pipelineStates[g_currentRenderPipeline][psoIndex];
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetPipelineState(currentPSO);
 
     ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_mainHeap};
@@ -383,9 +383,9 @@ bool PopulateCommandList()
 
         // render pipeline overwrite        
         if (currentPrimitiveToDraw == PrimitiveType::PRIMITIVE_HEIGHTFIELD)
-            g_currentTechnique = RenderPipeline::RENDER_HEIGHTFIELD;
+            g_currentRenderPipeline = RenderPipeline::RENDER_HEIGHTFIELD;
         else
-            g_currentTechnique = RenderPipeline::RENDER_DEFAULT;
+            g_currentRenderPipeline = RenderPipeline::RENDER_DEFAULT;
 
         // Translation parameters
         DirectX::XMVECTOR position = DirectX::XMLoadFloat3(&g_draw_list.transforms.pos[i]);
@@ -876,7 +876,7 @@ void DrawEditorGUI()
     ImGui::Separator();
     ImGui::Text("Render Pipeline");
     const char *renderPipelineNames[] = {"Default", "Triplanar"}; // TODO: enforce match RENDERTECH_DEFAULT, RENDERTECH_TRIPLANAR
-    ImGui::Combo("##Technique", (int *)&g_currentTechnique, renderPipelineNames, IM_ARRAYSIZE(renderPipelineNames));
+    ImGui::Combo("##Technique", (int *)&g_currentRenderPipeline, renderPipelineNames, IM_ARRAYSIZE(renderPipelineNames));
     ImGui::Separator();
 
     ImGui::End();

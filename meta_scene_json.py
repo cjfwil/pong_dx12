@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 import sys
 from pathlib import Path
-import common   # your existing common.py
+import common
 
 def generate_scene_json(input_h: Path, output_c: Path) -> bool:
     common.log_info(f"Reading input file: {input_h}")
@@ -35,8 +35,9 @@ def generate_scene_json(input_h: Path, output_c: Path) -> bool:
         '#include <cJSON.h>',
         '#include "src/scene_data.h"',
         '#include "mesh_data.h"',
+        '#include "render_pipeline_data.h"',
         '#include <string.h>',
-        '#include <stdio.h>',          
+        '#include <stdio.h>',
         '',
         '// ------------------------------------------------------------',
         '// Serialise Scene → JSON string (caller must free with cJSON_free)',
@@ -72,8 +73,9 @@ def generate_scene_json(input_h: Path, output_c: Path) -> bool:
                     f'        cJSON_AddItemToObject(objJson, "{name}", {arr_var});'
                 ])
             elif typ == 'PrimitiveType':
-                # <-- CHANGE: write as string using lookup table
                 lines.append(f'        cJSON_AddStringToObject(objJson, "{name}", g_primitiveNames[obj->{name}]);')
+            elif typ == 'RenderPipeline':
+                lines.append(f'        cJSON_AddStringToObject(objJson, "{name}", g_renderPipelineNames[obj->{name}]);')
             else:
                 # fallback – treat as number (int/float)
                 lines.append(f'        cJSON_AddNumberToObject(objJson, "{name}", obj->{name});')
@@ -118,8 +120,8 @@ def generate_scene_json(input_h: Path, output_c: Path) -> bool:
             lines.append(f'            cJSON* {name}Item = cJSON_GetObjectItem(objJson, "{name}");')
             lines.append(f'            if (cJSON_IsString({name}Item)) strncpy_s(obj->{name}, {name}Item->valuestring, sizeof(obj->{name})-1);')
         else:
-            lines.append(f'            cJSON* {name}Item = cJSON_GetObjectItem(objJson, "{name}");')
             if typ == 'DirectX::XMFLOAT3':
+                lines.append(f'            cJSON* {name}Item = cJSON_GetObjectItem(objJson, "{name}");')
                 lines.extend([
                     f'            if (cJSON_IsArray({name}Item) && cJSON_GetArraySize({name}Item) == 3) {{',
                     f'                for (int j = 0; j < 3; ++j)',
@@ -127,32 +129,60 @@ def generate_scene_json(input_h: Path, output_c: Path) -> bool:
                     f'            }}',
                 ])
             elif typ == 'DirectX::XMFLOAT4':
+                lines.append(f'            cJSON* {name}Item = cJSON_GetObjectItem(objJson, "{name}");')
                 lines.extend([
                     f'            if (cJSON_IsArray({name}Item) && cJSON_GetArraySize({name}Item) == 4) {{',
                     f'                for (int j = 0; j < 4; ++j)',
                     f'                    ((float*)&obj->{name})[j] = (float)cJSON_GetArrayItem({name}Item, j)->valuedouble;',
                     f'            }}',
                 ])
-            elif typ == 'PrimitiveType':                
-                lines.append(f'            // Handle PrimitiveType: can be integer (old) or string (new)')
-                lines.append(f'            if (cJSON_IsNumber({name}Item)) {{')
-                lines.append(f'                obj->{name} = (PrimitiveType){name}Item->valueint;')
-                lines.append(f'            }} else if (cJSON_IsString({name}Item)) {{')
-                lines.append(f'                const char* typeName = {name}Item->valuestring;')
-                lines.append(f'                int found = -1;')
-                lines.append(f'                for (int idx = 0; idx < PRIMITIVE_COUNT; idx++) {{')
-                lines.append(f'                    if (strcmp(typeName, g_primitiveNames[idx]) == 0) {{')
-                lines.append(f'                        found = idx;')
-                lines.append(f'                        break;')
-                lines.append(f'                    }}')
-                lines.append(f'                }}')
-                lines.append(f'                if (found != -1) obj->{name} = (PrimitiveType)found;')
-                lines.append(f'                else {{')
-                lines.append(f'                    obj->{name} = (PrimitiveType)0; // default to cube')
-                lines.append(f'                    fprintf(stderr, "Unknown primitive type \\"%s\\", defaulting to cube\\n", typeName);')
-                lines.append(f'                }}')
-                lines.append(f'            }}')
+            elif typ == 'PrimitiveType':
+                lines.append(f'            cJSON* {name}Item = cJSON_GetObjectItem(objJson, "{name}");')
+                lines.extend([
+                    f'            // Handle PrimitiveType: can be integer (old) or string (new)',
+                    f'            if (cJSON_IsNumber({name}Item)) {{',
+                    f'                obj->{name} = (PrimitiveType){name}Item->valueint;',
+                    f'            }} else if (cJSON_IsString({name}Item)) {{',
+                    f'                const char* typeName = {name}Item->valuestring;',
+                    f'                int found = -1;',
+                    f'                for (int idx = 0; idx < PRIMITIVE_COUNT; idx++) {{',
+                    f'                    if (strcmp(typeName, g_primitiveNames[idx]) == 0) {{',
+                    f'                        found = idx;',
+                    f'                        break;',
+                    f'                    }}',
+                    f'                }}',
+                    f'                if (found != -1) obj->{name} = (PrimitiveType)found;',
+                    f'                else {{',
+                    f'                    obj->{name} = (PrimitiveType)0; // default to cube',
+                    f'                    fprintf(stderr, "Unknown primitive type \\"%s\\", defaulting to cube\\n", typeName);',
+                    f'                }}',
+                    f'            }}',
+                ])
+            elif typ == 'RenderPipeline':
+                lines.append(f'            cJSON* pipelineItem = cJSON_GetObjectItem(objJson, "{name}");')
+                lines.extend([
+                    f'            // Handle RenderPipeline: can be integer (old) or string (new)',
+                    f'            if (cJSON_IsNumber(pipelineItem)) {{',
+                    f'                obj->{name} = (RenderPipeline)pipelineItem->valueint;',
+                    f'            }} else if (cJSON_IsString(pipelineItem)) {{',
+                    f'                const char* pipeName = pipelineItem->valuestring;',
+                    f'                int found = -1;',
+                    f'                for (int idx = 0; idx < RENDER_COUNT; idx++) {{',
+                    f'                    if (strcmp(pipeName, g_renderPipelineNames[idx]) == 0) {{',
+                    f'                        found = idx;',
+                    f'                        break;',
+                    f'                    }}',
+                    f'                }}',
+                    f'                if (found != -1) obj->{name} = (RenderPipeline)found;',
+                    f'                else {{',
+                    f'                    obj->{name} = RENDER_DEFAULT;',
+                    f'                    fprintf(stderr, "Unknown pipeline \\"%s\\", defaulting to Default\\n", pipeName);',
+                    f'                }}',
+                    f'            }}',
+                ])
             else:
+                # Fallback for simple numeric types (int, float, etc.)
+                lines.append(f'            cJSON* {name}Item = cJSON_GetObjectItem(objJson, "{name}");')
                 lines.append(f'            if (cJSON_IsNumber({name}Item)) obj->{name} = {name}Item->valuedouble;')
 
     lines.extend([

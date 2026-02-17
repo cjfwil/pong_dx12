@@ -10,3 +10,9 @@ enum RenderPipeline : UINT
     RENDER_HEIGHTFIELD, // heightfield pipeline
     RENDER_COUNT
 };
+
+static const char* g_renderPipelineNames[RENDER_COUNT] = {
+    "Default",
+    "Triplanar",
+    "Heightfield"
+};

@@ -2,13 +2,14 @@
 // GENERATED – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_scene_json.py
-//   Generated: 2026-02-17 07:27:19
+//   Generated: 2026-02-17 09:42:35
 //------------------------------------------------------------------------
 
 
 #include <cJSON.h>
 #include "src/scene_data.h"
 #include "mesh_data.h"
+#include "render_pipeline_data.h"
 #include <string.h>
 #include <stdio.h>
 
@@ -34,6 +35,7 @@ char* scene_to_json(const Scene* scene) {
         cJSON* scaleArr = cJSON_CreateFloatArray((float*)&obj->scale, 3);
         cJSON_AddItemToObject(objJson, "scale", scaleArr);
         cJSON_AddStringToObject(objJson, "type", g_primitiveNames[obj->type]);
+        cJSON_AddStringToObject(objJson, "pipeline", g_renderPipelineNames[obj->pipeline]);
         cJSON_AddItemToArray(objectsArray, objJson);
     }
     cJSON_AddItemToObject(root, "objects", objectsArray);
@@ -99,6 +101,25 @@ int scene_from_json(const char* json, Scene* scene) {
                 else {
                     obj->type = (PrimitiveType)0; // default to cube
                     fprintf(stderr, "Unknown primitive type \"%s\", defaulting to cube\n", typeName);
+                }
+            }
+            cJSON* pipelineItem = cJSON_GetObjectItem(objJson, "pipeline");
+            // Handle RenderPipeline: can be integer (old) or string (new)
+            if (cJSON_IsNumber(pipelineItem)) {
+                obj->pipeline = (RenderPipeline)pipelineItem->valueint;
+            } else if (cJSON_IsString(pipelineItem)) {
+                const char* pipeName = pipelineItem->valuestring;
+                int found = -1;
+                for (int idx = 0; idx < RENDER_COUNT; idx++) {
+                    if (strcmp(pipeName, g_renderPipelineNames[idx]) == 0) {
+                        found = idx;
+                        break;
+                    }
+                }
+                if (found != -1) obj->pipeline = (RenderPipeline)found;
+                else {
+                    obj->pipeline = RENDER_DEFAULT;
+                    fprintf(stderr, "Unknown pipeline \"%s\", defaulting to Default\n", pipeName);
                 }
             }
         }
