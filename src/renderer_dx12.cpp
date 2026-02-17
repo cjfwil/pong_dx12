@@ -899,6 +899,7 @@ bool CompileShader(
     return true;
 }
 
+#include "generated/pipeline_creation.cpp"
 // Load the startup assets. Returns true on success, false on fail.
 bool LoadAssets()
 {
@@ -953,14 +954,15 @@ bool LoadAssets()
     }
 
     // Create the pipeline states, which includes compiling and loading shaders.
-    // Define the vertex input layout (currently fixed, can be extended later)
+    // Define the vertex input layout.
     D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
         {
             {"POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
             {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}};
 
-    #include "generated/pipeline_creation.inl"
+    if (!CreateAllPipelines(inputElementDescs, _countof(inputElementDescs)))
+        return false;
 
     // Create the command lists
     for (UINT i = 0; i < g_FrameCount; ++i)
