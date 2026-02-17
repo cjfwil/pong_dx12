@@ -48,28 +48,7 @@ struct PSInput
     float2 uv       : TEXCOORD;
 };
 
-// ----------------------------------------------------------------------------
-// Triplanar path
-// ----------------------------------------------------------------------------
 #ifdef TRIPLANAR
-
-PSInput VSMain(VSInput input)
-{
-    PSInput result;
-
-    // world position (row‑major: vector * matrix)
-    float4 worldPosition = mul(input.position, world);
-    result.position      = mul(mul(worldPosition, view), projection);
-    result.worldPos      = worldPosition.xyz;
-
-    // world space normal – assume world matrix has no non‑uniform scaling
-    // TODO: factor in non-uniform scaling?
-    result.normal        = normalize(mul(input.norm, (float3x3)world));
-
-    result.uv            = input.uv;
-    return result;
-}
-
 // Triplanar sampling parameters
 static const float g_Tiling          = 1.0f;
 static const float g_BlendSharpness = 16.0f;
@@ -89,35 +68,62 @@ float4 SampleTriplanar(Texture2D tex, SamplerState sam,
 
     return colX * blend.x + colY * blend.y + colZ * blend.z;
 }
+#endif
 
-// ----------------------------------------------------------------------------
-// Standard UV path
-// ----------------------------------------------------------------------------
-#else
-
+// TODO: factor in non-uniform scale on normals
 PSInput VSMain(VSInput input)
 {
     PSInput result;
 
+#ifdef HEIGHTFIELD
+    // ----- Heightfield displacement (procedural) -----
+    float heightScale = 0.2f; // displacement amount
+    float frequency = 1.5f;   // wave frequency
+
+    // Transform vertex to world space (world matrix is already in root constants)
+    float4 worldPos = mul(input.position, world);
+
+    // Compute height based on world XZ coordinates (simple sine‑cosine wave)
+    float h = sin(worldPos.x * frequency) * cos(worldPos.z * frequency) * heightScale;
+
+    // Compute world normal (assuming no non‑uniform scaling)
+    float3 worldNormal = normalize(mul(input.norm, (float3x3)world));
+
+    // Displace vertex along world normal
+    float3 displacedPos = input.position.xyz + worldNormal * h;
+
+    // Continue with world transform
+    float4 finalWorldPos = mul(float4(displacedPos, 1.0f), world);
+    result.position = mul(mul(finalWorldPos, view), projection);
+    result.worldPos = finalWorldPos.xyz;
+    result.normal = worldNormal; // world normal unchanged (simplified – real normal would need recomputation)
+    result.uv = input.uv;
+
+#elif defined(TRIPLANAR)
+    // ----- Triplanar path -----
+    float4 worldPosition = mul(input.position, world);
+    result.position = mul(mul(worldPosition, view), projection);
+    result.worldPos = worldPosition.xyz;
+    result.normal = normalize(mul(input.norm, (float3x3)world));
+    result.uv = input.uv;
+
+#else
+    // ----- Default UV path -----
     float4 pos = mul(input.position, world);
     result.position = mul(mul(pos, view), projection);
     result.worldPos = 0.0; // unused
-
-    // world space normal – same transform as triplanar
     result.normal = normalize(mul(input.norm, (float3x3)world));
-
     result.uv = input.uv;
+#endif
+
     return result;
 }
-
-#endif
 
 // ----------------------------------------------------------------------------
 // Pixel shader – common lighting for both paths
 // ----------------------------------------------------------------------------
 float4 PSMain(PSInput input) : SV_TARGET
-{
-    // Sample texture (path‑specific method)
+{    
 #ifdef TRIPLANAR
     float4 texColor = SampleTriplanar(g_texture, g_sampler,
                                       input.worldPos, input.normal, g_Tiling);

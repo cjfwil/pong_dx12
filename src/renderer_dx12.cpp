@@ -29,6 +29,7 @@ enum RenderPipeline : UINT
 {
     RENDER_DEFAULT = 0, // standard UV mapping
     RENDER_TRIPLANAR,   // triplanar mapping
+    RENDER_HEIGHTFIELD, // heightfield pipeline
     RENDER_COUNT
 };
 
@@ -43,7 +44,6 @@ bool CreatePrimitiveMeshBuffers(
     D3D12_INDEX_BUFFER_VIEW &outIndexView,
     UINT &outIndexCount)
 {
-
     // --- Vertex buffer ---
     const UINT vbSize = data.vertexCount * sizeof(Vertex);
     HRESULT hr = device->CreateCommittedResource(
@@ -960,7 +960,7 @@ bool LoadAssets()
     }
 
     // Create the pipeline states, which includes compiling and loading shaders.
-    {        
+    {
         ID3DBlob *vertexShaderDefaultTechnique = nullptr;
         ID3DBlob *pixelShaderDefaultTechnique = nullptr;
         if (!CompileShader(L"shader_source\\shaders.hlsl", "VSMain", "vs_5_0", &vertexShaderDefaultTechnique))
@@ -982,8 +982,26 @@ bool LoadAssets()
             return false;
         }
 
-        ID3DBlob *pixelShaderTriplanarTechnique = nullptr;        
+        ID3DBlob *pixelShaderTriplanarTechnique = nullptr;
         if (!CompileShader(L"shader_source\\shaders.hlsl", "PSMain", "ps_5_0", &pixelShaderTriplanarTechnique, triplanarDefines))
+        {
+            HRAssert(E_FAIL);
+            return false;
+        }
+
+        // Compile heightfield shader variant
+        D3D_SHADER_MACRO heightfieldDefines[] = {{"HEIGHTFIELD", "1"}, {nullptr, nullptr}};
+
+        ID3DBlob *vertexShaderHeightfield = nullptr;
+        ID3DBlob *pixelShaderHeightfield = nullptr;
+
+        if (!CompileShader(L"shader_source\\shaders.hlsl", "VSMain", "vs_5_0", &vertexShaderHeightfield, heightfieldDefines))
+        {
+            HRAssert(E_FAIL);
+            return false;
+        }
+
+        if (!CompileShader(L"shader_source\\shaders.hlsl", "PSMain", "ps_5_0", &pixelShaderHeightfield, heightfieldDefines))
         {
             HRAssert(E_FAIL);
             return false;
@@ -1041,12 +1059,21 @@ bool LoadAssets()
             HRAssert(pipeline_dx12.m_device->CreateGraphicsPipelineState(
                 &psoDesc,
                 IID_PPV_ARGS(&pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_TRIPLANAR][i])));
+
+            // Heightfield PSO
+            psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderHeightfield);
+            psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderHeightfield);
+            HRAssert(pipeline_dx12.m_device->CreateGraphicsPipelineState(
+                &psoDesc,
+                IID_PPV_ARGS(&pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_HEIGHTFIELD][i])));
         }
 
         vertexShaderDefaultTechnique->Release();
         vertexShaderTriplanarTechnique->Release();
         pixelShaderDefaultTechnique->Release();
         pixelShaderTriplanarTechnique->Release();
+        vertexShaderHeightfield->Release();
+        pixelShaderHeightfield->Release();
     }
 
     // Create the command lists

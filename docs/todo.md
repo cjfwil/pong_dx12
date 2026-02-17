@@ -18,9 +18,10 @@ need this for:
 needs multiple vertex types, so lots of requirements there (forgot which ones though)
 or maybe light probes?
 
-## todo heightmap as a primitive? or maybe 1 heightmap per scene only?
+## todo heightmap as a primitive? or maybe 1 heightmap per scene only? (basic version done)
 gen heightmap on vertex shader
-need to abstract shader creation (done)
+
+## change renderpipeline to per object in scene
 
 ## make custom ingester which outputs the whole project and structure to a text file for copy/paste
 

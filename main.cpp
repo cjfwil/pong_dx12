@@ -381,6 +381,12 @@ bool PopulateCommandList()
     {
         PrimitiveType currentPrimitiveToDraw = g_draw_list.types[i];
 
+        // render pipeline overwrite        
+        if (currentPrimitiveToDraw == PrimitiveType::PRIMITIVE_HEIGHTFIELD)
+            g_currentTechnique = RenderPipeline::RENDER_HEIGHTFIELD;
+        else
+            g_currentTechnique = RenderPipeline::RENDER_DEFAULT;
+
         // Translation parameters
         DirectX::XMVECTOR position = DirectX::XMLoadFloat3(&g_draw_list.transforms.pos[i]);
         DirectX::XMVECTOR rotationQuat = DirectX::XMLoadFloat4(&g_draw_list.transforms.rot[i]);
@@ -445,7 +451,6 @@ bool PopulateCommandList()
     return true;
 }
 
-// Render the scene.
 void Render(bool vsync = true)
 {
     if (!PopulateCommandList())
@@ -491,7 +496,6 @@ static struct
 {
     bool mouseCaptured = false;
     bool keys[512] = {false};
-    // SDL_GameController *gamepad = nullptr;
 } g_input;
 
 struct FlyCamera
@@ -1129,10 +1133,8 @@ int main(void)
 
         ImGui_ImplDX12_NewFrame();
         ImGui_ImplSDL3_NewFrame();
-        if (g_view_editor)
-        {
-            DrawEditorGUI();
-        }
+        if (g_view_editor)        
+            DrawEditorGUI();        
 
         program_state.timing.UpdateTimer();
 
