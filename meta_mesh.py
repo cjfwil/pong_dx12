@@ -311,6 +311,57 @@ def gen_inverted_sphere(slices, stacks):
     return vertices, indices
 
 # ----------------------------------------------------------------------
+# Heightfield
+# ----------------------------------------------------------------------
+def gen_heightfield_mesh(n):
+    """
+    Generate a square heightfield mesh with 2^n quads per side.
+    - Number of vertices per side: 2^n + 1
+    - Positions: x,z in [-0.5, 0.5], y = 0
+    - Normals: (0, 1, 0) (pointing up)
+    - UVs: (x+0.5, z+0.5) mapping to [0,1]²
+    - n ≤ 9 (max 1024×1024 quads)
+    """
+    if n > 9:
+        n = 9  # clamp to safe limit
+    N = 1 << n          # 2^n quads per side
+    N1 = N + 1          # vertices per side
+
+    vertices = []
+    indices = []
+
+    step = 1.0 / N
+    # vertices: row-major order (j = row, i = column)
+    for j in range(N1):
+        z = -0.5 + j * step
+        v = j / N
+        for i in range(N1):
+            x = -0.5 + i * step
+            u = i / N
+            pos = Vec3(x, 0.0, z)
+            normal = Vec3(0.0, 1.0, 0.0)
+            uv = Vec2(u, v)
+            vertices.append(Vertex(pos, normal, uv))
+
+    # indices: two triangles per quad
+    for j in range(N):
+        for i in range(N):
+            bl = j * N1 + i          # bottom-left
+            br = j * N1 + i + 1      # bottom-right
+            tl = (j + 1) * N1 + i    # top-left
+            tr = (j + 1) * N1 + i + 1# top-right
+            
+            indices.append(bl)
+            indices.append(tl)
+            indices.append(br)
+            
+            indices.append(br)
+            indices.append(tl)
+            indices.append(tr)
+
+    return vertices, indices
+
+# ----------------------------------------------------------------------
 # Primitive registry - order determines enum values
 # ----------------------------------------------------------------------
 PRIMITIVES = [
@@ -319,6 +370,7 @@ PRIMITIVES = [
     ("prism",            gen_prism),
     ("sphere",           gen_sphere, 64, 32),
     ("inverted_sphere",  gen_inverted_sphere, 64, 32),
+    ("heightfield", gen_heightfield_mesh, 3),
 ]
 
 # ----------------------------------------------------------------------

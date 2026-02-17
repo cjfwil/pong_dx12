@@ -1026,6 +1026,8 @@ bool LoadAssets()
             psoDesc.SampleDesc.Count = msaa_state.m_sampleCounts[i];
             psoDesc.SampleDesc.Quality = 0;
 
+            // psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
+
             // Create default PSO (standard)
             psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderDefaultTechnique);
             psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderDefaultTechnique);
