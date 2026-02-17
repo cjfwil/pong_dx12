@@ -380,7 +380,10 @@ bool PopulateCommandList()
         RenderPipeline pl = g_draw_list.pipelines[i];
 
         UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
-        ID3D12PipelineState *currentPSO = pipeline_dx12.m_pipelineStates[pl][psoIndex];
+        ID3D12PipelineState *currentPSO = pipeline_dx12.m_pipelineStates[pl][psoIndex];         
+        if (!currentPSO)
+            SDL_Log("ERROR: PSO null for pipeline %d, msaa %d", pl, psoIndex);
+
         pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetPipelineState(currentPSO);
 
         // Translation parameters
@@ -945,7 +948,7 @@ void DrawEditorGUI()
             if (ImGui::Combo("Pipeline", &currentPipeline,
                              g_renderPipelineNames, RENDER_COUNT))
             {
-                obj.pipeline = (RenderPipeline)currentPipeline;                
+                obj.pipeline = (RenderPipeline)currentPipeline;
             }
 
             ImGui::DragFloat3("Position", &obj.pos.x, 0.1f);

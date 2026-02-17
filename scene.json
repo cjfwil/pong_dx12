@@ -114,9 +114,9 @@
 			"pipeline":	"Default"
 		}, {
 			"nametag":	"ground",
-			"pos":	[-1.705335259437561, -2.2544870376586914, -21.6286678314209],
+			"pos":	[-1.705335259437561, -1.78664231300354, -8.2317886352539062],
 			"rot":	[0, 0, 0, 1],
-			"scale":	[64, 1, 64],
+			"scale":	[32, 1, 32],
 			"type":	"Heightfield",
 			"pipeline":	"Heightfield"
 		}, {
@@ -125,6 +125,6 @@
 			"rot":	[0, 0, 0, 1],
 			"scale":	[1, 9.21546459197998, 1],
 			"type":	"Cylinder",
-			"pipeline":	"Default"
+			"pipeline":	"Triplanar"
 		}]
 }

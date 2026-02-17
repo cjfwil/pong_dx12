@@ -78,7 +78,7 @@ PSInput VSMain(VSInput input)
 
 #ifdef HEIGHTFIELD
     // ----- Heightfield displacement (texture‑based) -----
-    float heightScale = 2.2f; // displacement amount (tune as needed)
+    float heightScale = 1.0f; // displacement amount (tune as needed)
     float heightBias = 0.0f;
 
     // Sample heightmap using the input UV (clamped sampling)
@@ -95,10 +95,10 @@ PSInput VSMain(VSInput input)
     result.position = mul(mul(finalWorldPos, view), projection);
     result.worldPos = finalWorldPos.xyz;
     result.normal = worldNormal;
-    result.uv = input.uv;
-#endif
+    // result.uv = input.uv;
+    result.uv = float2(h, h);
 
-#ifdef TRIPLANAR
+#elif defined(TRIPLANAR)
     // ----- Triplanar path -----
     float4 worldPosition = mul(input.position, world);
     result.position = mul(mul(worldPosition, view), projection);
@@ -123,11 +123,13 @@ PSInput VSMain(VSInput input)
 // ----------------------------------------------------------------------------
 float4 PSMain(PSInput input) : SV_TARGET
 {
-#ifdef TRIPLANAR
+#ifdef HEIGHTFIELD
+    float4 texColor = float4(input.uv, input.uv.x, 1.0f);
+#elif defined(TRIPLANAR)
     float4 texColor = SampleTriplanar(g_texture, g_sampler,
                                       input.worldPos, input.normal, g_Tiling);
 #else
-    float4 texColor = g_heightmap.Sample(g_sampler, input.uv);
+    float4 texColor = g_texture.Sample(g_sampler, input.uv);
 #endif
 
     float3 N = normalize(input.normal);
