@@ -77,8 +77,8 @@ PSInput VSMain(VSInput input)
 
 #ifdef HEIGHTFIELD
     // ----- Heightfield displacement (procedural) -----
-    float heightScale = 0.2f; // displacement amount
-    float frequency = 1.5f;   // wave frequency
+    float heightScale = 2.2f; // displacement amount
+    float frequency = 15.5f;   // wave frequency
 
     // Transform vertex to world space (world matrix is already in root constants)
     float4 worldPos = mul(input.position, world);

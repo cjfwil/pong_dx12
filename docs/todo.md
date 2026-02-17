@@ -21,9 +21,9 @@ or maybe light probes?
 ## todo heightmap as a primitive? or maybe 1 heightmap per scene only? (basic version done)
 gen heightmap on vertex shader
 
-## change renderpipeline to per object in scene
+## change renderpipeline to per object in scene (done)
 
-## metaprogram all the renderpipeline/shader loading stuff
+## metaprogram all the renderpipeline/shader loading stuff (done)
 
 ## make custom ingester which outputs the whole project and structure to a text file for copy/paste
 

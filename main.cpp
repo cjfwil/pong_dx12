@@ -940,7 +940,7 @@ void DrawEditorGUI()
                 obj.type = (PrimitiveType)currentType;
             }
 
-            // ---- Pipeline dropdown (NEW) ----
+            // ---- Pipeline dropdown ----
             int currentPipeline = (int)obj.pipeline;
             if (ImGui::Combo("Pipeline", &currentPipeline,
                              g_renderPipelineNames, RENDER_COUNT))

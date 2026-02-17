@@ -371,7 +371,7 @@ PRIMITIVES = [
     ("prism",            gen_prism),
     ("sphere",           gen_sphere, 64, 32),
     ("inverted_sphere",  gen_inverted_sphere, 64, 32),
-    ("heightfield", gen_heightfield_mesh, 3),
+    ("heightfield", gen_heightfield_mesh, 5),
 ]
 
 # ----------------------------------------------------------------------
