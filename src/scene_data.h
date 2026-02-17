@@ -1,7 +1,7 @@
 #pragma once
 #include "mesh_data.h"   // for PrimitiveType
 
-#define MAX_SCENE_OBJECTS 16
+#define MAX_SCENE_OBJECTS 32
 
 typedef struct {
     char nametag[128];

@@ -322,8 +322,9 @@ def gen_heightfield_mesh(n):
     - UVs: (x+0.5, z+0.5) mapping to [0,1]²
     - n ≤ 9 (max 1024×1024 quads)
     """
-    if n > 9:
-        n = 9  # clamp to safe limit
+    safe_limit = 9
+    if n > safe_limit:
+        n = safe_limit
     N = 1 << n          # 2^n quads per side
     N1 = N + 1          # vertices per side
 

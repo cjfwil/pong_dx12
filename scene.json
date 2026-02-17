@@ -1,5 +1,5 @@
 {
-	"objectCount":	16,
+	"objectCount":	17,
 	"objects":	[{
 			"nametag":	"floor",
 			"pos":	[-6.1656446962537e-23, -1, -2.09576232955807e-25],
@@ -96,5 +96,11 @@
 			"rot":	[0, 0, 0, 1],
 			"scale":	[1, 4, 1],
 			"type":	"Cylinder"
+		}, {
+			"nametag":	"ground",
+			"pos":	[0, -1.2474477291107178, 0],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[64, 1, 64],
+			"type":	"Heightfield"
 		}]
 }

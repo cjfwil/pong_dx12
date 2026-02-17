@@ -884,6 +884,22 @@ void DrawEditorGUI()
     ImGui::Begin("Scene Objects");
     ImGui::Text("Total objects: %d", g_scene.objectCount);
 
+    if (ImGui::Button("Add Object") && g_scene.objectCount < MAX_SCENE_OBJECTS)
+    {
+        int idx = g_scene.objectCount;
+        SceneObject *obj = &g_scene.objects[idx];
+        strcpy_s(obj->nametag, sizeof(obj->nametag), "");
+        obj->pos = {0.0f, 0.0f, 0.0f};
+        obj->rot = {0.0f, 0.0f, 0.0f, 1.0f};
+        obj->scale = {1.0f, 1.0f, 1.0f};
+        obj->type = PRIMITIVE_CUBE;
+        g_scene.objectCount++;
+        write_scene();
+        g_selectedObjectIndex = idx;
+    }
+    ImGui::SameLine();
+    ImGui::Text("(max %d)", MAX_SCENE_OBJECTS);
+
     for (int i = 0; i < g_scene.objectCount; ++i)
     {
         ImGui::PushID(i);
