@@ -25,6 +25,13 @@ struct Vertex
 static ID3D12Resource *g_vertexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
 static ID3D12Resource *g_indexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
 
+enum RenderTech : UINT
+{
+    RENDERTECH_DEFAULT = 0,   // standard UV mapping
+    RENDERTECH_TRIPLANAR,     // triplanar mapping
+    RENDERTECH_COUNT
+};
+
 bool CreatePrimitiveMeshBuffers(
     ID3D12Device *device,
     ID3D12GraphicsCommandList *cmdList,
@@ -205,8 +212,9 @@ static struct
     ID3D12DescriptorHeap *m_dsvHeap;
     ID3D12Resource *m_depthStencil;
 
+    ID3D12PipelineState *m_pipelineStates[RenderTech::RENDERTECH_COUNT][4]; // 1x, 2x, 4x, 8x
+
     // MSAA resources
-    ID3D12PipelineState *m_pipelineStates[4]; // 1x, 2x, 4x, 8x
     ID3D12DescriptorHeap *m_msaaRtvHeap;
     ID3D12Resource *m_msaaRenderTargets[g_FrameCount];
     ID3D12Resource *m_msaaDepthStencil;
@@ -228,7 +236,7 @@ static struct
         HRAssert(
             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->Reset(
                 pipeline_dx12.m_commandAllocators[sync_state.m_frameIndex],
-                pipeline_dx12.m_pipelineStates[psoIndex]));
+                pipeline_dx12.m_pipelineStates[RenderTech::RENDERTECH_DEFAULT][psoIndex]));
     }
 } pipeline_dx12;
 
@@ -855,6 +863,49 @@ std::vector<UINT8> GenerateTextureData()
     return data;
 }
 
+// Helper to compile a shader from file with common settings.
+// Returns true on success, false on failure. On success, outBlob contains the compiled shader.
+bool CompileShader(
+    const wchar_t *filename,
+    const char *entryPoint,
+    const char *target,
+    ID3DBlob **outBlob,
+    const D3D_SHADER_MACRO *defines = nullptr)
+{
+    UINT compileFlags = 0;
+#if defined(_DEBUG)
+    compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#endif
+
+    ID3DBlob *errorBlob = nullptr;
+    HRESULT hr = D3DCompileFromFile(
+        filename,
+        defines,
+        nullptr, // no include handler
+        entryPoint,
+        target,
+        compileFlags,
+        0, // no effect flags
+        outBlob,
+        &errorBlob);
+
+    if (FAILED(hr))
+    {
+        if (errorBlob)
+        {
+            SDL_Log((const char *)errorBlob->GetBufferPointer());
+            errorBlob->Release();
+        }
+        else
+        {
+            SDL_Log("Failed to compile shader: %S, entry %s, target %s", filename, entryPoint, target);
+        }
+        return false;
+    }
+
+    return true;
+}
+
 // Load the startup assets. Returns true on success, false on fail.
 bool LoadAssets()
 {
@@ -868,7 +919,7 @@ bool LoadAssets()
         if (FAILED(pipeline_dx12.m_device->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &featureData, sizeof(featureData))))
         {
             featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
-        }        
+        }
 
         CD3DX12_DESCRIPTOR_RANGE1 cbvRange;
         cbvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
@@ -910,33 +961,16 @@ bool LoadAssets()
 
     // Create the pipeline states, which includes compiling and loading shaders.
     {
-        ID3DBlob *vertexShader;
-        ID3DBlob *pixelShader;
+        ID3DBlob *vertexShader = nullptr;
+        ID3DBlob *pixelShader = nullptr;
 
-#if defined(_DEBUG)
-        // Enable better shader debugging with the graphics debugging tools.
-        UINT compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
-#else
-        UINT compileFlags = 0;
-#endif
-        ID3DBlob *shader_error_blob = nullptr;        
-        if (FAILED(D3DCompileFromFile(L"shader_source\\shaders.hlsl", nullptr, nullptr, "VSMain", "vs_5_0", compileFlags, 0, &vertexShader, &shader_error_blob)))
+        if (!CompileShader(L"shader_source\\shaders.hlsl", "VSMain", "vs_5_0", &vertexShader))
         {
-            if (shader_error_blob)
-            {
-                SDL_Log((const char *)shader_error_blob->GetBufferPointer());
-                shader_error_blob->Release();
-            }
             HRAssert(E_FAIL);
             return false;
         }
-        if (!HRAssert(D3DCompileFromFile(L"shader_source\\shaders.hlsl", nullptr, nullptr, "PSMain", "ps_5_0", compileFlags, 0, &pixelShader, &shader_error_blob)))
+        if (!CompileShader(L"shader_source\\shaders.hlsl", "PSMain", "ps_5_0", &pixelShader))
         {
-            if (shader_error_blob)
-            {
-                SDL_Log((const char *)shader_error_blob->GetBufferPointer());
-                shader_error_blob->Release();
-            }
             HRAssert(E_FAIL);
             return false;
         }
@@ -953,7 +987,7 @@ bool LoadAssets()
         {
             if (!msaa_state.m_supported[i])
             {
-                pipeline_dx12.m_pipelineStates[i] = nullptr;
+                pipeline_dx12.m_pipelineStates[RenderTech::RENDERTECH_DEFAULT][i] = nullptr;
                 continue;
             }
 
@@ -978,7 +1012,7 @@ bool LoadAssets()
             psoDesc.RTVFormats[0] = g_screenFormat;
             psoDesc.SampleDesc.Count = msaa_state.m_sampleCounts[i];
             psoDesc.SampleDesc.Quality = 0;
-            if (!HRAssert(pipeline_dx12.m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipeline_dx12.m_pipelineStates[i]))))
+            if (!HRAssert(pipeline_dx12.m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&pipeline_dx12.m_pipelineStates[RenderTech::RENDERTECH_DEFAULT][i]))))
                 return false;
         }
     }
@@ -990,7 +1024,7 @@ bool LoadAssets()
             pipeline_dx12.m_device->CreateCommandList(
                 0, D3D12_COMMAND_LIST_TYPE_DIRECT,
                 pipeline_dx12.m_commandAllocators[i],
-                pipeline_dx12.m_pipelineStates[0],
+                pipeline_dx12.m_pipelineStates[RenderTech::RENDERTECH_DEFAULT][0],
                 IID_PPV_ARGS(&pipeline_dx12.m_commandList[i])));
         HRAssert(pipeline_dx12.m_commandList[i]->Close());
     }
@@ -998,7 +1032,7 @@ bool LoadAssets()
     // Reset the first command list for setup recording
     HRAssert(pipeline_dx12.m_commandList[0]->Reset(
         pipeline_dx12.m_commandAllocators[0],
-        pipeline_dx12.m_pipelineStates[0]));
+        pipeline_dx12.m_pipelineStates[RenderTech::RENDERTECH_DEFAULT][0]));
 
     for (UINT i = 0; i < PrimitiveType::PRIMITIVE_COUNT; ++i)
     {
@@ -1075,7 +1109,7 @@ bool LoadAssets()
             (INT)(DescriptorIndices::PER_SCENE_CBV),
             cbvSrvDescriptorSize);
         pipeline_dx12.m_device->CreateConstantBufferView(&perSceneCbvDesc, perSceneCbvHandle);
-        
+
         // todo: abstract this so i can call it from main when i want it updated
         // Map and initialize the per-scene constant buffer
         CD3DX12_RANGE readRange(0, 0);

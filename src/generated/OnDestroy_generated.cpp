@@ -2,7 +2,7 @@
 // GENERATED ONDESTROY – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_ondestroy.py
-//   Generated: 2026-02-13 08:08:53
+//   Generated: 2026-02-17 04:38:05
 //------------------------------------------------------------------------
 
 #pragma once
@@ -118,14 +118,6 @@ void OnDestroy()
     {
         pipeline_dx12.m_imguiHeap->Release();
         pipeline_dx12.m_imguiHeap = nullptr;
-    }
-    for (UINT i = 0; i < 4; i++)
-    {
-        if (pipeline_dx12.m_pipelineStates[i])
-        {
-            pipeline_dx12.m_pipelineStates[i]->Release();
-            pipeline_dx12.m_pipelineStates[i] = nullptr;
-        }
     }
     if (pipeline_dx12.m_msaaRtvHeap)
     {

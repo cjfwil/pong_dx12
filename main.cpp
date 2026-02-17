@@ -828,7 +828,7 @@ int main(void)
                 }
             }
 
-            ImGui::Begin("Settings");            
+            ImGui::Begin("Settings");
             ImGui::SliderFloat("fov_deg", &g_fov_deg, 60.0f, 120.0f);
             ImGui::Text("Frametime %.3f ms (%.2f FPS)",
                         1000.0f / ImGui::GetIO().Framerate,
@@ -989,9 +989,12 @@ int main(void)
             {
                 SaveConfig(&g_liveConfigData);
             }
-
-            static float g_ambient_color[3] = {0.0f, 0.0f, 0.0f};
             ImGui::Separator();
+
+            ImGui::End();
+
+            ImGui::Begin("Globals");
+            static float g_ambient_color[3] = {0.0f, 0.0f, 0.0f};
             ImGui::Text("Ambient Color");
             if (ImGui::ColorEdit3("Ambient", g_ambient_color))
             {
@@ -1006,7 +1009,6 @@ int main(void)
             }
 
             ImGui::Separator();
-
             ImGui::End();
 
             // ============================================

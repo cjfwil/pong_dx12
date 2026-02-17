@@ -8,11 +8,21 @@ generated code goes in src/generated
 ## merge PrimitiveType and g_primitiveTypeNames into the same KVP hash table?
 have a giant list which includes all geometry, the KVP primtive names map to the index in that list. when more geometry is loaded or generated at runtime it gets added to that list.
 
+## abstract render target creation
+need this for:
+- internal reolution scaler
+- crt filter
+- cubemap rendering (for light probes)
+
 ## prebaked static AO
 needs multiple vertex types, so lots of requirements there (forgot which ones though)
 or maybe light probes?
 
 ## todo heightmap as a primitive? or maybe 1 heightmap per scene only?
+gen heightmap on vertex shader
+need to abstract shader creation
+
+## make custom ingester which outputs the whole project and structure to a text file for copy/paste
 
 # merge all the scripts into a common folder
 
