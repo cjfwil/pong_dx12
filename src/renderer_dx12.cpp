@@ -960,11 +960,18 @@ bool LoadAssets()
     }
 
     // Create the pipeline states, which includes compiling and loading shaders.
-    {
-        ID3DBlob *vertexShader = nullptr;
+    {        
+        ID3DBlob *vertexShaderDefaultTechnique = nullptr;
         ID3DBlob *pixelShaderDefaultTechnique = nullptr;
+        if (!CompileShader(L"shader_source\\shaders.hlsl", "VSMain", "vs_5_0", &vertexShaderDefaultTechnique))
+        {
+            HRAssert(E_FAIL);
+            return false;
+        }
 
-        if (!CompileShader(L"shader_source\\shaders.hlsl", "VSMain", "vs_5_0", &vertexShader))
+        D3D_SHADER_MACRO triplanarDefines[] = {{"TRIPLANAR", "1"}, {nullptr, nullptr}};
+        ID3DBlob *vertexShaderTriplanarTechnique = nullptr;
+        if (!CompileShader(L"shader_source\\shaders.hlsl", "VSMain", "vs_5_0", &vertexShaderTriplanarTechnique, triplanarDefines))
         {
             HRAssert(E_FAIL);
             return false;
@@ -975,8 +982,7 @@ bool LoadAssets()
             return false;
         }
 
-        ID3DBlob *pixelShaderTriplanarTechnique = nullptr;
-        D3D_SHADER_MACRO triplanarDefines[] = {{"TRIPLANAR", "1"}, {nullptr, nullptr}};
+        ID3DBlob *pixelShaderTriplanarTechnique = nullptr;        
         if (!CompileShader(L"shader_source\\shaders.hlsl", "PSMain", "ps_5_0", &pixelShaderTriplanarTechnique, triplanarDefines))
         {
             HRAssert(E_FAIL);
@@ -990,7 +996,7 @@ bool LoadAssets()
                 {"NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0},
                 {"TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0}};
 
-        // Create PSO for each supported MSAA level        
+        // Create PSO for each supported MSAA level
         for (UINT i = 0; i < 4; i++) // i = MSAA index
         {
             if (!msaa_state.m_supported[i])
@@ -1003,7 +1009,7 @@ bool LoadAssets()
             D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
             psoDesc.InputLayout = {inputElementDescs, _countof(inputElementDescs)};
             psoDesc.pRootSignature = pipeline_dx12.m_rootSignature;
-            psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShader);
+            psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderDefaultTechnique);
 
             // identical with default pipeline TODO: abstract this
             psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -1020,20 +1026,23 @@ bool LoadAssets()
             psoDesc.SampleDesc.Count = msaa_state.m_sampleCounts[i];
             psoDesc.SampleDesc.Quality = 0;
 
-            // Create default PSO (standard pixel shader)
+            // Create default PSO (standard)
+            psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderDefaultTechnique);
             psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderDefaultTechnique);
             HRAssert(pipeline_dx12.m_device->CreateGraphicsPipelineState(
                 &psoDesc,
                 IID_PPV_ARGS(&pipeline_dx12.m_pipelineStates[RenderTech::RENDERTECH_DEFAULT][i])));
 
             // Create triplanar PSO
+            psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaderTriplanarTechnique);
             psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaderTriplanarTechnique);
             HRAssert(pipeline_dx12.m_device->CreateGraphicsPipelineState(
                 &psoDesc,
                 IID_PPV_ARGS(&pipeline_dx12.m_pipelineStates[RenderTech::RENDERTECH_TRIPLANAR][i])));
         }
 
-        vertexShader->Release();
+        vertexShaderDefaultTechnique->Release();
+        vertexShaderTriplanarTechnique->Release();
         pixelShaderDefaultTechnique->Release();
         pixelShaderTriplanarTechnique->Release();
     }

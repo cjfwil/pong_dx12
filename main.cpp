@@ -47,6 +47,7 @@
 
 static ConfigData g_liveConfigData = {};
 static Scene g_scene;
+static RenderTech g_currentTechnique = RENDERTECH_DEFAULT;
 
 void write_scene()
 {
@@ -293,6 +294,10 @@ bool PopulateCommandList()
     pipeline_dx12.ResetCommandObjects();
 
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRootSignature(pipeline_dx12.m_rootSignature);
+
+    UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
+    ID3D12PipelineState *currentPSO = pipeline_dx12.m_pipelineStates[g_currentTechnique][psoIndex];
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetPipelineState(currentPSO);
 
     ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_mainHeap};
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
@@ -1009,6 +1014,17 @@ int main(void)
             }
 
             ImGui::Separator();
+            ImGui::Text("Shading Technique");
+            if (ImGui::RadioButton("Standard UV", (int *)&g_currentTechnique, RENDERTECH_DEFAULT))
+            {
+            }
+            ImGui::SameLine();
+            if (ImGui::RadioButton("Triplanar", (int *)&g_currentTechnique, RENDERTECH_TRIPLANAR))
+            {
+            }
+
+            ImGui::Separator();
+
             ImGui::End();
 
             // ============================================

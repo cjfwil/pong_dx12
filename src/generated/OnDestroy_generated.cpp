@@ -2,7 +2,7 @@
 // GENERATED ONDESTROY – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_ondestroy.py
-//   Generated: 2026-02-17 04:38:05
+//   Generated: 2026-02-17 04:51:15
 //------------------------------------------------------------------------
 
 #pragma once
