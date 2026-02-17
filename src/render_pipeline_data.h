@@ -11,7 +11,7 @@ enum RenderPipeline : UINT
     RENDER_COUNT
 };
 
-static const char* g_renderPipelineNames[RENDER_COUNT] = {
+static const char* g_renderPipelineNames[RenderPipeline::RENDER_COUNT] = {
     "Default",
     "Triplanar",
     "Heightfield"

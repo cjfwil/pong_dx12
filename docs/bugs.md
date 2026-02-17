@@ -1,1 +1,1 @@
-imguizmo rotation gizmo is not congruent with actual mouse position when selecting. rotation gizmo is no selected when it should, and selected in some places where it shouldnt be selected.
+- rotation when inputing suffers from gimbal lock

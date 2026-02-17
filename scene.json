@@ -6,7 +6,7 @@
 			"rot":	[-1.6738376092102832e-24, -2.73606741429819e-24, 0, 1],
 			"scale":	[10.000009536743164, 0.99999964237213135, 9.9999942779541],
 			"type":	"Cube",
-			"pipeline":	"Default"
+			"pipeline":	"Triplanar"
 		}, {
 			"nametag":	"Centre box",
 			"pos":	[0, 1.5, 0],
@@ -20,7 +20,7 @@
 			"rot":	[0, 0, 0, 1],
 			"scale":	[9.5, 0.5, 9.5],
 			"type":	"Cube",
-			"pipeline":	"Default"
+			"pipeline":	"Triplanar"
 		}, {
 			"nametag":	"Column A",
 			"pos":	[4.5, 1.5000005960464478, 2.25],
@@ -69,7 +69,7 @@
 			"rot":	[-0.70710676908493042, 0, 0, 0.70710670948028564],
 			"scale":	[11, 9.9999427795410156, 0.99999350309371948],
 			"type":	"Prism",
-			"pipeline":	"Default"
+			"pipeline":	"Triplanar"
 		}, {
 			"nametag":	"Col",
 			"pos":	[4.5, 1.5, -4.5],
@@ -114,17 +114,17 @@
 			"pipeline":	"Default"
 		}, {
 			"nametag":	"ground",
-			"pos":	[0, -4.74730396270752, 0],
+			"pos":	[0, -2.254486083984375, 0],
 			"rot":	[0, 0, 0, 1],
-			"scale":	[1, 1, 1],
+			"scale":	[64, 1, 64],
 			"type":	"Heightfield",
-			"pipeline":	"Default"
+			"pipeline":	"Heightfield"
 		}, {
-			"nametag":	"",
-			"pos":	[0, 0, 0],
+			"nametag":	"random pillar",
+			"pos":	[5.75324296951294, 0, -12.122722625732422],
 			"rot":	[0, 0, 0, 1],
-			"scale":	[1, 1, 1],
+			"scale":	[1, 9.21546459197998, 1],
 			"type":	"Cube",
-			"pipeline":	"Default"
+			"pipeline":	"Triplanar"
 		}]
 }

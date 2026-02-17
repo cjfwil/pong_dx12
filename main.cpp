@@ -48,7 +48,7 @@
 static ConfigData g_liveConfigData = {};
 static Scene g_scene;
 
-static RenderPipeline g_currentRenderPipeline = RENDER_DEFAULT;
+// static RenderPipeline g_currentRenderPipeline = RENDER_DEFAULT;
 
 void write_scene()
 {
@@ -274,6 +274,7 @@ static struct
 {
     int drawAmount = g_draw_list_element_total; // this should not be greater than g_draw_list_element_total
     PrimitiveType types[g_draw_list_element_total] = {};
+    RenderPipeline pipelines[g_draw_list_element_total] = {};
     struct
     {
         DirectX::XMFLOAT3 pos[g_draw_list_element_total];
@@ -295,10 +296,6 @@ bool PopulateCommandList()
     pipeline_dx12.ResetCommandObjects();
 
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRootSignature(pipeline_dx12.m_rootSignature);
-
-    UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
-    ID3D12PipelineState *currentPSO = pipeline_dx12.m_pipelineStates[g_currentRenderPipeline][psoIndex];
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetPipelineState(currentPSO);
 
     ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_mainHeap};
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
@@ -380,12 +377,11 @@ bool PopulateCommandList()
     for (int i = 0; i < g_draw_list.drawAmount; ++i)
     {
         PrimitiveType currentPrimitiveToDraw = g_draw_list.types[i];
+        RenderPipeline pl = g_draw_list.pipelines[i];
 
-        // render pipeline overwrite        
-        if (currentPrimitiveToDraw == PrimitiveType::PRIMITIVE_HEIGHTFIELD)
-            g_currentRenderPipeline = RenderPipeline::RENDER_HEIGHTFIELD;
-        else
-            g_currentRenderPipeline = RenderPipeline::RENDER_DEFAULT;
+        UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
+        ID3D12PipelineState *currentPSO = pipeline_dx12.m_pipelineStates[pl][psoIndex];
+        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetPipelineState(currentPSO);
 
         // Translation parameters
         DirectX::XMVECTOR position = DirectX::XMLoadFloat3(&g_draw_list.transforms.pos[i]);
@@ -481,6 +477,7 @@ void FillDrawList()
             g_draw_list.transforms.scale[i].z = g_scene.objects[i].scale.z;
 
             g_draw_list.types[i] = g_scene.objects[i].type;
+            g_draw_list.pipelines[i] = g_scene.objects[i].pipeline;
         }
     }
     if (g_scene.objectCount < g_draw_list_element_total)
@@ -873,12 +870,6 @@ void DrawEditorGUI()
                sizeof(graphics_resources.m_PerSceneConstantBufferData));
     }
 
-    ImGui::Separator();
-    ImGui::Text("Render Pipeline");
-    const char *renderPipelineNames[] = {"Default", "Triplanar"}; // TODO: enforce match RENDERTECH_DEFAULT, RENDERTECH_TRIPLANAR
-    ImGui::Combo("##Technique", (int *)&g_currentRenderPipeline, renderPipelineNames, IM_ARRAYSIZE(renderPipelineNames));
-    ImGui::Separator();
-
     ImGui::End();
 
     // ============================================
@@ -947,6 +938,14 @@ void DrawEditorGUI()
                              g_primitiveNames, IM_ARRAYSIZE(g_primitiveNames)))
             {
                 obj.type = (PrimitiveType)currentType;
+            }
+
+            // ---- Pipeline dropdown (NEW) ----
+            int currentPipeline = (int)obj.pipeline;
+            if (ImGui::Combo("Pipeline", &currentPipeline,
+                             g_renderPipelineNames, RENDER_COUNT))
+            {
+                obj.pipeline = (RenderPipeline)currentPipeline;                
             }
 
             ImGui::DragFloat3("Position", &obj.pos.x, 0.1f);
@@ -1133,8 +1132,8 @@ int main(void)
 
         ImGui_ImplDX12_NewFrame();
         ImGui_ImplSDL3_NewFrame();
-        if (g_view_editor)        
-            DrawEditorGUI();        
+        if (g_view_editor)
+            DrawEditorGUI();
 
         program_state.timing.UpdateTimer();
 
