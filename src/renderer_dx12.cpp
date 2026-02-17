@@ -21,17 +21,12 @@ struct Vertex
     DirectX::XMFLOAT2 uv;
 };
 #include "mesh_data.h"
+#include "render_pipeline_data.h"
 
 static ID3D12Resource *g_vertexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
 static ID3D12Resource *g_indexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
 
-enum RenderPipeline : UINT
-{
-    RENDER_DEFAULT = 0, // standard UV mapping
-    RENDER_TRIPLANAR,   // triplanar mapping
-    RENDER_HEIGHTFIELD, // heightfield pipeline
-    RENDER_COUNT
-};
+
 
 bool CreatePrimitiveMeshBuffers(
     ID3D12Device *device,

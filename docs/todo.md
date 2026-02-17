@@ -23,6 +23,8 @@ gen heightmap on vertex shader
 
 ## change renderpipeline to per object in scene
 
+## metaprogram all the renderpipeline/shader loading stuff
+
 ## make custom ingester which outputs the whole project and structure to a text file for copy/paste
 
 # merge all the scripts into a common folder
