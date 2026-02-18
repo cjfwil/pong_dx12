@@ -21,6 +21,11 @@ or maybe light probes?
 ## todo heightmap as a primitive? or maybe 1 heightmap per scene only? (basic version done)
 gen heightmap on vertex shader
 ->>> sample texture that is editable
+move heightfield out of "primitives" section, into whole new section (primitive, heightfield, loaded model). this is a different type of vertex? same with loaded model? and rejig primitive to not use UVs in the vertex?
+
+## change primitive render to not sample the texture, just set the greyboxed texture by mathematics in the shader?
+
+## move heightmap texture to 16-bit
 
 ## make custom ingester which outputs the whole project and structure to a text file for copy/paste
 
@@ -48,12 +53,10 @@ multiple textures, like one for the cube, the cylinder, sphere, prism etc...
 ## generate sky texture offline
 use above to have a skelelton for spheremapped textures
 
-
-
 ## remove all std::vector and move towards custom linear allocator for those particular things
 
 ## metaprogram vertex stuff?
-should allow for different kinds of vertices?
+should we allow for different kinds of vertices?
 
 ## figure out how to speed up intellisense vscode
 

@@ -200,7 +200,7 @@ Then each function receives `renderer_t* ctx`. This does not introduce classes �
 
 ---
 
-## 13. Resource cleanup – missing constant buffer unmapping
+## 13. Resource cleanup – missing constant buffer unmapping (implemented 18/2/2026)
 
 **Problem**  
 `OnDestroy_generated.cpp` releases COM pointers but does **not** `Unmap` the per‑frame or per‑scene constant buffers before releasing them. This is a resource leak (though often benign with process exit). The generator’s priority map includes a special case for constant buffers but currently only generates unmapping for those named `constantBuffer`; it does not match `m_PerFrameConstantBuffer` or `m_PerSceneConstantBuffer`.

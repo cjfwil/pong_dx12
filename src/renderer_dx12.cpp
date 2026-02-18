@@ -1261,6 +1261,7 @@ bool LoadAssets()
         const UINT hmPixelSize = 1;                         // bytes per pixel
         std::vector<UINT8> hmData(hmWidth * hmHeight, 128); // mid grey
 
+        // todo: load from dds here, if not exist then make up one then write it, and reload it
         for (int x = 0; x < hmWidth; ++x)
         {
             for (int y = 0; y < hmWidth; ++y)

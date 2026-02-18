@@ -80,6 +80,9 @@ PRIORITY_MAP = {
     # Constant buffers (need Unmap)
     'constantBuffer': 1,
     'm_constantBuffer': 1,
+    # Added explicit names for our constant buffers
+    'm_PerFrameConstantBuffer': 1,
+    'm_PerSceneConstantBuffer': 1,
     # Graphics resources
     'texture': 2,
     'm_texture': 2,
@@ -152,7 +155,7 @@ def get_category_comment(name: str) -> str:
     return categories.get(clean, 'Release other resources')
 
 # ----------------------------------------------------------------------
-# Code generation - original logic
+# Code generation - original logic with fixes
 # ----------------------------------------------------------------------
 def generate_cleanup_code(resources: list) -> str:
     """Generate C++ cleanup code."""
@@ -168,8 +171,8 @@ def generate_cleanup_code(resources: list) -> str:
     lines.append("    WaitForGpu();")
     lines.append("")
     
-    # Special handling for constant buffers (need to unmap)
-    cb_resources = [r for r in resources if 'constantBuffer' in r['name'].lower()]
+    # FIX 1: Use case‑insensitive detection (lowercase 'constantbuffer')
+    cb_resources = [r for r in resources if 'constantbuffer' in r['name'].lower()]
     if cb_resources:
         lines.append("    // Unmap and release constant buffers")
         for res in cb_resources:
@@ -192,11 +195,14 @@ def generate_cleanup_code(resources: list) -> str:
                 lines.append(f"        {res['struct']}.{res['name']}->Unmap(0, nullptr);")
                 lines.append(f"        {res['struct']}.{res['name']}->Release();")
                 lines.append(f"        {res['struct']}.{res['name']} = nullptr;")
+                # FIX 2: For the per‑scene constant buffer, also clear its mapped pointer
+                if res['struct'] == 'graphics_resources' and res['name'] == 'm_PerSceneConstantBuffer':
+                    lines.append("            graphics_resources.m_pPerSceneCbvDataBegin = nullptr;")
                 lines.append("    }")
         lines.append("")
     
     # Generate cleanup for other COM resources
-    other_resources = [r for r in resources if 'constantBuffer' not in r['name'].lower()]
+    other_resources = [r for r in resources if 'constantbuffer' not in r['name'].lower()]
     
     current_category = None
     for res in other_resources:

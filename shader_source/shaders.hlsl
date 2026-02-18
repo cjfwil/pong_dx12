@@ -28,8 +28,9 @@ cbuffer PerSceneConstantBuffer : register(b2)
 };
 
 Texture2D g_texture : register(t0);
-Texture2D g_heightmap : register(t1);
+Texture2D g_heightmap : register(t1); // todo place under heightfield define
 SamplerState g_sampler : register(s0);
+// add a separate sampler for sampling heightfield?
 
 // ----------------------------------------------------------------------------
 // Common vertex input / output
@@ -76,21 +77,11 @@ PSInput VSMain(VSInput input)
 {
     PSInput result;
 
-#ifdef HEIGHTFIELD
-    // ----- Heightfield displacement (texture‑based) -----
-    float heightScale = 1.0f; // displacement amount (tune as needed)
-    float heightBias = 0.0f;
-
-    // Sample heightmap using the input UV (clamped sampling)
-    float h = g_heightmap.SampleLevel(g_sampler, input.uv, 0).r * heightScale + heightBias;
-
-    // Compute world normal (assuming no non‑uniform scaling)
-    float3 worldNormal = normalize(mul(input.norm, (float3x3)world));
-
-    // Displace vertex along world normal
+#ifdef HEIGHTFIELD    
+    float h = g_heightmap.SampleLevel(g_sampler, input.uv, 0).r;    
+    float3 worldNormal = normalize(mul(input.norm, (float3x3)world));    
     float3 displacedPos = input.position.xyz + worldNormal * h;
-
-    // Continue with world transform
+    
     float4 finalWorldPos = mul(float4(displacedPos, 1.0f), world);
     result.position = mul(mul(finalWorldPos, view), projection);
     result.worldPos = finalWorldPos.xyz;

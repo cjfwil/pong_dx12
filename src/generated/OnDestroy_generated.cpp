@@ -2,7 +2,7 @@
 // GENERATED ONDESTROY – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_ondestroy.py
-//   Generated: 2026-02-17 04:51:15
+//   Generated: 2026-02-18 14:59:51
 //------------------------------------------------------------------------
 
 #pragma once
@@ -14,6 +14,25 @@ void OnDestroy()
     // Ensure that the GPU is no longer referencing resources that are about to be
     // cleaned up by the destructor.
     WaitForGpu();
+
+    // Unmap and release constant buffers
+    if (graphics_resources.m_PerSceneConstantBuffer)
+    {
+        graphics_resources.m_PerSceneConstantBuffer->Unmap(0, nullptr);
+        graphics_resources.m_PerSceneConstantBuffer->Release();
+        graphics_resources.m_PerSceneConstantBuffer = nullptr;
+        graphics_resources.m_pPerSceneCbvDataBegin = nullptr;
+    }
+    for (UINT i = 0; i < g_FrameCount; i++)
+    {
+        if (graphics_resources.m_PerFrameConstantBuffer[i])
+        {
+            graphics_resources.m_PerFrameConstantBuffer[i]->Unmap(0, nullptr);
+            graphics_resources.m_PerFrameConstantBuffer[i]->Release();
+            graphics_resources.m_PerFrameConstantBuffer[i] = nullptr;
+            graphics_resources.m_pCbvDataBegin[i] = nullptr;
+        }
+    }
 
     // Release sync objects
     if (sync_state.m_fence)
@@ -149,18 +168,10 @@ void OnDestroy()
     }
 
     // Release other resources
-    if (graphics_resources.m_PerSceneConstantBuffer)
+    if (graphics_resources.m_heightmapTexture)
     {
-        graphics_resources.m_PerSceneConstantBuffer->Release();
-        graphics_resources.m_PerSceneConstantBuffer = nullptr;
-    }
-    for (UINT i = 0; i < g_FrameCount; i++)
-    {
-        if (graphics_resources.m_PerFrameConstantBuffer[i])
-        {
-            graphics_resources.m_PerFrameConstantBuffer[i]->Release();
-            graphics_resources.m_PerFrameConstantBuffer[i] = nullptr;
-        }
+        graphics_resources.m_heightmapTexture->Release();
+        graphics_resources.m_heightmapTexture = nullptr;
     }
 
     // Close fence event handle

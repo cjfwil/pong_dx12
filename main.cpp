@@ -48,8 +48,6 @@
 static ConfigData g_liveConfigData = {};
 static Scene g_scene;
 
-// static RenderPipeline g_currentRenderPipeline = RENDER_DEFAULT;
-
 void write_scene()
 {
     char *json = scene_to_json(&g_scene);
