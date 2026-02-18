@@ -26,6 +26,53 @@ struct Vertex
 static ID3D12Resource *g_vertexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
 static ID3D12Resource *g_indexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
 
+bool CreateDefaultBuffer(
+    ID3D12Device *device,
+    ID3D12GraphicsCommandList *cmdList,
+    const void *data,
+    UINT64 size,
+    D3D12_RESOURCE_STATES targetState,
+    ID3D12Resource **outResource,
+    ID3D12Resource **outUploadBuffer) // caller must release after GPU work
+{
+    HRESULT hr = device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+        D3D12_HEAP_FLAG_NONE,
+        &CD3DX12_RESOURCE_DESC::Buffer(size),
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr,
+        IID_PPV_ARGS(outResource));
+    if (FAILED(hr))
+        return false;
+
+    hr = device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+        D3D12_HEAP_FLAG_NONE,
+        &CD3DX12_RESOURCE_DESC::Buffer(size),
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(outUploadBuffer));
+    if (FAILED(hr))
+        return false;
+
+    void *mapped;
+    hr = (*outUploadBuffer)->Map(0, nullptr, &mapped);
+    if (FAILED(hr))
+        return false;
+    memcpy(mapped, data, size);
+    (*outUploadBuffer)->Unmap(0, nullptr);
+    
+    cmdList->CopyBufferRegion(*outResource, 0, *outUploadBuffer, 0, size);
+    
+    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        *outResource,
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        targetState);
+    cmdList->ResourceBarrier(1, &barrier);
+
+    return true;
+}
+
 bool CreatePrimitiveMeshBuffers(
     ID3D12Device *device,
     ID3D12GraphicsCommandList *cmdList,
@@ -39,73 +86,13 @@ bool CreatePrimitiveMeshBuffers(
 {
     // --- Vertex buffer ---
     const UINT vbSize = data.vertexCount * sizeof(Vertex);
-    HRESULT hr = device->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-        D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(vbSize),
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        nullptr,
-        IID_PPV_ARGS(&outVertexBuffer));
-    if (FAILED(hr))
+    if (!CreateDefaultBuffer(device, cmdList, data.vertices, vbSize, D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER, &outVertexBuffer, &g_vertexBufferUploadPrimitives[type]))
         return false;
-
-    hr = device->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-        D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(vbSize),
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(&g_vertexBufferUploadPrimitives[type]));
-    if (FAILED(hr))
-        return false;
-
-    UINT8 *pData;
-    g_vertexBufferUploadPrimitives[type]->Map(0, nullptr, reinterpret_cast<void **>(&pData));
-    memcpy(pData, data.vertices, vbSize);
-    g_vertexBufferUploadPrimitives[type]->Unmap(0, nullptr);
-
-    cmdList->CopyBufferRegion(outVertexBuffer, 0, g_vertexBufferUploadPrimitives[type], 0, vbSize);
 
     // --- Index buffer ---
     const UINT ibSize = data.indexCount * sizeof(uint32_t);
-    hr = device->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-        D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(ibSize),
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        nullptr,
-        IID_PPV_ARGS(&outIndexBuffer));
-    if (FAILED(hr))
+    if (!CreateDefaultBuffer(device, cmdList, data.indices, ibSize, D3D12_RESOURCE_STATE_INDEX_BUFFER, &outIndexBuffer, &g_indexBufferUploadPrimitives[type]))
         return false;
-
-    hr = device->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-        D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(ibSize),
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(&g_indexBufferUploadPrimitives[type]));
-    if (FAILED(hr))
-        return false;
-
-    g_indexBufferUploadPrimitives[type]->Map(0, nullptr, reinterpret_cast<void **>(&pData));
-    memcpy(pData, data.indices, ibSize);
-    g_indexBufferUploadPrimitives[type]->Unmap(0, nullptr);
-
-    cmdList->CopyBufferRegion(outIndexBuffer, 0, g_indexBufferUploadPrimitives[type], 0, ibSize);
-
-    // --- Barriers ---
-    auto vbBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        outVertexBuffer,
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER);
-    cmdList->ResourceBarrier(1, &vbBarrier);
-
-    auto ibBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        outIndexBuffer,
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_INDEX_BUFFER);
-    cmdList->ResourceBarrier(1, &ibBarrier);
 
     // --- Views ---
     outVertexView.BufferLocation = outVertexBuffer->GetGPUVirtualAddress();
@@ -1266,7 +1253,7 @@ bool LoadAssets()
         {
             for (int y = 0; y < hmWidth; ++y)
             {
-                hmData[x+y*hmWidth] = (int)(rand() % 255);
+                hmData[x + y * hmWidth] = (int)(rand() % 255);
             }
         }
 

@@ -4,7 +4,7 @@ This document lists specific areas of the codebase where duplication, scatter, o
 
 ## Summary
 
-These fifteen clean‑up points address the most obvious duplication, scattered responsibilities, and implicit dependencies in the codebase. Each solution stays within a procedural, non‑OOP style – using data tables, helper functions, and explicit context passing. Implementing them will make the code shorter, more maintainable, and easier to extend without introducing class hierarchies or “Clean Code” dogma.
+These clean‑up points address the most obvious duplication, scattered responsibilities, and implicit dependencies in the codebase. Each solution stays within a procedural, non‑OOP style – using data tables, helper functions, and explicit context passing. Implementing them will make the code shorter, more maintainable, and easier to extend without introducing class hierarchies or “Clean Code” dogma.
 
 ---
 
@@ -36,10 +36,6 @@ Each meta‑script (`meta_config.py`, `meta_mesh.py`, `meta_ondestroy.py`) repea
 
 **Solution**  
 Move the common argument‑parsing and execution flow into `common.py` as a function `run_generator(generator_func, description)`. Each meta‑script then only defines its generator function and calls `common.run_generator(...)`. The generator function should accept `(input_path, output_path, force)`.
-
----
-
-## 3. solved
 
 ---
 
@@ -109,6 +105,8 @@ Write a helper `bool CompileShader(path, entry, target, blobOut)` that:
 - On success, returns `true` and fills `blobOut`.
 Then `LoadAssets()` simply calls it twice.
 
+✅ **Status:** Implemented – `CompileShader` helper exists and is used in `pipeline_creation.cpp`. No further action needed.
+
 ---
 
 ## 8. ImGui UI sprawl
@@ -141,39 +139,6 @@ Make the window‑mode transition a single operation: `RequestWindowMode(newMode
 
 ---
 
-## 10. MSAA combo box – table‑driven
-
-**Problem**  
-The MSAA selection UI in the “Settings” window has a custom combo that manually handles the “Disabled” case, checks supported flags, and builds item labels. It is lengthy and will need changes if MSAA levels are added or removed.
-
-**Where**  
-`main.cpp` – the `ImGui::BeginCombo("Anti-aliasing", ...)` block.
-
-**Solution**  
-Define a static array of `MsaaOption` structures, each containing:
-- Display name (e.g., “4x MSAA”)
-- Sample count
-- Pointer to the `m_supported` flag
-- Index into the state arrays.
-Then loop over this array to generate the combo items. This removes the special‑case “Disabled” branch and the repeated `snprintf` calls. Changes to MSAA levels only require editing the array.
-
----
-
-## 11. Draw list and object list – manual copying
-
-**Problem**  
-`g_total_objects_list_editable` holds the master scene objects; `g_draw_list` holds the flattened array of transforms and types for rendering. `FillDrawList()` manually copies each field one by one. This is repetitive and couples the two structures.
-
-**Where**  
-`main.cpp` – the `FillDrawList()` function.
-
-**Solution**  
-Either:
-- Merge the two lists – use `g_total_objects_list_editable.objects` directly for rendering (the draw list is essentially a subset, but currently it just copies the first N objects). The render loop could iterate over the master list up to its count, removing the need for a separate draw list.
-- Or, if the draw list must remain separate, write a single `memcpy`-style function that copies whole array of structs (the objects are already contiguous). The copy could be a single `memcpy` of `sizeof(objects)` bytes, then adjust the count.
-
----
-
 ## 12. Global state – implicit dependencies
 
 **Problem**  
@@ -200,7 +165,7 @@ Then each function receives `renderer_t* ctx`. This does not introduce classes �
 
 ---
 
-## 13. Resource cleanup – missing constant buffer unmapping (implemented 18/2/2026)
+## 13. Resource cleanup – missing constant buffer unmapping
 
 **Problem**  
 `OnDestroy_generated.cpp` releases COM pointers but does **not** `Unmap` the per‑frame or per‑scene constant buffers before releasing them. This is a resource leak (though often benign with process exit). The generator’s priority map includes a special case for constant buffers but currently only generates unmapping for those named `constantBuffer`; it does not match `m_PerFrameConstantBuffer` or `m_PerSceneConstantBuffer`.
@@ -210,6 +175,8 @@ Then each function receives `renderer_t* ctx`. This does not introduce classes �
 
 **Solution**  
 Extend the constant‑buffer detection in `meta_ondestroy.py` to recognise `m_PerFrameConstantBuffer` and `m_PerSceneConstantBuffer` by name or by checking the struct member type (ID3D12Resource) and the fact that it was mapped. Generate an `Unmap(0, nullptr)` call before `Release()` for each such buffer. Also update the priority ordering to ensure unmapping happens before device release.
+
+✅ **Status:** Implemented – the latest `meta_ondestroy.py` now correctly unmaps both constant buffers. No further action needed.
 
 ---
 
@@ -241,3 +208,57 @@ Descriptor indices are defined in `DescriptorIndices` namespace, but many places
 **Solution**  
 Always use the symbolic constants from `DescriptorIndices`. Replace magic numbers with the named constants.  
 If needed, add constants for the table indices themselves (e.g., `ROOT_PARAM_CBV_TABLE = 2`). This centralises the layout definition and makes reordering trivial.
+
+---
+
+## 16. Additional tech debt not previously listed
+
+### 16.1. Root directory clutter
+**Problem**  
+The project root contains numerous Python scripts (`analysis.py`, `build.py`, `detect_bad_spelling.py`, etc.), configuration files, and documentation. This makes the top level messy and harder to navigate.
+
+**Where**  
+Project root.
+
+**Solution**  
+Move all tooling scripts into a `tools/` subdirectory. Keep only essential files in the root (e.g., `main.cpp`, `README.md`, `LICENSE`). Update any paths in the scripts accordingly (they currently assume they run from the root). This improves organisation.
+
+### 16.2. Hard‑coded limits and magic numbers
+**Problem**  
+Several hard‑coded limits exist (e.g., `g_draw_list_element_total = 32`, `MAX_SCENE_OBJECTS = 32`, descriptor heap sizes like `10` for ImGui). If these are exceeded, behaviour is undefined. The relationship between `g_draw_list_element_total` and `MAX_SCENE_OBJECTS` is not enforced.
+
+**Where**  
+`main.cpp` (draw list size), `scene_data.h` (MAX_SCENE_OBJECTS), `LoadPipeline` (imgui heap size).
+
+**Solution**  
+Define these limits in a central header (e.g., `engine_config.h`) and use the same constant wherever the same resource is sized. For the draw list, either remove it and iterate directly over the scene objects, or ensure the draw list size is at least `MAX_SCENE_OBJECTS` and assert at runtime.
+
+### 16.3. Temporary workarounds and TODOs
+**Problem**  
+Several TODOs and temporary workarounds remain (e.g., `window_name_todo_change`, `todo move this out` for WARP device flag, heightmap generated with random data instead of loading from disk). These indicate unfinished features or quick hacks that should be addressed.
+
+**Where**  
+`main.cpp` (window name), `renderer_dx12.cpp` (WARP flag comment, heightmap generation), `shader_source/shaders.hlsl` (TODO about sampler).
+
+**Solution**  
+Either implement the planned features or remove the TODOs if they are no longer relevant. For the WARP flag, make it a command‑line or config option. For the heightmap, implement proper DDS loading with fallback generation.
+
+### 16.4. Long functions and high cyclomatic complexity
+**Problem**  
+Lizard reports show several functions with very high complexity and length (e.g., `LoadAssets` ~450 lines, `DrawEditorGUI` ~350 lines, `main` ~450 lines). This makes them difficult to understand, test, and maintain.
+
+**Where**  
+`renderer_dx12.cpp` – `LoadAssets`; `main.cpp` – `DrawEditorGUI`, `main`, `PopulateCommandList`.
+
+**Solution**  
+Break these functions into smaller, well‑named helper functions, each with a single responsibility. Use the context‑struct approach (point 12) to pass necessary data without relying on globals. This will also improve readability.
+
+### 16.5. Portability concerns
+**Problem**  
+The code uses Windows‑specific functions like `strcpy_s` and `wsprintfA`, and assumes the Visual Studio toolchain. While the project is Windows‑only, these can cause issues if ever ported or if compiled with different CRT settings.
+
+**Where**  
+`src/generated/scene_json.cpp` uses `strncpy_s`; `local_error.h` uses `wsprintfA`.
+
+**Solution**  
+Use standard C library functions with explicit bounds checking (e.g., `strncpy` with manual null termination) or wrap them in portability macros. Alternatively, accept the Windows‑only nature but document it clearly.

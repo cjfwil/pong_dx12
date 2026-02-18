@@ -15,3 +15,6 @@ __pycache__
 
 # local docs
 # architecture_problems.md
+
+digest.txt
+*.pdf

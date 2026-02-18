@@ -461,6 +461,7 @@ void Render(bool vsync = true)
     HRAssert(pipeline_dx12.m_swapChain->Present(syncInterval, syncFlags));
 }
 
+// this functions exists for a future where we will do more than just render the whole scene, this will include culling here
 void FillDrawList()
 {
     for (int i = 0; i < g_draw_list_element_total; ++i)
