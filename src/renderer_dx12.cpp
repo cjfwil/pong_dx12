@@ -61,9 +61,9 @@ bool CreateDefaultBuffer(
         return false;
     memcpy(mapped, data, size);
     (*outUploadBuffer)->Unmap(0, nullptr);
-    
+
     cmdList->CopyBufferRegion(*outResource, 0, *outUploadBuffer, 0, size);
-    
+
     auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
         *outResource,
         D3D12_RESOURCE_STATE_COPY_DEST,
@@ -248,7 +248,105 @@ static struct
     UINT8 *m_heightmapData = nullptr; // CPU copy for editing
     UINT m_heightmapWidth = 256;
     UINT m_heightmapHeight = 256;
+
+    ID3D12Resource *m_heightfieldVertexBuffer = nullptr;
+    D3D12_VERTEX_BUFFER_VIEW m_heightfieldVertexView;
+    ID3D12Resource *m_heightfieldIndexBuffer = nullptr;
+    D3D12_INDEX_BUFFER_VIEW m_heightfieldIndexView;
+    UINT m_heightfieldIndexCount;
+    ID3D12Resource *m_heightfieldVertexUpload = nullptr;
+    ID3D12Resource *m_heightfieldIndexUpload = nullptr;
 } graphics_resources;
+
+bool CreateHeightfieldMesh(
+    ID3D12Device *device,
+    ID3D12GraphicsCommandList *cmdList,
+    UINT gridSize, // number of quads per side (power of two)
+    ID3D12Resource *&outVertexBuffer,
+    D3D12_VERTEX_BUFFER_VIEW &outVertexView,
+    ID3D12Resource *&outIndexBuffer,
+    D3D12_INDEX_BUFFER_VIEW &outIndexView,
+    UINT &outIndexCount)
+{
+    // Generate vertices (position, normal, uv)
+    const UINT verticesPerSide = gridSize + 1;
+    const UINT vertexCount = verticesPerSide * verticesPerSide;
+    const UINT indexCount = gridSize * gridSize * 6; // two triangles per quad
+
+    std::vector<Vertex> vertices(vertexCount);
+    std::vector<uint32_t> indices(indexCount);
+
+    float step = 1.0f / gridSize; // world units? We'll keep positions in [-0.5,0.5] range for simplicity.
+    // Generate vertices in row‑major order: z first then x (so that z is row, x is column)
+    for (UINT j = 0; j < verticesPerSide; ++j)
+    {
+        float z = -0.5f + j * step;
+        for (UINT i = 0; i < verticesPerSide; ++i)
+        {
+            float x = -0.5f + i * step;
+            UINT idx = j * verticesPerSide + i;
+            vertices[idx].position = {x, 0.0f, z};
+            vertices[idx].normal = {0.0f, 1.0f, 0.0f}; // flat
+            vertices[idx].uv = {(float)i / gridSize, (float)j / gridSize};
+        }
+    }
+
+    // Generate indices (two triangles per quad)
+    UINT idx = 0;
+    for (UINT j = 0; j < gridSize; ++j)
+    {
+        for (UINT i = 0; i < gridSize; ++i)
+        {
+            UINT bl = j * verticesPerSide + i;
+            UINT br = j * verticesPerSide + i + 1;
+            UINT tl = (j + 1) * verticesPerSide + i;
+            UINT tr = (j + 1) * verticesPerSide + i + 1;
+            // triangle 1: bl - tl - br
+            indices[idx++] = bl;
+            indices[idx++] = tl;
+            indices[idx++] = br;
+            // triangle 2: br - tl - tr
+            indices[idx++] = br;
+            indices[idx++] = tl;
+            indices[idx++] = tr;
+        }
+    }
+
+    // Create vertex buffer using CreateDefaultBuffer (upload then default)
+    ID3D12Resource *uploadVertex = nullptr;
+    if (!CreateDefaultBuffer(device, cmdList, vertices.data(), vertexCount * sizeof(Vertex),
+                             D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+                             &outVertexBuffer, &uploadVertex))
+    {
+        return false;
+    }
+    // We need to keep uploadVertex until after command list execution. We'll store it similarly to primitive upload buffers.
+    // For simplicity, we can create a static array or store in graphics_resources and release after WaitForGpu.
+    // We'll add a member to graphics_resources to hold the upload buffer.
+    graphics_resources.m_heightfieldVertexUpload = uploadVertex;
+
+    // Create index buffer similarly
+    ID3D12Resource *uploadIndex = nullptr;
+    if (!CreateDefaultBuffer(device, cmdList, indices.data(), indexCount * sizeof(uint32_t),
+                             D3D12_RESOURCE_STATE_INDEX_BUFFER,
+                             &outIndexBuffer, &uploadIndex))
+    {
+        return false;
+    }
+    graphics_resources.m_heightfieldIndexUpload = uploadIndex;
+
+    // Set views
+    outVertexView.BufferLocation = outVertexBuffer->GetGPUVirtualAddress();
+    outVertexView.StrideInBytes = sizeof(Vertex);
+    outVertexView.SizeInBytes = vertexCount * sizeof(Vertex);
+
+    outIndexView.BufferLocation = outIndexBuffer->GetGPUVirtualAddress();
+    outIndexView.SizeInBytes = indexCount * sizeof(uint32_t);
+    outIndexView.Format = DXGI_FORMAT_R32_UINT;
+
+    outIndexCount = indexCount;
+    return true;
+}
 
 void WaitForFrameReady()
 {
@@ -989,6 +1087,22 @@ bool LoadAssets()
         {
             return false;
         }
+    }
+
+    // After creating primitive buffers, create the shared heightfield mesh
+    const UINT heightfieldGridSize = 256; // 256x256 quads -> 257x257 vertices
+    if (!CreateHeightfieldMesh(
+            pipeline_dx12.m_device,
+            pipeline_dx12.m_commandList[0],
+            heightfieldGridSize,
+            graphics_resources.m_heightfieldVertexBuffer,
+            graphics_resources.m_heightfieldVertexView,
+            graphics_resources.m_heightfieldIndexBuffer,
+            graphics_resources.m_heightfieldIndexView,
+            graphics_resources.m_heightfieldIndexCount))
+    {
+        HRAssert(E_ABORT);
+        return false;
     }
 
     CD3DX12_CPU_DESCRIPTOR_HANDLE cpuStart(pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart());

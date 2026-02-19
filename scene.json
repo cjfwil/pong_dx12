@@ -165,10 +165,10 @@
 			"pos":	[1.6575193405151367, -0.8320000171661377, -8.2317886352539062],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[16, 0.20000000298023224, 16],
-			"objectType":	0,
+			"objectType":	1,
 			"pipeline":	"Heightfield",
-			"primitiveData":	{
-				"primitiveType":	"Heightfield"
+			"heightfieldData":	{
+				"width":	256
 			}
 		}, {
 			"nametag":	"random pillar",
@@ -182,9 +182,9 @@
 			}
 		}, {
 			"nametag":	"HF",
-			"pos":	[7.44462537765503, 0.31660890579223633, 0],
+			"pos":	[14.738480567932129, 0, -10.049965858459473],
 			"rot":	[0, 0, 0, 1],
-			"scale":	[1, 1, 1],
+			"scale":	[15.99995231628418, 0.20000019669532776, 16],
 			"objectType":	1,
 			"pipeline":	"Heightfield",
 			"heightfieldData":	{

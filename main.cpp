@@ -272,7 +272,8 @@ const int g_draw_list_element_total = 32;
 static struct
 {
     int drawAmount = g_draw_list_element_total; // this should not be greater than g_draw_list_element_total
-    PrimitiveType types[g_draw_list_element_total] = {};
+    ObjectType objectTypes[g_draw_list_element_total] = {};
+    PrimitiveType primitiveTypes[g_draw_list_element_total] = {};
     RenderPipeline pipelines[g_draw_list_element_total] = {};
     struct
     {
@@ -375,7 +376,8 @@ bool PopulateCommandList()
     PerDrawRootConstants currentDrawConstants = {};
     for (int i = 0; i < g_draw_list.drawAmount; ++i)
     {
-        PrimitiveType currentPrimitiveToDraw = g_draw_list.types[i];
+        ObjectType objectType = g_draw_list.objectTypes[i];
+        PrimitiveType currentPrimitiveToDraw = g_draw_list.primitiveTypes[i];
         RenderPipeline pl = g_draw_list.pipelines[i];
 
         UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
@@ -400,10 +402,25 @@ bool PopulateCommandList()
             &currentDrawConstants.world,
             DirectX::XMMatrixTranspose(worldMatrix));
 
-        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView[currentPrimitiveToDraw]);
         pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
-        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_indexBufferView[currentPrimitiveToDraw]);
-        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_indexCount[currentPrimitiveToDraw], 1, 0, 0, 0);
+
+        // pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView[currentPrimitiveToDraw]);
+        // pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_indexBufferView[currentPrimitiveToDraw]);
+        // pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_indexCount[currentPrimitiveToDraw], 1, 0, 0, 0);
+
+        if (objectType == OBJECT_PRIMITIVE)
+        {            
+            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView[currentPrimitiveToDraw]);
+            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_indexBufferView[currentPrimitiveToDraw]);
+            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_indexCount[currentPrimitiveToDraw], 1, 0, 0, 0);
+        }
+        else if (objectType == OBJECT_HEIGHTFIELD)
+        {
+            // Use shared heightfield mesh
+            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_heightfieldVertexView);
+            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_heightfieldIndexView);
+            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_heightfieldIndexCount, 1, 0, 0, 0);
+        }
     }
 
     // Post-draw operations
@@ -465,21 +482,32 @@ void Render(bool vsync = true)
 // this functions exists for a future where we will do more than just render the whole scene, this will include culling here
 void FillDrawList()
 {
-    int primCount = 0;
-    for (int i = 0; i < g_scene.objectCount && primCount < g_draw_list_element_total; ++i)
+    int drawCount = 0;
+    for (int i = 0; i < g_scene.objectCount && drawCount < g_draw_list_element_total; ++i)
     {
         const SceneObject &obj = g_scene.objects[i];
-        if (obj.objectType != OBJECT_PRIMITIVE)
+        if (obj.objectType != OBJECT_PRIMITIVE && obj.objectType != OBJECT_HEIGHTFIELD)
             continue;
 
-        g_draw_list.transforms.pos[primCount] = obj.pos;
-        g_draw_list.transforms.rot[primCount] = obj.rot;
-        g_draw_list.transforms.scale[primCount] = obj.scale;
-        g_draw_list.types[primCount] = obj.data.primitive.primitiveType;
-        g_draw_list.pipelines[primCount] = obj.pipeline;
-        primCount++;
+        g_draw_list.transforms.pos[drawCount] = obj.pos;
+        g_draw_list.transforms.rot[drawCount] = obj.rot;
+        g_draw_list.transforms.scale[drawCount] = obj.scale;
+
+        g_draw_list.objectTypes[drawCount] = obj.objectType;
+
+        if (obj.objectType == ObjectType::OBJECT_PRIMITIVE)
+        {
+            g_draw_list.primitiveTypes[drawCount] = obj.data.primitive.primitiveType;
+        }
+        else if (obj.objectType == ObjectType::OBJECT_HEIGHTFIELD)
+        {
+            g_draw_list.primitiveTypes[drawCount] = PrimitiveType::PRIMITIVE_HEIGHTFIELD; // NOTE: not really necessary but may as well set this to heightfield?
+            // todo set index of texture (when you load textures build a hash table of of string_path -> loaded texture index???)
+        }
+        g_draw_list.pipelines[drawCount] = obj.pipeline;
+        drawCount++;
     }
-    g_draw_list.drawAmount = primCount;
+    g_draw_list.drawAmount = drawCount;
 }
 
 static DirectX::XMMATRIX g_view;
