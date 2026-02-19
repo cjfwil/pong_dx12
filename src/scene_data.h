@@ -14,6 +14,14 @@ enum ObjectType : uint32_t
     OBJECT_COUNT
 };
 
+static const char* g_objectTypeNames[OBJECT_COUNT] = {
+    "Primitive",
+    "Heightfield",
+    "Loaded Model",
+    "Sky",
+    "Water"
+};
+
 typedef struct {
     char nametag[128];
     DirectX::XMFLOAT3 pos;

@@ -1,6 +1,7 @@
 #pragma warning(disable : 5045) // disabling the spectre mitigation warning (not relevant because we are a game, no sensitive information should be in this program)
 #pragma warning(disable : 4238) // nonstandard lvalue as rvalue warning
 #pragma warning(disable : 4820) // padding warnings
+#pragma warning(disable : 4061) // unhandled enum in switch warning
 #pragma comment(lib, "SDL3.lib")
 #pragma comment(lib, "d3d12.lib")
 #pragma comment(lib, "dxgi.lib")
@@ -378,7 +379,7 @@ bool PopulateCommandList()
         RenderPipeline pl = g_draw_list.pipelines[i];
 
         UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
-        ID3D12PipelineState *currentPSO = pipeline_dx12.m_pipelineStates[pl][psoIndex];         
+        ID3D12PipelineState *currentPSO = pipeline_dx12.m_pipelineStates[pl][psoIndex];
         if (!currentPSO)
             SDL_Log("ERROR: PSO null for pipeline %d, msaa %d", pl, psoIndex);
 
@@ -464,28 +465,21 @@ void Render(bool vsync = true)
 // this functions exists for a future where we will do more than just render the whole scene, this will include culling here
 void FillDrawList()
 {
-    for (int i = 0; i < g_draw_list_element_total; ++i)
+    int primCount = 0;
+    for (int i = 0; i < g_scene.objectCount && primCount < g_draw_list_element_total; ++i)
     {
-        if (i < g_scene.objectCount)
-        {
-            g_draw_list.transforms.pos[i].x = g_scene.objects[i].pos.x;
-            g_draw_list.transforms.pos[i].y = g_scene.objects[i].pos.y;
-            g_draw_list.transforms.pos[i].z = g_scene.objects[i].pos.z;
+        const SceneObject &obj = g_scene.objects[i];
+        if (obj.objectType != OBJECT_PRIMITIVE)
+            continue;
 
-            g_draw_list.transforms.rot[i] = g_scene.objects[i].rot;
-
-            g_draw_list.transforms.scale[i].x = g_scene.objects[i].scale.x;
-            g_draw_list.transforms.scale[i].y = g_scene.objects[i].scale.y;
-            g_draw_list.transforms.scale[i].z = g_scene.objects[i].scale.z;
-            
-            g_draw_list.types[i] = g_scene.objects[i].data.primitive.primitiveType;
-            g_draw_list.pipelines[i] = g_scene.objects[i].pipeline;
-        }
+        g_draw_list.transforms.pos[primCount] = obj.pos;
+        g_draw_list.transforms.rot[primCount] = obj.rot;
+        g_draw_list.transforms.scale[primCount] = obj.scale;
+        g_draw_list.types[primCount] = obj.data.primitive.primitiveType;
+        g_draw_list.pipelines[primCount] = obj.pipeline;
+        primCount++;
     }
-    if (g_scene.objectCount < g_draw_list_element_total)
-        g_draw_list.drawAmount = g_scene.objectCount;
-    else
-        g_draw_list.drawAmount = g_draw_list_element_total;
+    g_draw_list.drawAmount = primCount;
 }
 
 static DirectX::XMMATRIX g_view;
@@ -637,6 +631,7 @@ inline void QuaternionToEuler(DirectX::FXMVECTOR Q, float &pitch, float &yaw, fl
 
 // editor state
 static int g_selectedObjectIndex = 0;
+
 void DrawEditorGUI()
 {
     ImGui::NewFrame();
@@ -890,6 +885,7 @@ void DrawEditorGUI()
         obj->rot = {0.0f, 0.0f, 0.0f, 1.0f};
         obj->scale = {1.0f, 1.0f, 1.0f};
         obj->data.primitive.primitiveType = PRIMITIVE_CUBE;
+        obj->objectType = OBJECT_PRIMITIVE;
         g_scene.objectCount++;
         write_scene();
         g_selectedObjectIndex = idx;
@@ -927,19 +923,55 @@ void DrawEditorGUI()
 
         if (node_open)
         {
-            // Editable name field
+            // Editable name field (already there)
             ImGui::InputText("Name", obj.nametag, IM_ARRAYSIZE(obj.nametag));
             if (ImGui::IsItemDeactivatedAfterEdit())
-            {
-                write_scene(); // save when focus leaves the field
-            }
+                write_scene();
 
-            // ---- Primitive type dropdown ----
-            int currentType = obj.data.primitive.primitiveType;
-            if (ImGui::Combo("Primitive", &currentType,
-                             g_primitiveNames, IM_ARRAYSIZE(g_primitiveNames)))
+            // --- Object type selector ---
+            int currentType = (int)obj.objectType;
+            if (ImGui::Combo("Type", &currentType, g_objectTypeNames, OBJECT_COUNT))
             {
-                obj.data.primitive.primitiveType = (PrimitiveType)currentType;
+                ObjectType newType = (ObjectType)currentType;
+                if (newType != obj.objectType)
+                {
+                    // Clear the union before switching (important!)
+                    memset(&obj.data, 0, sizeof(obj.data));
+                    obj.objectType = newType;
+
+                    // Set sensible defaults for the new type
+                    switch (newType)
+                    {
+                    case OBJECT_PRIMITIVE:
+                    {
+                        obj.data.primitive.primitiveType = PRIMITIVE_CUBE;
+                        obj.pipeline = RENDER_DEFAULT; // default pipeline
+                    }
+                    break;
+                    case OBJECT_HEIGHTFIELD:
+                    {
+                        obj.data.heightfield.width = 256; // example default
+                    }
+                    break;
+                    case OBJECT_LOADED_MODEL:
+                    {
+                        strcpy_s(obj.data.loaded_model.pathTo, sizeof(obj.data.loaded_model.pathTo), "");
+                    }
+                    break;
+                    case OBJECT_SKY:
+                    {
+                        strcpy_s(obj.data.sky_sphere.pathToTexture, sizeof(obj.data.sky_sphere.pathToTexture), "");
+                    }
+                    break;
+                    case OBJECT_WATER:
+                    {
+                        obj.data.water.choppiness = 1.0f;
+                    }
+                    break;
+                    default:
+                        break;
+                    }
+                }
             }
 
             // ---- Pipeline dropdown ----
