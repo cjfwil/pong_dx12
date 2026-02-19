@@ -477,8 +477,8 @@ void FillDrawList()
             g_draw_list.transforms.scale[i].x = g_scene.objects[i].scale.x;
             g_draw_list.transforms.scale[i].y = g_scene.objects[i].scale.y;
             g_draw_list.transforms.scale[i].z = g_scene.objects[i].scale.z;
-
-            g_draw_list.types[i] = g_scene.objects[i].type;
+            
+            g_draw_list.types[i] = g_scene.objects[i].data.primitive.primitiveType;
             g_draw_list.pipelines[i] = g_scene.objects[i].pipeline;
         }
     }
@@ -889,7 +889,7 @@ void DrawEditorGUI()
         obj->pos = {0.0f, 0.0f, 0.0f};
         obj->rot = {0.0f, 0.0f, 0.0f, 1.0f};
         obj->scale = {1.0f, 1.0f, 1.0f};
-        obj->type = PRIMITIVE_CUBE;
+        obj->data.primitive.primitiveType = PRIMITIVE_CUBE;
         g_scene.objectCount++;
         write_scene();
         g_selectedObjectIndex = idx;
@@ -935,11 +935,11 @@ void DrawEditorGUI()
             }
 
             // ---- Primitive type dropdown ----
-            int currentType = obj.type;
+            int currentType = obj.data.primitive.primitiveType;
             if (ImGui::Combo("Primitive", &currentType,
                              g_primitiveNames, IM_ARRAYSIZE(g_primitiveNames)))
             {
-                obj.type = (PrimitiveType)currentType;
+                obj.data.primitive.primitiveType = (PrimitiveType)currentType;
             }
 
             // ---- Pipeline dropdown ----

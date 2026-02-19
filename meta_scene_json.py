@@ -5,29 +5,27 @@ import common
 
 def generate_scene_json(input_h: Path, output_c: Path) -> bool:
     common.log_info(f"Reading input file: {input_h}")
-    with open(input_h, 'r', encoding='utf-8') as f:
-        content = f.read()
-    common.log_info(f"File content length: {len(content)}")
-    common.log_info(f"First 200 chars: {repr(content[:200])}")
-
     if not input_h.exists():
         common.log_error(f"Input not found: {input_h}")
         return False
 
-    with open(input_h) as f:
+    with open(input_h, 'r', encoding='utf-8') as f:
         content = f.read()
 
-    # Parse the Scene struct
-    fields = common.parse_struct_fields(content, "Scene")
-    if not fields:
-        common.log_error("Could not parse Scene struct")
-        return False
-
-    # Parse the nested SceneObject struct
+    # Parse common fields (we'll handle the union separately)
+    # We'll just use the existing parser to get all fields, but then filter.
     obj_fields = common.parse_struct_fields(content, "SceneObject")
     if not obj_fields:
         common.log_error("Could not parse SceneObject struct")
         return False
+
+    # Separate common fields from union (the last field is 'data')
+    common_field_names = ['nametag', 'pos', 'rot', 'scale', 'objectType', 'pipeline']
+    # Verify that these exist (they should)
+    for name in common_field_names:
+        if not any(f[1] == name for f in obj_fields):
+            common.log_error(f"Missing common field: {name}")
+            return False
 
     # Build output C code
     header = common.make_header("meta_scene_json.py")
@@ -53,34 +51,58 @@ def generate_scene_json(input_h: Path, output_c: Path) -> bool:
         '    for (int i = 0; i < scene->objectCount; ++i) {',
         '        const SceneObject* obj = &scene->objects[i];',
         '        cJSON* objJson = cJSON_CreateObject();',
-    ]
-
-    # Add each field of SceneObject
-    for typ, name, is_array, arr_size, is_ptr in obj_fields:
-        if is_array and typ.startswith('char'):
-            lines.append(f'        cJSON_AddStringToObject(objJson, "{name}", obj->{name});')
-        else:
-            if typ == 'DirectX::XMFLOAT3':
-                arr_var = f"{name}Arr"
-                lines.extend([
-                    f'        cJSON* {arr_var} = cJSON_CreateFloatArray((float*)&obj->{name}, 3);',
-                    f'        cJSON_AddItemToObject(objJson, "{name}", {arr_var});'
-                ])
-            elif typ == 'DirectX::XMFLOAT4':
-                arr_var = f"{name}Arr"
-                lines.extend([
-                    f'        cJSON* {arr_var} = cJSON_CreateFloatArray((float*)&obj->{name}, 4);',
-                    f'        cJSON_AddItemToObject(objJson, "{name}", {arr_var});'
-                ])
-            elif typ == 'PrimitiveType':
-                lines.append(f'        cJSON_AddStringToObject(objJson, "{name}", g_primitiveNames[obj->{name}]);')
-            elif typ == 'RenderPipeline':
-                lines.append(f'        cJSON_AddStringToObject(objJson, "{name}", g_renderPipelineNames[obj->{name}]);')
-            else:
-                # fallback – treat as number (int/float)
-                lines.append(f'        cJSON_AddNumberToObject(objJson, "{name}", obj->{name});')
-
-    lines.extend([
+        '',
+        '        // Common fields',
+        '        cJSON_AddStringToObject(objJson, "nametag", obj->nametag);',
+        '',
+        '        cJSON* posArr = cJSON_CreateFloatArray((float*)&obj->pos, 3);',
+        '        cJSON_AddItemToObject(objJson, "pos", posArr);',
+        '',
+        '        cJSON* rotArr = cJSON_CreateFloatArray((float*)&obj->rot, 4);',
+        '        cJSON_AddItemToObject(objJson, "rot", rotArr);',
+        '',
+        '        cJSON* scaleArr = cJSON_CreateFloatArray((float*)&obj->scale, 3);',
+        '        cJSON_AddItemToObject(objJson, "scale", scaleArr);',
+        '',
+        '        cJSON_AddNumberToObject(objJson, "objectType", obj->objectType);',
+        '        cJSON_AddStringToObject(objJson, "pipeline", g_renderPipelineNames[obj->pipeline]);',
+        '',
+        '        // Type‑specific data',
+        '        switch (obj->objectType) {',
+        '            case OBJECT_PRIMITIVE: {',
+        '                cJSON* primData = cJSON_CreateObject();',
+        '                cJSON_AddStringToObject(primData, "primitiveType", g_primitiveNames[obj->data.primitive.primitiveType]);',
+        '                cJSON_AddItemToObject(objJson, "primitiveData", primData);',
+        '                break;',
+        '            }',
+        '            case OBJECT_HEIGHTFIELD: {',
+        '                cJSON* hfData = cJSON_CreateObject();',
+        '                cJSON_AddNumberToObject(hfData, "width", obj->data.heightfield.width);',
+        '                cJSON_AddItemToObject(objJson, "heightfieldData", hfData);',
+        '                break;',
+        '            }',
+        '            case OBJECT_LOADED_MODEL: {',
+        '                cJSON* modelData = cJSON_CreateObject();',
+        '                cJSON_AddStringToObject(modelData, "pathTo", obj->data.loaded_model.pathTo);',
+        '                cJSON_AddItemToObject(objJson, "loadedModelData", modelData);',
+        '                break;',
+        '            }',
+        '            case OBJECT_SKY: {',
+        '                cJSON* skyData = cJSON_CreateObject();',
+        '                cJSON_AddStringToObject(skyData, "pathToTexture", obj->data.sky_sphere.pathToTexture);',
+        '                cJSON_AddItemToObject(objJson, "skyData", skyData);',
+        '                break;',
+        '            }',
+        '            case OBJECT_WATER: {',
+        '                cJSON* waterData = cJSON_CreateObject();',
+        '                cJSON_AddNumberToObject(waterData, "choppiness", obj->data.water.choppiness);',
+        '                cJSON_AddItemToObject(objJson, "waterData", waterData);',
+        '                break;',
+        '            }',
+        '            default:',
+        '                break;',
+        '        }',
+        '',
         '        cJSON_AddItemToArray(objectsArray, objJson);',
         '    }',
         '    cJSON_AddItemToObject(root, "objects", objectsArray);',
@@ -112,80 +134,110 @@ def generate_scene_json(input_h: Path, output_c: Path) -> bool:
         '        for (int i = 0; i < arraySize && i < MAX_SCENE_OBJECTS; ++i) {',
         '            cJSON* objJson = cJSON_GetArrayItem(objArray, i);',
         '            SceneObject* obj = &scene->objects[i];',
-    ])
-
-    # Read each field back
-    for typ, name, is_array, arr_size, is_ptr in obj_fields:
-        if is_array and typ.startswith('char'):
-            lines.append(f'            cJSON* {name}Item = cJSON_GetObjectItem(objJson, "{name}");')
-            lines.append(f'            if (cJSON_IsString({name}Item)) strncpy_s(obj->{name}, {name}Item->valuestring, sizeof(obj->{name})-1);')
-        else:
-            if typ == 'DirectX::XMFLOAT3':
-                lines.append(f'            cJSON* {name}Item = cJSON_GetObjectItem(objJson, "{name}");')
-                lines.extend([
-                    f'            if (cJSON_IsArray({name}Item) && cJSON_GetArraySize({name}Item) == 3) {{',
-                    f'                for (int j = 0; j < 3; ++j)',
-                    f'                    ((float*)&obj->{name})[j] = (float)cJSON_GetArrayItem({name}Item, j)->valuedouble;',
-                    f'            }}',
-                ])
-            elif typ == 'DirectX::XMFLOAT4':
-                lines.append(f'            cJSON* {name}Item = cJSON_GetObjectItem(objJson, "{name}");')
-                lines.extend([
-                    f'            if (cJSON_IsArray({name}Item) && cJSON_GetArraySize({name}Item) == 4) {{',
-                    f'                for (int j = 0; j < 4; ++j)',
-                    f'                    ((float*)&obj->{name})[j] = (float)cJSON_GetArrayItem({name}Item, j)->valuedouble;',
-                    f'            }}',
-                ])
-            elif typ == 'PrimitiveType':
-                lines.append(f'            cJSON* {name}Item = cJSON_GetObjectItem(objJson, "{name}");')
-                lines.extend([
-                    f'            // Handle PrimitiveType: can be integer (old) or string (new)',
-                    f'            if (cJSON_IsNumber({name}Item)) {{',
-                    f'                obj->{name} = (PrimitiveType){name}Item->valueint;',
-                    f'            }} else if (cJSON_IsString({name}Item)) {{',
-                    f'                const char* typeName = {name}Item->valuestring;',
-                    f'                int found = -1;',
-                    f'                for (int idx = 0; idx < PRIMITIVE_COUNT; idx++) {{',
-                    f'                    if (strcmp(typeName, g_primitiveNames[idx]) == 0) {{',
-                    f'                        found = idx;',
-                    f'                        break;',
-                    f'                    }}',
-                    f'                }}',
-                    f'                if (found != -1) obj->{name} = (PrimitiveType)found;',
-                    f'                else {{',
-                    f'                    obj->{name} = (PrimitiveType)0; // default to cube',
-                    f'                    fprintf(stderr, "Unknown primitive type \\"%s\\", defaulting to cube\\n", typeName);',
-                    f'                }}',
-                    f'            }}',
-                ])
-            elif typ == 'RenderPipeline':
-                lines.append(f'            cJSON* pipelineItem = cJSON_GetObjectItem(objJson, "{name}");')
-                lines.extend([
-                    f'            // Handle RenderPipeline: can be integer (old) or string (new)',
-                    f'            if (cJSON_IsNumber(pipelineItem)) {{',
-                    f'                obj->{name} = (RenderPipeline)pipelineItem->valueint;',
-                    f'            }} else if (cJSON_IsString(pipelineItem)) {{',
-                    f'                const char* pipeName = pipelineItem->valuestring;',
-                    f'                int found = -1;',
-                    f'                for (int idx = 0; idx < RENDER_COUNT; idx++) {{',
-                    f'                    if (strcmp(pipeName, g_renderPipelineNames[idx]) == 0) {{',
-                    f'                        found = idx;',
-                    f'                        break;',
-                    f'                    }}',
-                    f'                }}',
-                    f'                if (found != -1) obj->{name} = (RenderPipeline)found;',
-                    f'                else {{',
-                    f'                    obj->{name} = RENDER_DEFAULT;',
-                    f'                    fprintf(stderr, "Unknown pipeline \\"%s\\", defaulting to Default\\n", pipeName);',
-                    f'                }}',
-                    f'            }}',
-                ])
-            else:
-                # Fallback for simple numeric types (int, float, etc.)
-                lines.append(f'            cJSON* {name}Item = cJSON_GetObjectItem(objJson, "{name}");')
-                lines.append(f'            if (cJSON_IsNumber({name}Item)) obj->{name} = {name}Item->valuedouble;')
-
-    lines.extend([
+        '',
+        '            // Common fields',
+        '            cJSON* nametagItem = cJSON_GetObjectItem(objJson, "nametag");',
+        '            if (cJSON_IsString(nametagItem)) strncpy_s(obj->nametag, nametagItem->valuestring, sizeof(obj->nametag)-1);',
+        '',
+        '            cJSON* posItem = cJSON_GetObjectItem(objJson, "pos");',
+        '            if (cJSON_IsArray(posItem) && cJSON_GetArraySize(posItem) == 3) {',
+        '                for (int j = 0; j < 3; ++j)',
+        '                    ((float*)&obj->pos)[j] = (float)cJSON_GetArrayItem(posItem, j)->valuedouble;',
+        '            }',
+        '',
+        '            cJSON* rotItem = cJSON_GetObjectItem(objJson, "rot");',
+        '            if (cJSON_IsArray(rotItem) && cJSON_GetArraySize(rotItem) == 4) {',
+        '                for (int j = 0; j < 4; ++j)',
+        '                    ((float*)&obj->rot)[j] = (float)cJSON_GetArrayItem(rotItem, j)->valuedouble;',
+        '            }',
+        '',
+        '            cJSON* scaleItem = cJSON_GetObjectItem(objJson, "scale");',
+        '            if (cJSON_IsArray(scaleItem) && cJSON_GetArraySize(scaleItem) == 3) {',
+        '                for (int j = 0; j < 3; ++j)',
+        '                    ((float*)&obj->scale)[j] = (float)cJSON_GetArrayItem(scaleItem, j)->valuedouble;',
+        '            }',
+        '',
+        '            cJSON* objectTypeItem = cJSON_GetObjectItem(objJson, "objectType");',
+        '            if (cJSON_IsNumber(objectTypeItem)) obj->objectType = (ObjectType)objectTypeItem->valueint;',
+        '',
+        '            cJSON* pipelineItem = cJSON_GetObjectItem(objJson, "pipeline");',
+        '            if (cJSON_IsNumber(pipelineItem)) {',
+        '                obj->pipeline = (RenderPipeline)pipelineItem->valueint;',
+        '            } else if (cJSON_IsString(pipelineItem)) {',
+        '                const char* pipeName = pipelineItem->valuestring;',
+        '                int found = -1;',
+        '                for (int idx = 0; idx < RENDER_COUNT; idx++) {',
+        '                    if (strcmp(pipeName, g_renderPipelineNames[idx]) == 0) {',
+        '                        found = idx;',
+        '                        break;',
+        '                    }',
+        '                }',
+        '                if (found != -1) obj->pipeline = (RenderPipeline)found;',
+        '                else {',
+        '                    obj->pipeline = RENDER_DEFAULT;',
+        '                    fprintf(stderr, "Unknown pipeline \\"%s\\", defaulting to Default\\n", pipeName);',
+        '                }',
+        '            }',
+        '',
+        '            // Type‑specific data',
+        '            switch (obj->objectType) {',
+        '                case OBJECT_PRIMITIVE: {',
+        '                    cJSON* primData = cJSON_GetObjectItem(objJson, "primitiveData");',
+        '                    if (primData) {',
+        '                        cJSON* primTypeItem = cJSON_GetObjectItem(primData, "primitiveType");',
+        '                        if (cJSON_IsString(primTypeItem)) {',
+        '                            const char* typeName = primTypeItem->valuestring;',
+        '                            int found = -1;',
+        '                            for (int idx = 0; idx < PRIMITIVE_COUNT; idx++) {',
+        '                                if (strcmp(typeName, g_primitiveNames[idx]) == 0) {',
+        '                                    found = idx;',
+        '                                    break;',
+        '                                }',
+        '                            }',
+        '                            if (found != -1) obj->data.primitive.primitiveType = (PrimitiveType)found;',
+        '                            else {',
+        '                                obj->data.primitive.primitiveType = PRIMITIVE_CUBE;',
+        '                                fprintf(stderr, "Unknown primitive type \\"%s\\", defaulting to Cube\\n", typeName);',
+        '                            }',
+        '                        }',
+        '                    }',
+        '                    break;',
+        '                }',
+        '                case OBJECT_HEIGHTFIELD: {',
+        '                    cJSON* hfData = cJSON_GetObjectItem(objJson, "heightfieldData");',
+        '                    if (hfData) {',
+        '                        cJSON* widthItem = cJSON_GetObjectItem(hfData, "width");',
+        '                        if (cJSON_IsNumber(widthItem)) obj->data.heightfield.width = (uint32_t)widthItem->valueint;',
+        '                    }',
+        '                    break;',
+        '                }',
+        '                case OBJECT_LOADED_MODEL: {',
+        '                    cJSON* modelData = cJSON_GetObjectItem(objJson, "loadedModelData");',
+        '                    if (modelData) {',
+        '                        cJSON* pathItem = cJSON_GetObjectItem(modelData, "pathTo");',
+        '                        if (cJSON_IsString(pathItem)) strncpy_s(obj->data.loaded_model.pathTo, pathItem->valuestring, sizeof(obj->data.loaded_model.pathTo)-1);',
+        '                    }',
+        '                    break;',
+        '                }',
+        '                case OBJECT_SKY: {',
+        '                    cJSON* skyData = cJSON_GetObjectItem(objJson, "skyData");',
+        '                    if (skyData) {',
+        '                        cJSON* texItem = cJSON_GetObjectItem(skyData, "pathToTexture");',
+        '                        if (cJSON_IsString(texItem)) strncpy_s(obj->data.sky_sphere.pathToTexture, texItem->valuestring, sizeof(obj->data.sky_sphere.pathToTexture)-1);',
+        '                    }',
+        '                    break;',
+        '                }',
+        '                case OBJECT_WATER: {',
+        '                    cJSON* waterData = cJSON_GetObjectItem(objJson, "waterData");',
+        '                    if (waterData) {',
+        '                        cJSON* chopItem = cJSON_GetObjectItem(waterData, "choppiness");',
+        '                        if (cJSON_IsNumber(chopItem)) obj->data.water.choppiness = (float)chopItem->valuedouble;',
+        '                    }',
+        '                    break;',
+        '                }',
+        '                default:',
+        '                    break;',
+        '            }',
         '        }',
         '        // Update objectCount if array was present',
         '        if (arraySize > 0) scene->objectCount = arraySize;',
@@ -194,7 +246,7 @@ def generate_scene_json(input_h: Path, output_c: Path) -> bool:
         '    cJSON_Delete(root);',
         '    return 1;',
         '}'
-    ])
+    ]
 
     output_c.parent.mkdir(parents=True, exist_ok=True)
     with open(output_c, 'w', encoding='utf-8') as f:

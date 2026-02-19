@@ -2,7 +2,7 @@
 // GENERATED – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_scene_json.py
-//   Generated: 2026-02-17 09:42:35
+//   Generated: 2026-02-19 06:33:11
 //------------------------------------------------------------------------
 
 
@@ -27,15 +27,58 @@ char* scene_to_json(const Scene* scene) {
     for (int i = 0; i < scene->objectCount; ++i) {
         const SceneObject* obj = &scene->objects[i];
         cJSON* objJson = cJSON_CreateObject();
+
+        // Common fields
         cJSON_AddStringToObject(objJson, "nametag", obj->nametag);
+
         cJSON* posArr = cJSON_CreateFloatArray((float*)&obj->pos, 3);
         cJSON_AddItemToObject(objJson, "pos", posArr);
+
         cJSON* rotArr = cJSON_CreateFloatArray((float*)&obj->rot, 4);
         cJSON_AddItemToObject(objJson, "rot", rotArr);
+
         cJSON* scaleArr = cJSON_CreateFloatArray((float*)&obj->scale, 3);
         cJSON_AddItemToObject(objJson, "scale", scaleArr);
-        cJSON_AddStringToObject(objJson, "type", g_primitiveNames[obj->type]);
+
+        cJSON_AddNumberToObject(objJson, "objectType", obj->objectType);
         cJSON_AddStringToObject(objJson, "pipeline", g_renderPipelineNames[obj->pipeline]);
+
+        // Type‑specific data
+        switch (obj->objectType) {
+            case OBJECT_PRIMITIVE: {
+                cJSON* primData = cJSON_CreateObject();
+                cJSON_AddStringToObject(primData, "primitiveType", g_primitiveNames[obj->data.primitive.primitiveType]);
+                cJSON_AddItemToObject(objJson, "primitiveData", primData);
+                break;
+            }
+            case OBJECT_HEIGHTFIELD: {
+                cJSON* hfData = cJSON_CreateObject();
+                cJSON_AddNumberToObject(hfData, "width", obj->data.heightfield.width);
+                cJSON_AddItemToObject(objJson, "heightfieldData", hfData);
+                break;
+            }
+            case OBJECT_LOADED_MODEL: {
+                cJSON* modelData = cJSON_CreateObject();
+                cJSON_AddStringToObject(modelData, "pathTo", obj->data.loaded_model.pathTo);
+                cJSON_AddItemToObject(objJson, "loadedModelData", modelData);
+                break;
+            }
+            case OBJECT_SKY: {
+                cJSON* skyData = cJSON_CreateObject();
+                cJSON_AddStringToObject(skyData, "pathToTexture", obj->data.sky_sphere.pathToTexture);
+                cJSON_AddItemToObject(objJson, "skyData", skyData);
+                break;
+            }
+            case OBJECT_WATER: {
+                cJSON* waterData = cJSON_CreateObject();
+                cJSON_AddNumberToObject(waterData, "choppiness", obj->data.water.choppiness);
+                cJSON_AddItemToObject(objJson, "waterData", waterData);
+                break;
+            }
+            default:
+                break;
+        }
+
         cJSON_AddItemToArray(objectsArray, objJson);
     }
     cJSON_AddItemToObject(root, "objects", objectsArray);
@@ -67,44 +110,33 @@ int scene_from_json(const char* json, Scene* scene) {
         for (int i = 0; i < arraySize && i < MAX_SCENE_OBJECTS; ++i) {
             cJSON* objJson = cJSON_GetArrayItem(objArray, i);
             SceneObject* obj = &scene->objects[i];
+
+            // Common fields
             cJSON* nametagItem = cJSON_GetObjectItem(objJson, "nametag");
             if (cJSON_IsString(nametagItem)) strncpy_s(obj->nametag, nametagItem->valuestring, sizeof(obj->nametag)-1);
+
             cJSON* posItem = cJSON_GetObjectItem(objJson, "pos");
             if (cJSON_IsArray(posItem) && cJSON_GetArraySize(posItem) == 3) {
                 for (int j = 0; j < 3; ++j)
                     ((float*)&obj->pos)[j] = (float)cJSON_GetArrayItem(posItem, j)->valuedouble;
             }
+
             cJSON* rotItem = cJSON_GetObjectItem(objJson, "rot");
             if (cJSON_IsArray(rotItem) && cJSON_GetArraySize(rotItem) == 4) {
                 for (int j = 0; j < 4; ++j)
                     ((float*)&obj->rot)[j] = (float)cJSON_GetArrayItem(rotItem, j)->valuedouble;
             }
+
             cJSON* scaleItem = cJSON_GetObjectItem(objJson, "scale");
             if (cJSON_IsArray(scaleItem) && cJSON_GetArraySize(scaleItem) == 3) {
                 for (int j = 0; j < 3; ++j)
                     ((float*)&obj->scale)[j] = (float)cJSON_GetArrayItem(scaleItem, j)->valuedouble;
             }
-            cJSON* typeItem = cJSON_GetObjectItem(objJson, "type");
-            // Handle PrimitiveType: can be integer (old) or string (new)
-            if (cJSON_IsNumber(typeItem)) {
-                obj->type = (PrimitiveType)typeItem->valueint;
-            } else if (cJSON_IsString(typeItem)) {
-                const char* typeName = typeItem->valuestring;
-                int found = -1;
-                for (int idx = 0; idx < PRIMITIVE_COUNT; idx++) {
-                    if (strcmp(typeName, g_primitiveNames[idx]) == 0) {
-                        found = idx;
-                        break;
-                    }
-                }
-                if (found != -1) obj->type = (PrimitiveType)found;
-                else {
-                    obj->type = (PrimitiveType)0; // default to cube
-                    fprintf(stderr, "Unknown primitive type \"%s\", defaulting to cube\n", typeName);
-                }
-            }
+
+            cJSON* objectTypeItem = cJSON_GetObjectItem(objJson, "objectType");
+            if (cJSON_IsNumber(objectTypeItem)) obj->objectType = (ObjectType)objectTypeItem->valueint;
+
             cJSON* pipelineItem = cJSON_GetObjectItem(objJson, "pipeline");
-            // Handle RenderPipeline: can be integer (old) or string (new)
             if (cJSON_IsNumber(pipelineItem)) {
                 obj->pipeline = (RenderPipeline)pipelineItem->valueint;
             } else if (cJSON_IsString(pipelineItem)) {
@@ -121,6 +153,66 @@ int scene_from_json(const char* json, Scene* scene) {
                     obj->pipeline = RENDER_DEFAULT;
                     fprintf(stderr, "Unknown pipeline \"%s\", defaulting to Default\n", pipeName);
                 }
+            }
+
+            // Type‑specific data
+            switch (obj->objectType) {
+                case OBJECT_PRIMITIVE: {
+                    cJSON* primData = cJSON_GetObjectItem(objJson, "primitiveData");
+                    if (primData) {
+                        cJSON* primTypeItem = cJSON_GetObjectItem(primData, "primitiveType");
+                        if (cJSON_IsString(primTypeItem)) {
+                            const char* typeName = primTypeItem->valuestring;
+                            int found = -1;
+                            for (int idx = 0; idx < PRIMITIVE_COUNT; idx++) {
+                                if (strcmp(typeName, g_primitiveNames[idx]) == 0) {
+                                    found = idx;
+                                    break;
+                                }
+                            }
+                            if (found != -1) obj->data.primitive.primitiveType = (PrimitiveType)found;
+                            else {
+                                obj->data.primitive.primitiveType = PRIMITIVE_CUBE;
+                                fprintf(stderr, "Unknown primitive type \"%s\", defaulting to Cube\n", typeName);
+                            }
+                        }
+                    }
+                    break;
+                }
+                case OBJECT_HEIGHTFIELD: {
+                    cJSON* hfData = cJSON_GetObjectItem(objJson, "heightfieldData");
+                    if (hfData) {
+                        cJSON* widthItem = cJSON_GetObjectItem(hfData, "width");
+                        if (cJSON_IsNumber(widthItem)) obj->data.heightfield.width = (uint32_t)widthItem->valueint;
+                    }
+                    break;
+                }
+                case OBJECT_LOADED_MODEL: {
+                    cJSON* modelData = cJSON_GetObjectItem(objJson, "loadedModelData");
+                    if (modelData) {
+                        cJSON* pathItem = cJSON_GetObjectItem(modelData, "pathTo");
+                        if (cJSON_IsString(pathItem)) strncpy_s(obj->data.loaded_model.pathTo, pathItem->valuestring, sizeof(obj->data.loaded_model.pathTo)-1);
+                    }
+                    break;
+                }
+                case OBJECT_SKY: {
+                    cJSON* skyData = cJSON_GetObjectItem(objJson, "skyData");
+                    if (skyData) {
+                        cJSON* texItem = cJSON_GetObjectItem(skyData, "pathToTexture");
+                        if (cJSON_IsString(texItem)) strncpy_s(obj->data.sky_sphere.pathToTexture, texItem->valuestring, sizeof(obj->data.sky_sphere.pathToTexture)-1);
+                    }
+                    break;
+                }
+                case OBJECT_WATER: {
+                    cJSON* waterData = cJSON_GetObjectItem(objJson, "waterData");
+                    if (waterData) {
+                        cJSON* chopItem = cJSON_GetObjectItem(waterData, "choppiness");
+                        if (cJSON_IsNumber(chopItem)) obj->data.water.choppiness = (float)chopItem->valuedouble;
+                    }
+                    break;
+                }
+                default:
+                    break;
             }
         }
         // Update objectCount if array was present
