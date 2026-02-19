@@ -21,7 +21,13 @@ or maybe light probes?
 ## todo heightmap as a primitive? or maybe 1 heightmap per scene only? (basic version done)
 gen heightmap on vertex shader
 ->>> sample texture that is editable
-move heightfield out of "primitives" section, into whole new section (primitive, heightfield, loaded model, sky, water, animated model, sprite, particles(?), UI(?)). this is a different type of vertex? same with loaded model? and rejig primitive to not use UVs in the vertex?
+move heightfield out of "primitives" section, into whole new section (primitive, heightfield, loaded model, sky, water, animated model, sprite, particles(?), UI(?)). (done)
+remove heightmap from primtives generation
+change vertex type of heightmap to smallest possible (two 16 bit integers)
+(this is a different type of vertex? same with loaded model? and rejig primitive to not use UVs in the vertex?)
+quadtree heightmap structure?
+
+## update objectType in json scene generator to be string text
 
 ## change primitive render to not sample the texture, just set the greyboxed texture by mathematics in the shader?
 maybe not because we need a texture for the sky sphere inverted sphere?

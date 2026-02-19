@@ -500,8 +500,7 @@ void FillDrawList()
             g_draw_list.primitiveTypes[drawCount] = obj.data.primitive.primitiveType;
         }
         else if (obj.objectType == ObjectType::OBJECT_HEIGHTFIELD)
-        {
-            g_draw_list.primitiveTypes[drawCount] = PrimitiveType::PRIMITIVE_HEIGHTFIELD; // NOTE: not really necessary but may as well set this to heightfield?
+        {            
             // todo set index of texture (when you load textures build a hash table of of string_path -> loaded texture index???)
         }
         g_draw_list.pipelines[drawCount] = obj.pipeline;
