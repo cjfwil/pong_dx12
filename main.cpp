@@ -409,7 +409,7 @@ bool PopulateCommandList()
         // pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_indexCount[currentPrimitiveToDraw], 1, 0, 0, 0);
 
         if (objectType == OBJECT_PRIMITIVE)
-        {            
+        {
             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView[currentPrimitiveToDraw]);
             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_indexBufferView[currentPrimitiveToDraw]);
             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_indexCount[currentPrimitiveToDraw], 1, 0, 0, 0);
@@ -500,7 +500,7 @@ void FillDrawList()
             g_draw_list.primitiveTypes[drawCount] = obj.data.primitive.primitiveType;
         }
         else if (obj.objectType == ObjectType::OBJECT_HEIGHTFIELD)
-        {            
+        {
             // todo set index of texture (when you load textures build a hash table of of string_path -> loaded texture index???)
         }
         g_draw_list.pipelines[drawCount] = obj.pipeline;
@@ -1098,8 +1098,8 @@ int main(void)
         SDL_Log("Startup assets loaded successfully.");
     }
 
+    // imgui setup
     {
-        // imgui setup
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
         ImGuiIO &io = ImGui::GetIO();
@@ -1126,6 +1126,52 @@ int main(void)
     }
 
     read_scene();
+
+    // After reading scene, load heightmap textures
+    // We need a command list to perform uploads. Reset command list 0.
+    // todo abstract this   
+    {
+        pipeline_dx12.m_commandAllocators[0]->Reset();
+        pipeline_dx12.m_commandList[0]->Reset(pipeline_dx12.m_commandAllocators[0], nullptr);
+
+        for (int i = 0; i < g_scene.objectCount; ++i)
+        {
+            if (g_scene.objects[i].objectType == OBJECT_HEIGHTFIELD)
+            {
+                const char *path = g_scene.objects[i].data.heightfield.pathToHeightmap;
+                ID3D12Resource *tex = nullptr;
+                D3D12_GPU_VIRTUAL_ADDRESS gpuAddr = 0;
+
+                if (path[0] != '\0')
+                {
+                    if (LoadTextureFromFile(pipeline_dx12.m_device, pipeline_dx12.m_commandList[0], path, &tex, &gpuAddr))
+                    {
+                        SDL_Log("Loaded heightmap: %s", path);
+                    }
+                    else
+                    {
+                        SDL_Log("Failed to load heightmap: %s, using error texture", path);
+                        tex = graphics_resources.m_errorHeightmapTexture;
+                        gpuAddr = graphics_resources.m_errorHeightmapGpuAddr;
+                    }
+                }
+                else
+                {
+                    tex = graphics_resources.m_errorHeightmapTexture;
+                    gpuAddr = graphics_resources.m_errorHeightmapGpuAddr;
+                }
+                SetHeightfieldTexture(i, tex, gpuAddr);
+            }
+        }
+
+        // Close and execute the upload command list
+        pipeline_dx12.m_commandList[0]->Close();
+        ID3D12CommandList *ppLists[] = {pipeline_dx12.m_commandList[0]};
+        pipeline_dx12.m_commandQueue->ExecuteCommandLists(1, ppLists);
+    }
+
+    // Wait for uploads to complete
+    WaitForGpu();    
 
     while (program_state.isRunning)
     {

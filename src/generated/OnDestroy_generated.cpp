@@ -2,7 +2,7 @@
 // GENERATED ONDESTROY – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_ondestroy.py
-//   Generated: 2026-02-18 14:59:51
+//   Generated: 2026-02-20 08:58:50
 //------------------------------------------------------------------------
 
 #pragma once
@@ -21,7 +21,7 @@ void OnDestroy()
         graphics_resources.m_PerSceneConstantBuffer->Unmap(0, nullptr);
         graphics_resources.m_PerSceneConstantBuffer->Release();
         graphics_resources.m_PerSceneConstantBuffer = nullptr;
-        graphics_resources.m_pPerSceneCbvDataBegin = nullptr;
+            graphics_resources.m_pPerSceneCbvDataBegin = nullptr;
     }
     for (UINT i = 0; i < g_FrameCount; i++)
     {
@@ -172,6 +172,39 @@ void OnDestroy()
     {
         graphics_resources.m_heightmapTexture->Release();
         graphics_resources.m_heightmapTexture = nullptr;
+    }
+    if (graphics_resources.m_heightfieldVertexBuffer)
+    {
+        graphics_resources.m_heightfieldVertexBuffer->Release();
+        graphics_resources.m_heightfieldVertexBuffer = nullptr;
+    }
+    if (graphics_resources.m_heightfieldIndexBuffer)
+    {
+        graphics_resources.m_heightfieldIndexBuffer->Release();
+        graphics_resources.m_heightfieldIndexBuffer = nullptr;
+    }
+    if (graphics_resources.m_heightfieldVertexUpload)
+    {
+        graphics_resources.m_heightfieldVertexUpload->Release();
+        graphics_resources.m_heightfieldVertexUpload = nullptr;
+    }
+    if (graphics_resources.m_heightfieldIndexUpload)
+    {
+        graphics_resources.m_heightfieldIndexUpload->Release();
+        graphics_resources.m_heightfieldIndexUpload = nullptr;
+    }
+    for (UINT i = 0; i < MAX_SCENE_OBJECTS; i++)
+    {
+        if (graphics_resources.m_heightmapTextures[i])
+        {
+            graphics_resources.m_heightmapTextures[i]->Release();
+            graphics_resources.m_heightmapTextures[i] = nullptr;
+        }
+    }
+    if (graphics_resources.m_errorHeightmapTexture)
+    {
+        graphics_resources.m_errorHeightmapTexture->Release();
+        graphics_resources.m_errorHeightmapTexture = nullptr;
     }
 
     // Close fence event handle
