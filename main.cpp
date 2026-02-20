@@ -985,7 +985,7 @@ void DrawEditorGUI()
                         strcpy_s(obj.data.loaded_model.pathTo, sizeof(obj.data.loaded_model.pathTo), "");
                     }
                     break;
-                    case OBJECT_SKY:
+                    case OBJECT_SKY_SPHERE:
                     {
                         strcpy_s(obj.data.sky_sphere.pathToTexture, sizeof(obj.data.sky_sphere.pathToTexture), "");
                     }

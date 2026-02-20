@@ -1,7 +1,62 @@
 #!/usr/bin/env python3
 import sys
+import re
 from pathlib import Path
 import common
+
+def extract_union_variants(content: str) -> dict:
+    # Find "struct SceneObject"
+    idx = content.find("struct SceneObject")
+    if idx == -1:
+        common.log_error("Could not find 'struct SceneObject'")
+        return {}
+    # Find the opening brace after that
+    brace_start = content.find('{', idx)
+    if brace_start == -1:
+        common.log_error("Could not find opening brace for SceneObject")
+        return {}
+    # Count braces to find matching closing brace
+    brace_level = 1
+    i = brace_start + 1
+    while i < len(content):
+        ch = content[i]
+        if ch == '{':
+            brace_level += 1
+        elif ch == '}':
+            brace_level -= 1
+            if brace_level == 0:
+                struct_body = content[brace_start+1:i].strip()
+                break
+        i += 1
+    else:
+        common.log_error("Could not find closing brace for SceneObject")
+        return {}
+
+    # Find union inside struct_body
+    union_start = struct_body.find("union {")
+    if union_start == -1:
+        common.log_error("Could not find 'union {' in SceneObject")
+        return {}
+    # Count braces inside union
+    brace_level = 1
+    j = union_start + len("union {")
+    while j < len(struct_body):
+        ch = struct_body[j]
+        if ch == '{':
+            brace_level += 1
+        elif ch == '}':
+            brace_level -= 1
+            if brace_level == 0:
+                union_body = struct_body[union_start+len("union {"):j].strip()
+                break
+        j += 1
+    else:
+        common.log_error("Could not find closing brace for union")
+        return {}
+
+    # Parse nested structs inside union body
+    variants = common.parse_nested_structs(union_body)
+    return variants
 
 def generate_scene_json(input_h: Path, output_c: Path) -> bool:
     common.log_info(f"Reading input file: {input_h}")
@@ -12,23 +67,93 @@ def generate_scene_json(input_h: Path, output_c: Path) -> bool:
     with open(input_h, 'r', encoding='utf-8') as f:
         content = f.read()
 
-    # Parse common fields (we'll handle the union separately)
-    # We'll just use the existing parser to get all fields, but then filter.
-    obj_fields = common.parse_struct_fields(content, "SceneObject")
-    if not obj_fields:
-        common.log_error("Could not parse SceneObject struct")
+    # Parse union variants
+    variants = extract_union_variants(content)
+    if not variants:
+        common.log_error("No union variants found")
         return False
 
-    # Separate common fields from union (the last field is 'data')
-    common_field_names = ['nametag', 'pos', 'rot', 'scale', 'objectType', 'pipeline']
-    # Verify that these exist (they should)
-    for name in common_field_names:
-        if not any(f[1] == name for f in obj_fields):
-            common.log_error(f"Missing common field: {name}")
-            return False
+    common.log_info(f"Found variants: {list(variants.keys())}")
+
+    def write_variant_object(variant_name, fields, obj_prefix):
+        lines = []
+        for typ, name, is_array, arr_sz, is_ptr in fields:
+            if is_array and typ.startswith('char'):
+                lines.append(f'        cJSON_AddStringToObject({variant_name}Data, "{name}", {obj_prefix}.{name});')
+            else:
+                if typ == 'DirectX::XMFLOAT3':
+                    arr = f"{name}Arr"
+                    lines.append(f'        cJSON* {arr} = cJSON_CreateFloatArray((float*)&{obj_prefix}.{name}, 3);')
+                    lines.append(f'        cJSON_AddItemToObject({variant_name}Data, "{name}", {arr});')
+                elif typ == 'DirectX::XMFLOAT4':
+                    arr = f"{name}Arr"
+                    lines.append(f'        cJSON* {arr} = cJSON_CreateFloatArray((float*)&{obj_prefix}.{name}, 4);')
+                    lines.append(f'        cJSON_AddItemToObject({variant_name}Data, "{name}", {arr});')
+                elif typ == 'PrimitiveType':
+                    lines.append(f'        cJSON_AddStringToObject({variant_name}Data, "{name}", g_primitiveNames[{obj_prefix}.{name}]);')
+                elif typ == 'RenderPipeline':
+                    lines.append(f'        cJSON_AddStringToObject({variant_name}Data, "{name}", g_renderPipelineNames[{obj_prefix}.{name}]);')
+                else:
+                    # fallback: treat as number
+                    lines.append(f'        cJSON_AddNumberToObject({variant_name}Data, "{name}", {obj_prefix}.{name});')
+        return lines
+
+    def parse_variant_object(variant_name, fields, obj_dest):
+        lines = []
+        lines.append(f'            cJSON* {variant_name}Data = cJSON_GetObjectItem(objJson, "{variant_name}Data");')
+        lines.append(f'            if ({variant_name}Data) {{')
+        for typ, name, is_array, arr_sz, is_ptr in fields:
+            if is_array and typ.startswith('char'):
+                lines.append(f'                cJSON* {name}Item = cJSON_GetObjectItem({variant_name}Data, "{name}");')
+                lines.append(f'                if (cJSON_IsString({name}Item)) strncpy_s({obj_dest}.{name}, {name}Item->valuestring, sizeof({obj_dest}.{name})-1);')
+            else:
+                if typ == 'DirectX::XMFLOAT3':
+                    lines.append(f'                cJSON* {name}Item = cJSON_GetObjectItem({variant_name}Data, "{name}");')
+                    lines.extend([
+                        f'                if (cJSON_IsArray({name}Item) && cJSON_GetArraySize({name}Item) == 3) {{',
+                        f'                    for (int j = 0; j < 3; ++j)',
+                        f'                        ((float*)&{obj_dest}.{name})[j] = (float)cJSON_GetArrayItem({name}Item, j)->valuedouble;',
+                        f'                }}'
+                    ])
+                elif typ == 'DirectX::XMFLOAT4':
+                    lines.append(f'                cJSON* {name}Item = cJSON_GetObjectItem({variant_name}Data, "{name}");')
+                    lines.extend([
+                        f'                if (cJSON_IsArray({name}Item) && cJSON_GetArraySize({name}Item) == 4) {{',
+                        f'                    for (int j = 0; j < 4; ++j)',
+                        f'                        ((float*)&{obj_dest}.{name})[j] = (float)cJSON_GetArrayItem({name}Item, j)->valuedouble;',
+                        f'                }}'
+                    ])
+                elif typ == 'PrimitiveType':
+                    lines.append(f'                cJSON* {name}Item = cJSON_GetObjectItem({variant_name}Data, "{name}");')
+                    lines.extend([
+                        f'                if (cJSON_IsString({name}Item)) {{',
+                        f'                    const char* typeName = {name}Item->valuestring;',
+                        f'                    int found = -1;',
+                        f'                    for (int idx = 0; idx < PRIMITIVE_COUNT; idx++) {{',
+                        f'                        if (strcmp(typeName, g_primitiveNames[idx]) == 0) {{',
+                        f'                            found = idx;',
+                        f'                            break;',
+                        f'                        }}',
+                        f'                    }}',
+                        f'                    if (found != -1) {obj_dest}.{name} = (PrimitiveType)found;',
+                        f'                    else {{',
+                        f'                        {obj_dest}.{name} = PRIMITIVE_CUBE;',
+                        f'                        fprintf(stderr, "Unknown primitive type \\"%s\\", defaulting to Cube\\n", typeName);',
+                        f'                    }}',
+                        f'                }} else if (cJSON_IsNumber({name}Item)) {{',
+                        f'                    {obj_dest}.{name} = (PrimitiveType){name}Item->valueint;',
+                        f'                }}'
+                    ])
+                else:
+                    # For other numeric types, cast using the type name
+                    lines.append(f'                cJSON* {name}Item = cJSON_GetObjectItem({variant_name}Data, "{name}");')
+                    lines.append(f'                if (cJSON_IsNumber({name}Item)) {obj_dest}.{name} = ({typ}){name}Item->valuedouble;')
+        lines.append(f'            }}')
+        return lines
 
     # Build output C code
     header = common.make_header("meta_scene_json.py")
+
     lines = [
         '#include <cJSON.h>',
         '#include "src/scene_data.h"',
@@ -69,36 +194,22 @@ def generate_scene_json(input_h: Path, output_c: Path) -> bool:
         '',
         '        // Type‑specific data',
         '        switch (obj->objectType) {',
-        '            case OBJECT_PRIMITIVE: {',
-        '                cJSON* primData = cJSON_CreateObject();',
-        '                cJSON_AddStringToObject(primData, "primitiveType", g_primitiveNames[obj->data.primitive.primitiveType]);',
-        '                cJSON_AddItemToObject(objJson, "primitiveData", primData);',
-        '                break;',
-        '            }',
-        '            case OBJECT_HEIGHTFIELD: {',
-        '                cJSON* hfData = cJSON_CreateObject();',
-        '                cJSON_AddNumberToObject(hfData, "width", obj->data.heightfield.width);',
-        '                cJSON_AddItemToObject(objJson, "heightfieldData", hfData);',
-        '                break;',
-        '            }',
-        '            case OBJECT_LOADED_MODEL: {',
-        '                cJSON* modelData = cJSON_CreateObject();',
-        '                cJSON_AddStringToObject(modelData, "pathTo", obj->data.loaded_model.pathTo);',
-        '                cJSON_AddItemToObject(objJson, "loadedModelData", modelData);',
-        '                break;',
-        '            }',
-        '            case OBJECT_SKY: {',
-        '                cJSON* skyData = cJSON_CreateObject();',
-        '                cJSON_AddStringToObject(skyData, "pathToTexture", obj->data.sky_sphere.pathToTexture);',
-        '                cJSON_AddItemToObject(objJson, "skyData", skyData);',
-        '                break;',
-        '            }',
-        '            case OBJECT_WATER: {',
-        '                cJSON* waterData = cJSON_CreateObject();',
-        '                cJSON_AddNumberToObject(waterData, "choppiness", obj->data.water.choppiness);',
-        '                cJSON_AddItemToObject(objJson, "waterData", waterData);',
-        '                break;',
-        '            }',
+    ]
+
+    # Generate cases for each variant
+    for variant_name, fields in variants.items():
+        enum_name = f"OBJECT_{variant_name.upper()}"
+        lines.append(f'            case {enum_name}: {{')
+        data_obj_name = f"{variant_name}Data"
+        lines.append(f'                cJSON* {data_obj_name} = cJSON_CreateObject();')
+        write_lines = write_variant_object(variant_name, fields, f"obj->data.{variant_name}")
+        for l in write_lines:
+            lines.append('    ' + l)
+        lines.append(f'                cJSON_AddItemToObject(objJson, "{variant_name}Data", {data_obj_name});')
+        lines.append(f'                break;')
+        lines.append(f'            }}')
+
+    lines.extend([
         '            default:',
         '                break;',
         '        }',
@@ -181,60 +292,19 @@ def generate_scene_json(input_h: Path, output_c: Path) -> bool:
         '',
         '            // Type‑specific data',
         '            switch (obj->objectType) {',
-        '                case OBJECT_PRIMITIVE: {',
-        '                    cJSON* primData = cJSON_GetObjectItem(objJson, "primitiveData");',
-        '                    if (primData) {',
-        '                        cJSON* primTypeItem = cJSON_GetObjectItem(primData, "primitiveType");',
-        '                        if (cJSON_IsString(primTypeItem)) {',
-        '                            const char* typeName = primTypeItem->valuestring;',
-        '                            int found = -1;',
-        '                            for (int idx = 0; idx < PRIMITIVE_COUNT; idx++) {',
-        '                                if (strcmp(typeName, g_primitiveNames[idx]) == 0) {',
-        '                                    found = idx;',
-        '                                    break;',
-        '                                }',
-        '                            }',
-        '                            if (found != -1) obj->data.primitive.primitiveType = (PrimitiveType)found;',
-        '                            else {',
-        '                                obj->data.primitive.primitiveType = PRIMITIVE_CUBE;',
-        '                                fprintf(stderr, "Unknown primitive type \\"%s\\", defaulting to Cube\\n", typeName);',
-        '                            }',
-        '                        }',
-        '                    }',
-        '                    break;',
-        '                }',
-        '                case OBJECT_HEIGHTFIELD: {',
-        '                    cJSON* hfData = cJSON_GetObjectItem(objJson, "heightfieldData");',
-        '                    if (hfData) {',
-        '                        cJSON* widthItem = cJSON_GetObjectItem(hfData, "width");',
-        '                        if (cJSON_IsNumber(widthItem)) obj->data.heightfield.width = (uint32_t)widthItem->valueint;',
-        '                    }',
-        '                    break;',
-        '                }',
-        '                case OBJECT_LOADED_MODEL: {',
-        '                    cJSON* modelData = cJSON_GetObjectItem(objJson, "loadedModelData");',
-        '                    if (modelData) {',
-        '                        cJSON* pathItem = cJSON_GetObjectItem(modelData, "pathTo");',
-        '                        if (cJSON_IsString(pathItem)) strncpy_s(obj->data.loaded_model.pathTo, pathItem->valuestring, sizeof(obj->data.loaded_model.pathTo)-1);',
-        '                    }',
-        '                    break;',
-        '                }',
-        '                case OBJECT_SKY: {',
-        '                    cJSON* skyData = cJSON_GetObjectItem(objJson, "skyData");',
-        '                    if (skyData) {',
-        '                        cJSON* texItem = cJSON_GetObjectItem(skyData, "pathToTexture");',
-        '                        if (cJSON_IsString(texItem)) strncpy_s(obj->data.sky_sphere.pathToTexture, texItem->valuestring, sizeof(obj->data.sky_sphere.pathToTexture)-1);',
-        '                    }',
-        '                    break;',
-        '                }',
-        '                case OBJECT_WATER: {',
-        '                    cJSON* waterData = cJSON_GetObjectItem(objJson, "waterData");',
-        '                    if (waterData) {',
-        '                        cJSON* chopItem = cJSON_GetObjectItem(waterData, "choppiness");',
-        '                        if (cJSON_IsNumber(chopItem)) obj->data.water.choppiness = (float)chopItem->valuedouble;',
-        '                    }',
-        '                    break;',
-        '                }',
+    ])
+
+    # Generate parsing cases for each variant
+    for variant_name, fields in variants.items():
+        enum_name = f"OBJECT_{variant_name.upper()}"
+        lines.append(f'                case {enum_name}: {{')
+        parse_lines = parse_variant_object(variant_name, fields, f"obj->data.{variant_name}")
+        for l in parse_lines:
+            lines.append('    ' + l)
+        lines.append(f'                    break;')
+        lines.append(f'                }}')
+
+    lines.extend([
         '                default:',
         '                    break;',
         '            }',
@@ -246,7 +316,7 @@ def generate_scene_json(input_h: Path, output_c: Path) -> bool:
         '    cJSON_Delete(root);',
         '    return 1;',
         '}'
-    ]
+    ])
 
     output_c.parent.mkdir(parents=True, exist_ok=True)
     with open(output_c, 'w', encoding='utf-8') as f:

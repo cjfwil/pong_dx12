@@ -27,7 +27,27 @@ change vertex type of heightmap to smallest possible (two 16 bit integers)
 (this is a different type of vertex? same with loaded model? and rejig primitive to not use UVs in the vertex?)
 quadtree heightmap structure?
 
+## multiple vertex types? (leave one vertex type for now)
+- textured lit (pos, norm, uv) usage: loaded models
+- textured unlit (pos, uv) usage: skyspheres? unless i do layered onion for clouds?
+- position only (pos) usage: greyboxed primitives, fullscreen triangle
+- heightfield (x, y, 16bit integers , perhaps UVs or index for texture?) usage: heighfield
+
+## save/load heightmaps from disk
+store path in scene.json, when load build hash table that gets us string(path) to loaded index for when we load (also store index permanently in runtime scene, but not json scene)
+
 ## update objectType in json scene generator to be string text
+
+## only allow certain pipelines for certain objects
+- no heighfield or water pipeline for primitive objects etc...
+at least in gui so we dont press the wrong one and wonder why it looks weird.
+
+## improved topology of heightfield?
+for looking better in low poly style so we do not have the same grid with the same diagonal, use triangle fan structure
+
+## player collision
+- collide with heightmap
+- collide with objects/primitives
 
 ## change primitive render to not sample the texture, just set the greyboxed texture by mathematics in the shader?
 maybe not because we need a texture for the sky sphere inverted sphere?
