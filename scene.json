@@ -1,5 +1,5 @@
 {
-	"objectCount":	20,
+	"objectCount":	21,
 	"objects":	[{
 			"nametag":	"floor",
 			"pos":	[-6.1656446962537e-23, -1.0072767734527588, -1.8521596168354929e-25],
@@ -183,9 +183,9 @@
 			}
 		}, {
 			"nametag":	"HF",
-			"pos":	[-22.213579177856445, -0.79999995231628418, -0.16611897945404053],
+			"pos":	[-22, -0.79999995231628418, 0],
 			"rot":	[0, 0, 0, 1],
-			"scale":	[32, 0.20000000298023224, 32],
+			"scale":	[32, 5, 32],
 			"objectType":	1,
 			"pipeline":	"Heightfield",
 			"heightfieldData":	{
@@ -201,6 +201,17 @@
 			"pipeline":	"Heightfield",
 			"heightfieldData":	{
 				"pathToHeightmap":	"",
+				"width":	256
+			}
+		}, {
+			"nametag":	"HF3",
+			"pos":	[-82.777107238769531, -256, -89.018684387207031],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[2048, 256, 2045],
+			"objectType":	1,
+			"pipeline":	"Heightfield",
+			"heightfieldData":	{
+				"pathToHeightmap":	"assets/clouds.dds",
 				"width":	256
 			}
 		}]

@@ -89,3 +89,6 @@ should we allow for different kinds of vertices?
 ## figure out how to speed up intellisense vscode
 
 ## global debug mode that temporarily overrides rendering (wireframe, normals visualisation)
+
+
+## if all heightmaps are found to have the same size and format then switch to Texture2DArray

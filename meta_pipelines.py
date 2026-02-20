@@ -65,13 +65,13 @@ def generate_pipeline_code(output_path: Path) -> bool:
             lines.append("")
 
         # Vertex shader
-        lines.append(f'    if (!CompileShader(L"shader_source\\\\shaders.hlsl", "{vs_entry}", "vs_5_0", &vertexShaders[{enum_name}], {def_var})) {{')
+        lines.append(f'    if (!CompileShader(L"shader_source\\\\shaders.hlsl", "{vs_entry}", "vs_5_1", &vertexShaders[{enum_name}], {def_var})) {{')
         lines.append("        HRAssert(E_FAIL);")
         lines.append("        return false;")
         lines.append("    }\n")
 
         # Pixel shader
-        lines.append(f'    if (!CompileShader(L"shader_source\\\\shaders.hlsl", "{ps_entry}", "ps_5_0", &pixelShaders[{enum_name}], {def_var})) {{')
+        lines.append(f'    if (!CompileShader(L"shader_source\\\\shaders.hlsl", "{ps_entry}", "ps_5_1", &pixelShaders[{enum_name}], {def_var})) {{')
         lines.append("        HRAssert(E_FAIL);")
         lines.append("        return false;")
         lines.append("    }\n")

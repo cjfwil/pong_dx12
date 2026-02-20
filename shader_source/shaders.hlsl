@@ -8,6 +8,8 @@
 cbuffer PerDrawRootConstants : register(b0)
 {
     float4x4 world;
+    uint heightmapIndex;
+    float per_draw_padding[3];
 };
 
 cbuffer PerFrameConstantBuffer : register(b1)
@@ -28,7 +30,7 @@ cbuffer PerSceneConstantBuffer : register(b2)
 };
 
 Texture2D g_texture : register(t0);
-Texture2D g_heightmap : register(t1); // todo place under heightfield define
+Texture2D g_heightmaps[] : register(t1); // todo place under heightfield define
 SamplerState g_sampler : register(s0);
 // add a separate sampler for sampling heightfield?
 
@@ -77,8 +79,8 @@ PSInput VSMain(VSInput input)
 {
     PSInput result;
 
-#ifdef HEIGHTFIELD    
-    float h = g_heightmap.SampleLevel(g_sampler, input.uv, 0).r;    
+#ifdef HEIGHTFIELD
+    float h = g_heightmaps[heightmapIndex].SampleLevel(g_sampler, input.uv, 0).r;
     float3 worldNormal = normalize(mul(input.norm, (float3x3)world));    
     float3 displacedPos = input.position.xyz + worldNormal * h;
     

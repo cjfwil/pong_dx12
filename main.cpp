@@ -275,6 +275,7 @@ static struct
     ObjectType objectTypes[g_draw_list_element_total] = {};
     PrimitiveType primitiveTypes[g_draw_list_element_total] = {};
     RenderPipeline pipelines[g_draw_list_element_total] = {};
+    UINT heightmapIndices[g_draw_list_element_total] = {};
     struct
     {
         DirectX::XMFLOAT3 pos[g_draw_list_element_total];
@@ -402,11 +403,10 @@ bool PopulateCommandList()
             &currentDrawConstants.world,
             DirectX::XMMatrixTranspose(worldMatrix));
 
-        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
+        currentDrawConstants.heightmapIndex = g_draw_list.heightmapIndices[i];
 
-        // pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView[currentPrimitiveToDraw]);
-        // pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_indexBufferView[currentPrimitiveToDraw]);
-        // pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_indexCount[currentPrimitiveToDraw], 1, 0, 0, 0);
+        
+        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
 
         if (objectType == OBJECT_PRIMITIVE)
         {
@@ -501,7 +501,7 @@ void FillDrawList()
         }
         else if (obj.objectType == ObjectType::OBJECT_HEIGHTFIELD)
         {
-            // todo set index of texture (when you load textures build a hash table of of string_path -> loaded texture index???)
+            g_draw_list.heightmapIndices[drawCount] = graphics_resources.m_heightmapIndices[i];
         }
         g_draw_list.pipelines[drawCount] = obj.pipeline;
         drawCount++;
@@ -1128,8 +1128,6 @@ int main(void)
     read_scene();
 
     // After reading scene, load heightmap textures
-    // We need a command list to perform uploads. Reset command list 0.
-    // todo abstract this   
     {
         pipeline_dx12.m_commandAllocators[0]->Reset();
         pipeline_dx12.m_commandList[0]->Reset(pipeline_dx12.m_commandAllocators[0], nullptr);
@@ -1139,28 +1137,26 @@ int main(void)
             if (g_scene.objects[i].objectType == OBJECT_HEIGHTFIELD)
             {
                 const char *path = g_scene.objects[i].data.heightfield.pathToHeightmap;
-                ID3D12Resource *tex = nullptr;
-                D3D12_GPU_VIRTUAL_ADDRESS gpuAddr = 0;
-
                 if (path[0] != '\0')
                 {
-                    if (LoadTextureFromFile(pipeline_dx12.m_device, pipeline_dx12.m_commandList[0], path, &tex, &gpuAddr))
+                    UINT outIndex = 0;
+                    ID3D12Resource *tex = nullptr; // not needed but kept for consistency
+                    if (LoadTextureFromFile(pipeline_dx12.m_device, pipeline_dx12.m_commandList[0], path, &tex, &outIndex))
                     {
-                        SDL_Log("Loaded heightmap: %s", path);
+                        SDL_Log("Loaded heightmap: %s, index %u", path, outIndex);
+                        graphics_resources.m_heightmapIndices[i] = outIndex;
                     }
                     else
                     {
                         SDL_Log("Failed to load heightmap: %s, using error texture", path);
-                        tex = graphics_resources.m_errorHeightmapTexture;
-                        gpuAddr = graphics_resources.m_errorHeightmapGpuAddr;
+                        graphics_resources.m_heightmapIndices[i] = g_errorHeightmapIndex;
                     }
                 }
                 else
                 {
-                    tex = graphics_resources.m_errorHeightmapTexture;
-                    gpuAddr = graphics_resources.m_errorHeightmapGpuAddr;
+                    // Empty path – use error texture
+                    graphics_resources.m_heightmapIndices[i] = g_errorHeightmapIndex;
                 }
-                SetHeightfieldTexture(i, tex, gpuAddr);
             }
         }
 
@@ -1168,10 +1164,17 @@ int main(void)
         pipeline_dx12.m_commandList[0]->Close();
         ID3D12CommandList *ppLists[] = {pipeline_dx12.m_commandList[0]};
         pipeline_dx12.m_commandQueue->ExecuteCommandLists(1, ppLists);
-    }
 
-    // Wait for uploads to complete
-    WaitForGpu();    
+        // Wait for uploads to complete
+        WaitForGpu();
+
+        // Release upload heaps
+        for (auto *heap : graphics_resources.m_textureUploadHeaps)
+        {
+            heap->Release();
+        }
+        graphics_resources.m_textureUploadHeaps.clear();
+    }
 
     while (program_state.isRunning)
     {

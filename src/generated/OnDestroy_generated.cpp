@@ -2,7 +2,7 @@
 // GENERATED ONDESTROY – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_ondestroy.py
-//   Generated: 2026-02-20 08:58:50
+//   Generated: 2026-02-20 12:46:07
 //------------------------------------------------------------------------
 
 #pragma once
@@ -193,18 +193,13 @@ void OnDestroy()
         graphics_resources.m_heightfieldIndexUpload->Release();
         graphics_resources.m_heightfieldIndexUpload = nullptr;
     }
-    for (UINT i = 0; i < MAX_SCENE_OBJECTS; i++)
+    for (UINT i = 0; i < MAX_HEIGHTMAP_TEXTURES; i++)
     {
-        if (graphics_resources.m_heightmapTextures[i])
+        if (graphics_resources.m_heightmapResources[i])
         {
-            graphics_resources.m_heightmapTextures[i]->Release();
-            graphics_resources.m_heightmapTextures[i] = nullptr;
+            graphics_resources.m_heightmapResources[i]->Release();
+            graphics_resources.m_heightmapResources[i] = nullptr;
         }
-    }
-    if (graphics_resources.m_errorHeightmapTexture)
-    {
-        graphics_resources.m_errorHeightmapTexture->Release();
-        graphics_resources.m_errorHeightmapTexture = nullptr;
     }
 
     // Close fence event handle

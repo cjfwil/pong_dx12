@@ -26,6 +26,7 @@ struct Vertex
 
 static ID3D12Resource *g_vertexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
 static ID3D12Resource *g_indexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
+static UINT g_cbvSrvDescriptorSize = 0;
 
 bool CreateDefaultBuffer(
     ID3D12Device *device,
@@ -130,16 +131,19 @@ static DXGI_FORMAT g_screenFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 static D3D12_CLEAR_VALUE g_rtClearValue = {g_screenFormat, {0.0f, 0.2f, 0.4f, 1.0f}};
 static D3D12_CLEAR_VALUE g_depthOptimizedClearValue = {DXGI_FORMAT_D32_FLOAT, {1.0f, 0}};
 
-static const UINT g_FrameCount = 3; // double, triple buffering etc...
+static constexpr UINT g_FrameCount = 3; // double, triple buffering etc...
 
+// #define MAX_GENERAL_TEXTURES 1024
+#define MAX_HEIGHTMAP_TEXTURES 256
 namespace DescriptorIndices
 {
     constexpr UINT PER_FRAME_CBV_START = 0;
-    constexpr UINT PER_SCENE_CBV = g_FrameCount;    // index after all per-frame CBVs
-    constexpr UINT TEXTURE_SRV = PER_SCENE_CBV + 1; // SRV for texture: after all CBVs
+    constexpr UINT PER_SCENE_CBV = g_FrameCount;                       // index after all per-frame CBVs
+    constexpr UINT TEXTURE_SRV = PER_SCENE_CBV + 1;                    // SRV for texture: after all CBVs
     constexpr UINT HEIGHTMAP_SRV = TEXTURE_SRV + 1; // SRV for heightmap: after all CBVs
-    constexpr UINT NUM_DESCRIPTORS = HEIGHTMAP_SRV + 1;
+    constexpr UINT NUM_DESCRIPTORS = HEIGHTMAP_SRV + MAX_HEIGHTMAP_TEXTURES;
 }
+static UINT g_errorHeightmapIndex = 0;
 
 static struct
 {
@@ -225,6 +229,9 @@ struct PerDrawRootConstants
 {
     DirectX::XMFLOAT4X4 world; // NOTE: changing this to XMFLOAT3x4 screws up rendering on faster gpu for some reason??????
     static_assert(sizeof(world) == 16 * 4, "Dont change type of world matrix, it screws up everything on test bench for some reason (faster GPU)");
+
+    UINT heightmapIndex;
+    UINT padding[3]; // ensure 16‑byte alignment
 };
 static_assert((sizeof(PerDrawRootConstants) <= 256), "Root32BitConstants size must be 256-bytes or smaller (64 DWORDS)");
 
@@ -257,20 +264,19 @@ static struct
     UINT m_heightfieldIndexCount;
     ID3D12Resource *m_heightfieldVertexUpload = nullptr;
     ID3D12Resource *m_heightfieldIndexUpload = nullptr;
-    ID3D12Resource *m_heightmapTextures[MAX_SCENE_OBJECTS] = {};           // resources for each object
-    D3D12_GPU_VIRTUAL_ADDRESS m_heightmapGpuAddrs[MAX_SCENE_OBJECTS] = {}; // GPU addresses for root binding
 
-    ID3D12Resource *m_errorHeightmapTexture = nullptr;
-    D3D12_GPU_VIRTUAL_ADDRESS m_errorHeightmapGpuAddr = 0;
+    ID3D12Resource *m_heightmapResources[MAX_HEIGHTMAP_TEXTURES] = {}; // textures by heap slot
+    UINT m_heightmapIndices[MAX_SCENE_OBJECTS] = {};                   // per‑object heap index
+    UINT m_nextHeightmapIndex = 0;                                     // next free slot (starts at 0)
+    
     std::vector<ID3D12Resource *> m_textureUploadHeaps;
 } graphics_resources;
-
 
 bool LoadTextureFromFile(ID3D12Device *device,
                          ID3D12GraphicsCommandList *cmdList,
                          const char *path,
                          ID3D12Resource **outResource,
-                         D3D12_GPU_VIRTUAL_ADDRESS *outGpuAddr)
+                         UINT *outIndex) // returns allocated index
 {
     // Convert narrow string to wide string
     int wlen = MultiByteToWideChar(CP_UTF8, 0, path, -1, nullptr, 0);
@@ -343,25 +349,34 @@ bool LoadTextureFromFile(ID3D12Device *device,
         D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     cmdList->ResourceBarrier(1, &barrier);
 
-    *outGpuAddr = (*outResource)->GetGPUVirtualAddress();
+    // Allocate index in the heightmap heap
+    UINT index = graphics_resources.m_nextHeightmapIndex;
+    if (index >= MAX_HEIGHTMAP_TEXTURES)
+    {
+        SDL_Log("Out of heightmap texture slots!");
+        (*outResource)->Release();
+        *outResource = nullptr;
+        uploadHeap->Release();
+        return false;
+    }
+
+    // Create SRV in the main heap at DescriptorIndices::HEIGHTMAP_SRV + index
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(
+        pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart(),
+        DescriptorIndices::HEIGHTMAP_SRV + index,
+        g_cbvSrvDescriptorSize);
+    device->CreateShaderResourceView(*outResource, nullptr, cpuHandle);
+
+    // Store the resource in the array
+    graphics_resources.m_heightmapResources[index] = *outResource;
+    graphics_resources.m_nextHeightmapIndex = index + 1;
+
+    *outIndex = index;
 
     // Track upload heap for later release
     graphics_resources.m_textureUploadHeaps.push_back(uploadHeap);
 
     return true;
-}
-
-void SetHeightfieldTexture(int objectIndex, ID3D12Resource *texture, D3D12_GPU_VIRTUAL_ADDRESS gpuAddr)
-{
-    if (objectIndex >= 0 && objectIndex < MAX_SCENE_OBJECTS)
-    {
-        if (graphics_resources.m_heightmapTextures[objectIndex])
-        {
-            graphics_resources.m_heightmapTextures[objectIndex]->Release();
-        }
-        graphics_resources.m_heightmapTextures[objectIndex] = texture;
-        graphics_resources.m_heightmapGpuAddrs[objectIndex] = gpuAddr;
-    }
 }
 
 bool CreateHeightfieldMesh(
@@ -834,6 +849,8 @@ bool LoadPipeline(HWND hwnd)
 #if defined(_DEBUG)
     // Enable the debug layer (requires the Graphics Tools "optional feature").
     // NOTE: Enabling the debug layer after device creation will invalidate the active device.
+    bool useDxDebugLayer = false;
+    if (useDxDebugLayer)
     {
         ID3D12Debug *debugController;
         if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController))))
@@ -1062,8 +1079,9 @@ bool CompileShader(
 {
     UINT compileFlags = 0;
 #if defined(_DEBUG)
-    compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+    compileFlags |= D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
 #endif
+    compileFlags |= D3DCOMPILE_ENABLE_UNBOUNDED_DESCRIPTOR_TABLES;
 
     ID3DBlob *errorBlob = nullptr;
     HRESULT hr = D3DCompileFromFile(
@@ -1114,7 +1132,7 @@ bool LoadAssets()
         cbvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
         CD3DX12_DESCRIPTOR_RANGE1 srvRanges[2];
         srvRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
-        srvRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
+        srvRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, MAX_HEIGHTMAP_TEXTURES, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
 
         CD3DX12_ROOT_PARAMETER1 rootParameters[4];
         rootParameters[0].InitAsConstants(sizeof(PerDrawRootConstants) / 4, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);             // root constants
@@ -1195,6 +1213,10 @@ bool LoadAssets()
         }
     }
 
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuStart(pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart());
+    UINT cbvSrvDescriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    g_cbvSrvDescriptorSize = cbvSrvDescriptorSize;
+
     // Create fallback error texture (4x4 pink/black checkerboard)
     {
         const UINT errWidth = 4, errHeight = 4;
@@ -1240,7 +1262,7 @@ bool LoadAssets()
             &errDesc,
             D3D12_RESOURCE_STATE_COPY_DEST,
             nullptr,
-            IID_PPV_ARGS(&graphics_resources.m_errorHeightmapTexture));
+            IID_PPV_ARGS(&graphics_resources.m_heightmapResources[0]));
 
         if (FAILED(hr))
         {
@@ -1249,429 +1271,435 @@ bool LoadAssets()
             return false; // or handle appropriately
         }
 
-    
-    
-
-    ID3D12Resource *errUpload = nullptr;
-    UINT64 uploadSize = GetRequiredIntermediateSize(graphics_resources.m_errorHeightmapTexture, 0, 1);
-    HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-        D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(uploadSize),
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(&errUpload)));
-
-    D3D12_SUBRESOURCE_DATA subData = {};
-    subData.pData = errData.data();
-    subData.RowPitch = errWidth * 4;
-    subData.SlicePitch = subData.RowPitch * errHeight;
-
-    UpdateSubresources(pipeline_dx12.m_commandList[0],
-                       graphics_resources.m_errorHeightmapTexture,
-                       errUpload,
-                       0, 0, 1, &subData);
-
-    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        graphics_resources.m_errorHeightmapTexture,
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-    pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
-
-    graphics_resources.m_errorHeightmapGpuAddr = graphics_resources.m_errorHeightmapTexture->GetGPUVirtualAddress();
-    graphics_resources.m_textureUploadHeaps.push_back(errUpload);
-}
-
-// create the shared heightfield mesh
-const UINT heightfieldGridSize = 256; // 256x256 quads -> 257x257 vertices
-if (!CreateHeightfieldMesh(
-        pipeline_dx12.m_device,
-        pipeline_dx12.m_commandList[0],
-        heightfieldGridSize,
-        graphics_resources.m_heightfieldVertexBuffer,
-        graphics_resources.m_heightfieldVertexView,
-        graphics_resources.m_heightfieldIndexBuffer,
-        graphics_resources.m_heightfieldIndexView,
-        graphics_resources.m_heightfieldIndexCount))
-{
-    HRAssert(E_ABORT);
-    return false;
-}
-
-CD3DX12_CPU_DESCRIPTOR_HANDLE cpuStart(pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart());
-UINT cbvSrvDescriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-// create per frame constant buffer for each frame in the frame buffer
-for (UINT i = 0; i < g_FrameCount; i++)
-{
-    const UINT PerFrameConstantBufferSize = sizeof(PerFrameConstantBuffer); // CB size is required to be 256-byte aligned.
-
-    if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+        ID3D12Resource *errUpload = nullptr;
+        UINT64 uploadSize = GetRequiredIntermediateSize(graphics_resources.m_heightmapResources[0], 0, 1);
+        HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
             &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
             D3D12_HEAP_FLAG_NONE,
-            &CD3DX12_RESOURCE_DESC::Buffer(PerFrameConstantBufferSize),
+            &CD3DX12_RESOURCE_DESC::Buffer(uploadSize),
             D3D12_RESOURCE_STATE_GENERIC_READ,
             nullptr,
-            IID_PPV_ARGS(&graphics_resources.m_PerFrameConstantBuffer[i]))))
+            IID_PPV_ARGS(&errUpload)));
+
+        D3D12_SUBRESOURCE_DATA subData = {};
+        subData.pData = errData.data();
+        subData.RowPitch = errWidth * 4;
+        subData.SlicePitch = subData.RowPitch * errHeight;
+
+        UpdateSubresources(pipeline_dx12.m_commandList[0],
+                           graphics_resources.m_heightmapResources[0],
+                           errUpload,
+                           0, 0, 1, &subData);
+
+        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+            graphics_resources.m_heightmapResources[0],
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
+        
+        graphics_resources.m_textureUploadHeaps.push_back(errUpload);
+
+        // After resource creation, create SRV at HEIGHTMAP_SRV + 0
+        UINT errorIndex = 0;
+        CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(
+            pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart(),
+            DescriptorIndices::HEIGHTMAP_SRV + errorIndex,
+            cbvSrvDescriptorSize);
+        pipeline_dx12.m_device->CreateShaderResourceView(graphics_resources.m_heightmapResources[0], nullptr, cpuHandle);
+
+        graphics_resources.m_heightmapResources[errorIndex] = graphics_resources.m_heightmapResources[0];
+        graphics_resources.m_nextHeightmapIndex = 1; // next free index is 1
+        g_errorHeightmapIndex = errorIndex;
+    }
+
+    // create the shared heightfield mesh
+    const UINT heightfieldGridSize = 256; // 256x256 quads -> 257x257 vertices
+    if (!CreateHeightfieldMesh(
+            pipeline_dx12.m_device,
+            pipeline_dx12.m_commandList[0],
+            heightfieldGridSize,
+            graphics_resources.m_heightfieldVertexBuffer,
+            graphics_resources.m_heightfieldVertexView,
+            graphics_resources.m_heightfieldIndexBuffer,
+            graphics_resources.m_heightfieldIndexView,
+            graphics_resources.m_heightfieldIndexCount))
+    {
+        HRAssert(E_ABORT);
         return false;
+    }
 
-    // Describe and create a constant buffer view.
-    D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-    cbvDesc.BufferLocation = graphics_resources.m_PerFrameConstantBuffer[i]->GetGPUVirtualAddress();
-    cbvDesc.SizeInBytes = PerFrameConstantBufferSize;
+    // create per frame constant buffer for each frame in the frame buffer
+    for (UINT i = 0; i < g_FrameCount; i++)
+    {
+        const UINT PerFrameConstantBufferSize = sizeof(PerFrameConstantBuffer); // CB size is required to be 256-byte aligned.
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(
-        cpuStart,
-        (INT)i,
-        cbvSrvDescriptorSize);
-    pipeline_dx12.m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);
+        if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+                &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+                D3D12_HEAP_FLAG_NONE,
+                &CD3DX12_RESOURCE_DESC::Buffer(PerFrameConstantBufferSize),
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(&graphics_resources.m_PerFrameConstantBuffer[i]))))
+            return false;
 
-    // Map and initialize the constant buffer. We don't unmap this until the
-    // app closes. Keeping things mapped for the lifetime of the resource is okay.
-    CD3DX12_RANGE readRange(0, 0); // We do not intend to read from this resource on the CPU.
-    if (!HRAssert(graphics_resources.m_PerFrameConstantBuffer[i]->Map(0, &readRange, reinterpret_cast<void **>(&graphics_resources.m_pCbvDataBegin[i]))))
-        return false;
-    memcpy(graphics_resources.m_pCbvDataBegin[i], &graphics_resources.m_PerFrameConstantBufferData, sizeof(graphics_resources.m_PerFrameConstantBufferData));
-}
+        // Describe and create a constant buffer view.
+        D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+        cbvDesc.BufferLocation = graphics_resources.m_PerFrameConstantBuffer[i]->GetGPUVirtualAddress();
+        cbvDesc.SizeInBytes = PerFrameConstantBufferSize;
 
-// create per scene constant buffer that just sits and gets updated rarely
-{
-    const UINT PerSceneConstantBufferSize = sizeof(PerSceneConstantBuffer); // CB size is required to be 256-byte aligned.
+        CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(
+            cpuStart,
+            (INT)i,
+            cbvSrvDescriptorSize);
+        pipeline_dx12.m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);
 
-    HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-        D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(PerSceneConstantBufferSize),
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(&graphics_resources.m_PerSceneConstantBuffer)));
+        // Map and initialize the constant buffer. We don't unmap this until the
+        // app closes. Keeping things mapped for the lifetime of the resource is okay.
+        CD3DX12_RANGE readRange(0, 0); // We do not intend to read from this resource on the CPU.
+        if (!HRAssert(graphics_resources.m_PerFrameConstantBuffer[i]->Map(0, &readRange, reinterpret_cast<void **>(&graphics_resources.m_pCbvDataBegin[i]))))
+            return false;
+        memcpy(graphics_resources.m_pCbvDataBegin[i], &graphics_resources.m_PerFrameConstantBufferData, sizeof(graphics_resources.m_PerFrameConstantBufferData));
+    }
 
-    D3D12_CONSTANT_BUFFER_VIEW_DESC perSceneCbvDesc = {};
-    perSceneCbvDesc.BufferLocation = graphics_resources.m_PerSceneConstantBuffer->GetGPUVirtualAddress();
-    perSceneCbvDesc.SizeInBytes = PerSceneConstantBufferSize;
+    // create per scene constant buffer that just sits and gets updated rarely
+    {
+        const UINT PerSceneConstantBufferSize = sizeof(PerSceneConstantBuffer); // CB size is required to be 256-byte aligned.
 
-    // Per-scene CBV goes at descriptor index g_FrameCount + 1 (after per-frame CBVs)
-    CD3DX12_CPU_DESCRIPTOR_HANDLE perSceneCbvHandle(
-        cpuStart,
-        (INT)(DescriptorIndices::PER_SCENE_CBV),
-        cbvSrvDescriptorSize);
-    pipeline_dx12.m_device->CreateConstantBufferView(&perSceneCbvDesc, perSceneCbvHandle);
+        HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Buffer(PerSceneConstantBufferSize),
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&graphics_resources.m_PerSceneConstantBuffer)));
 
-    // todo: abstract this so i can call it from main when i want it updated
-    // Map and initialize the per-scene constant buffer
-    CD3DX12_RANGE readRange(0, 0);
-    HRAssert(graphics_resources.m_PerSceneConstantBuffer->Map(
-        0, &readRange,
-        reinterpret_cast<void **>(&graphics_resources.m_pPerSceneCbvDataBegin)));
+        D3D12_CONSTANT_BUFFER_VIEW_DESC perSceneCbvDesc = {};
+        perSceneCbvDesc.BufferLocation = graphics_resources.m_PerSceneConstantBuffer->GetGPUVirtualAddress();
+        perSceneCbvDesc.SizeInBytes = PerSceneConstantBufferSize;
 
-    graphics_resources.m_PerSceneConstantBufferData.ambient_colour = DirectX::XMFLOAT4(0.2f, 0.2f, 0.3f, 1.0f);
-    graphics_resources.m_PerSceneConstantBufferData.light_direction = DirectX::XMFLOAT4(0.2f, 0.2f, 0.3f, 1.0f);
-    graphics_resources.m_PerSceneConstantBufferData.light_colour = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+        // Per-scene CBV goes at descriptor index g_FrameCount + 1 (after per-frame CBVs)
+        CD3DX12_CPU_DESCRIPTOR_HANDLE perSceneCbvHandle(
+            cpuStart,
+            (INT)(DescriptorIndices::PER_SCENE_CBV),
+            cbvSrvDescriptorSize);
+        pipeline_dx12.m_device->CreateConstantBufferView(&perSceneCbvDesc, perSceneCbvHandle);
 
-    memcpy(graphics_resources.m_pPerSceneCbvDataBegin,
-           &graphics_resources.m_PerSceneConstantBufferData,
-           sizeof(graphics_resources.m_PerSceneConstantBufferData));
-}
+        // todo: abstract this so i can call it from main when i want it updated
+        // Map and initialize the per-scene constant buffer
+        CD3DX12_RANGE readRange(0, 0);
+        HRAssert(graphics_resources.m_PerSceneConstantBuffer->Map(
+            0, &readRange,
+            reinterpret_cast<void **>(&graphics_resources.m_pPerSceneCbvDataBegin)));
 
-// Note: ComPtr's are CPU objects but this resource needs to stay in scope until
-// the command list that references it has finished executing on the GPU.
-// We will flush the GPU at the end of this method to ensure the resource is not
-// prematurely destroyed.
-ID3D12Resource *textureUploadHeap;
-ID3D12Resource *stagingHeap = nullptr;
+        graphics_resources.m_PerSceneConstantBufferData.ambient_colour = DirectX::XMFLOAT4(0.2f, 0.2f, 0.3f, 1.0f);
+        graphics_resources.m_PerSceneConstantBufferData.light_direction = DirectX::XMFLOAT4(0.2f, 0.2f, 0.3f, 1.0f);
+        graphics_resources.m_PerSceneConstantBufferData.light_colour = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 
-// Create the texture.
-{
+        memcpy(graphics_resources.m_pPerSceneCbvDataBegin,
+               &graphics_resources.m_PerSceneConstantBufferData,
+               sizeof(graphics_resources.m_PerSceneConstantBufferData));
+    }
+
+    // Note: ComPtr's are CPU objects but this resource needs to stay in scope until
+    // the command list that references it has finished executing on the GPU.
+    // We will flush the GPU at the end of this method to ensure the resource is not
+    // prematurely destroyed.
+    ID3D12Resource *textureUploadHeap;
+    ID3D12Resource *stagingHeap = nullptr;
+
+    // Create the texture.
+    {
 // Save it as DDS (one-time operation)
 #if defined(_DEBUG)
-    {
-        std::vector<UINT8> texture = GenerateTextureData();
-        // Create ScratchImage from your generated data
-        DirectX::ScratchImage image;
-
-        // Correct API: Initialize without data first
-        HRESULT hr = image.Initialize2D(
-            DXGI_FORMAT_R8G8B8A8_UNORM,
-            TextureWidth,
-            TextureHeight,
-            1, // arraySize
-            1  // mipLevels (just base level for now)
-        );
-
-        if (SUCCEEDED(hr))
         {
-            // Get the image and copy data
-            const DirectX::Image *firstImage = image.GetImage(0, 0, 0);
-            if (firstImage)
+            std::vector<UINT8> texture = GenerateTextureData();
+            // Create ScratchImage from your generated data
+            DirectX::ScratchImage image;
+
+            // Correct API: Initialize without data first
+            HRESULT hr = image.Initialize2D(
+                DXGI_FORMAT_R8G8B8A8_UNORM,
+                TextureWidth,
+                TextureHeight,
+                1, // arraySize
+                1  // mipLevels (just base level for now)
+            );
+
+            if (SUCCEEDED(hr))
             {
-                // Check if rowPitch matches expected
-                if (firstImage->rowPitch == TextureWidth * TexturePixelSize)
+                // Get the image and copy data
+                const DirectX::Image *firstImage = image.GetImage(0, 0, 0);
+                if (firstImage)
                 {
-                    memcpy(firstImage->pixels, texture.data(), texture.size());
-                }
-                else
-                {
-                    // Copy row by row if pitch differs
-                    const UINT8 *src = texture.data();
-                    UINT8 *dest = firstImage->pixels;
-                    for (UINT row = 0; row < TextureHeight; ++row)
+                    // Check if rowPitch matches expected
+                    if (firstImage->rowPitch == TextureWidth * TexturePixelSize)
                     {
-                        memcpy(dest, src, TextureWidth * TexturePixelSize);
-                        dest += firstImage->rowPitch;
-                        src += TextureWidth * TexturePixelSize;
+                        memcpy(firstImage->pixels, texture.data(), texture.size());
+                    }
+                    else
+                    {
+                        // Copy row by row if pitch differs
+                        const UINT8 *src = texture.data();
+                        UINT8 *dest = firstImage->pixels;
+                        for (UINT row = 0; row < TextureHeight; ++row)
+                        {
+                            memcpy(dest, src, TextureWidth * TexturePixelSize);
+                            dest += firstImage->rowPitch;
+                            src += TextureWidth * TexturePixelSize;
+                        }
+                    }
+                }
+
+                // Generate mipmaps
+                DirectX::ScratchImage mipChain;
+                if (SUCCEEDED(GenerateMipMaps(
+                        *image.GetImage(0, 0, 0),
+                        DirectX::TEX_FILTER_BOX,
+                        0, // Generate all mip levels
+                        mipChain)))
+                {
+                    // Save to DDS file
+                    hr = DirectX::SaveToDDSFile(
+                        mipChain.GetImages(),
+                        mipChain.GetImageCount(),
+                        mipChain.GetMetadata(),
+                        DirectX::DDS_FLAGS_NONE,
+                        L"assets/checkerboard.dds");
+
+                    if (SUCCEEDED(hr))
+                    {
+                        SDL_Log("Saved texture to checkerboard.dds with %zu mip levels",
+                                mipChain.GetImageCount());
                     }
                 }
             }
-
-            // Generate mipmaps
-            DirectX::ScratchImage mipChain;
-            if (SUCCEEDED(GenerateMipMaps(
-                    *image.GetImage(0, 0, 0),
-                    DirectX::TEX_FILTER_BOX,
-                    0, // Generate all mip levels
-                    mipChain)))
-            {
-                // Save to DDS file
-                hr = DirectX::SaveToDDSFile(
-                    mipChain.GetImages(),
-                    mipChain.GetImageCount(),
-                    mipChain.GetMetadata(),
-                    DirectX::DDS_FLAGS_NONE,
-                    L"assets/checkerboard.dds");
-
-                if (SUCCEEDED(hr))
-                {
-                    SDL_Log("Saved texture to checkerboard.dds with %zu mip levels",
-                            mipChain.GetImageCount());
-                }
-            }
         }
-    }
 #endif
 
-    // Now load from DDS file
-    DirectX::ScratchImage loadedImage;
-    HRESULT hr = DirectX::LoadFromDDSFile(
-        L"assets/checkerboard.dds",
-        DirectX::DDS_FLAGS_NONE,
-        nullptr,
-        loadedImage);
+        // Now load from DDS file
+        DirectX::ScratchImage loadedImage;
+        HRESULT hr = DirectX::LoadFromDDSFile(
+            L"assets/checkerboard.dds",
+            DirectX::DDS_FLAGS_NONE,
+            nullptr,
+            loadedImage);
 
-    if (!HRAssert(hr, "Failed to load checkerboard.dds"))
-        return false;
+        if (!HRAssert(hr, "Failed to load checkerboard.dds"))
+            return false;
 
-    const DirectX::TexMetadata &metadata = loadedImage.GetMetadata();
-    const DirectX::Image *images = loadedImage.GetImages();
-    size_t imageCount = loadedImage.GetImageCount();
+        const DirectX::TexMetadata &metadata = loadedImage.GetMetadata();
+        const DirectX::Image *images = loadedImage.GetImages();
+        size_t imageCount = loadedImage.GetImageCount();
 
-    SDL_Log("Loaded DDS with %zu mip levels, %zu x %zu",
-            metadata.mipLevels, metadata.width, metadata.height);
+        SDL_Log("Loaded DDS with %zu mip levels, %zu x %zu",
+                metadata.mipLevels, metadata.width, metadata.height);
 
-    // Cast to avoid conversion warnings
-    UINT mipLevelsUINT = static_cast<UINT>(metadata.mipLevels);
-    UINT widthUINT = static_cast<UINT>(metadata.width);
-    UINT heightUINT = static_cast<UINT>(metadata.height);
-    UINT imageCountUINT = static_cast<UINT>(imageCount);
+        // Cast to avoid conversion warnings
+        UINT mipLevelsUINT = static_cast<UINT>(metadata.mipLevels);
+        UINT widthUINT = static_cast<UINT>(metadata.width);
+        UINT heightUINT = static_cast<UINT>(metadata.height);
+        UINT imageCountUINT = static_cast<UINT>(imageCount);
 
-    // Describe and create a Texture2D WITH MIP LEVELS
-    D3D12_RESOURCE_DESC textureDesc = {};
-    textureDesc.MipLevels = static_cast<UINT16>(mipLevelsUINT); // Use loaded mip levels!
-    textureDesc.Format = metadata.format;
-    textureDesc.Width = widthUINT;
-    textureDesc.Height = heightUINT;
-    textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
-    textureDesc.DepthOrArraySize = 1;
-    textureDesc.SampleDesc.Count = 1;
-    textureDesc.SampleDesc.Quality = 0;
-    textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        // Describe and create a Texture2D WITH MIP LEVELS
+        D3D12_RESOURCE_DESC textureDesc = {};
+        textureDesc.MipLevels = static_cast<UINT16>(mipLevelsUINT); // Use loaded mip levels!
+        textureDesc.Format = metadata.format;
+        textureDesc.Width = widthUINT;
+        textureDesc.Height = heightUINT;
+        textureDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+        textureDesc.DepthOrArraySize = 1;
+        textureDesc.SampleDesc.Count = 1;
+        textureDesc.SampleDesc.Quality = 0;
+        textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 
-    if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+        if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+                &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+                D3D12_HEAP_FLAG_NONE,
+                &textureDesc,
+                D3D12_RESOURCE_STATE_COPY_DEST,
+                nullptr,
+                IID_PPV_ARGS(&graphics_resources.m_texture))))
+            return false;
+
+        // Calculate upload buffer size for ALL mip levels
+        const UINT64 uploadBufferSize = GetRequiredIntermediateSize(
+            graphics_resources.m_texture,
+            0,
+            imageCountUINT // Already cast to UINT
+        );
+
+        // Create the GPU upload buffer.
+        if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+                &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+                D3D12_HEAP_FLAG_NONE,
+                &CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
+                D3D12_RESOURCE_STATE_GENERIC_READ,
+                nullptr,
+                IID_PPV_ARGS(&textureUploadHeap))))
+            return false;
+
+        // Prepare subresource data for ALL mip levels
+        std::vector<D3D12_SUBRESOURCE_DATA> subresources(imageCount);
+        for (size_t i = 0; i < imageCount; ++i)
+        {
+            subresources[i].pData = images[i].pixels;
+            subresources[i].RowPitch = static_cast<LONG_PTR>(images[i].rowPitch);
+            subresources[i].SlicePitch = static_cast<LONG_PTR>(images[i].slicePitch);
+        }
+
+        // Copy ALL mip levels to the GPU
+        UpdateSubresources(pipeline_dx12.m_commandList[0],
+                           graphics_resources.m_texture,
+                           textureUploadHeap,
+                           0, 0,
+                           imageCountUINT, // Already cast to UINT
+                           subresources.data());
+
+        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+            graphics_resources.m_texture,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
+
+        UINT increment = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(
+            D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE cpuSrv(cpuStart);
+        cpuSrv.Offset(DescriptorIndices::TEXTURE_SRV, increment);
+
+        // Describe and create a SRV for the texture WITH ALL MIP LEVELS
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Format = textureDesc.Format;
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        srvDesc.Texture2D.MostDetailedMip = 0;
+        srvDesc.Texture2D.MipLevels = mipLevelsUINT; // ALL mips!
+        srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
+        pipeline_dx12.m_device->CreateShaderResourceView(graphics_resources.m_texture, &srvDesc, cpuSrv);
+    }
+
+    {
+        // Heightmap texture (R8_UNORM, 256x256)
+        const UINT hmWidth = 256, hmHeight = 256;
+        const UINT hmPixelSize = 1;                         // bytes per pixel
+        std::vector<UINT8> hmData(hmWidth * hmHeight, 128); // mid grey
+
+        // todo: load from dds here, if not exist then make up one then write it, and reload it
+        for (int x = 0; x < hmWidth; ++x)
+        {
+            for (int y = 0; y < hmWidth; ++y)
+            {
+                hmData[x + y * hmWidth] = (int)(rand() % 255);
+            }
+        }
+
+        // Describe the texture
+        D3D12_RESOURCE_DESC hmDesc = {};
+        hmDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+        hmDesc.Width = hmWidth;
+        hmDesc.Height = hmHeight;
+        hmDesc.DepthOrArraySize = 1;
+        hmDesc.MipLevels = 1;
+        hmDesc.Format = DXGI_FORMAT_R8_UNORM;
+        hmDesc.SampleDesc.Count = 1;
+        hmDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+        // Create default heap texture
+        HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
             &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
             D3D12_HEAP_FLAG_NONE,
-            &textureDesc,
+            &hmDesc,
             D3D12_RESOURCE_STATE_COPY_DEST,
             nullptr,
-            IID_PPV_ARGS(&graphics_resources.m_texture))))
-        return false;
+            IID_PPV_ARGS(&graphics_resources.m_heightmapTexture)));
 
-    // Calculate upload buffer size for ALL mip levels
-    const UINT64 uploadBufferSize = GetRequiredIntermediateSize(
-        graphics_resources.m_texture,
-        0,
-        imageCountUINT // Already cast to UINT
-    );
-
-    // Create the GPU upload buffer.
-    if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+        // Upload via staging heap
+        UINT64 uploadSize = GetRequiredIntermediateSize(graphics_resources.m_heightmapTexture, 0, 1);
+        HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
             &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
             D3D12_HEAP_FLAG_NONE,
-            &CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
+            &CD3DX12_RESOURCE_DESC::Buffer(uploadSize),
             D3D12_RESOURCE_STATE_GENERIC_READ,
             nullptr,
-            IID_PPV_ARGS(&textureUploadHeap))))
+            IID_PPV_ARGS(&stagingHeap)));
+
+        D3D12_SUBRESOURCE_DATA subData = {};
+        subData.pData = hmData.data();
+        subData.RowPitch = hmWidth * hmPixelSize;
+        subData.SlicePitch = subData.RowPitch * hmHeight;
+
+        UpdateSubresources(pipeline_dx12.m_commandList[0],
+                           graphics_resources.m_heightmapTexture,
+                           stagingHeap,
+                           0, 0, 1, &subData);
+
+        // Transition to shader‑readable state
+        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+            graphics_resources.m_heightmapTexture,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
+        pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
+
+        // Create SRV in the main heap at DescriptorIndices::HEIGHTMAP_SRV
+        UINT inc = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        CD3DX12_CPU_DESCRIPTOR_HANDLE cpuSrv(cpuStart);
+        cpuSrv.Offset(DescriptorIndices::HEIGHTMAP_SRV, inc);
+
+        D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+        srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+        srvDesc.Format = DXGI_FORMAT_R8_UNORM;
+        srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+        srvDesc.Texture2D.MostDetailedMip = 0;
+        srvDesc.Texture2D.MipLevels = 1;
+        pipeline_dx12.m_device->CreateShaderResourceView(graphics_resources.m_heightmapTexture, &srvDesc, cpuSrv);
+
+        // Store CPU data for later editing
+        graphics_resources.m_heightmapData = (UINT8 *)malloc(hmWidth * hmHeight);
+        memcpy(graphics_resources.m_heightmapData, hmData.data(), hmWidth * hmHeight);
+        graphics_resources.m_heightmapWidth = hmWidth;
+        graphics_resources.m_heightmapHeight = hmHeight;
+
+        // Add stagingHeap to a list of temporary resources to release after WaitForGpu()
+        // (For now, we'll just keep it and release at the end of LoadAssets)
+    }
+
+    // Close the command list and execute it to begin the initial GPU setup.
+    if (!HRAssert(pipeline_dx12.m_commandList[0]->Close()))
         return false;
+    ID3D12CommandList *ppCommandLists[] = {pipeline_dx12.m_commandList[0]};
+    pipeline_dx12.m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
-    // Prepare subresource data for ALL mip levels
-    std::vector<D3D12_SUBRESOURCE_DATA> subresources(imageCount);
-    for (size_t i = 0; i < imageCount; ++i)
+    // Create synchronization objects and wait until assets have been uploaded to the GPU.
     {
-        subresources[i].pData = images[i].pixels;
-        subresources[i].RowPitch = static_cast<LONG_PTR>(images[i].rowPitch);
-        subresources[i].SlicePitch = static_cast<LONG_PTR>(images[i].slicePitch);
-    }
-
-    // Copy ALL mip levels to the GPU
-    UpdateSubresources(pipeline_dx12.m_commandList[0],
-                       graphics_resources.m_texture,
-                       textureUploadHeap,
-                       0, 0,
-                       imageCountUINT, // Already cast to UINT
-                       subresources.data());
-
-    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        graphics_resources.m_texture,
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-    pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
-
-    UINT increment = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(
-        D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuSrv(cpuStart);
-    cpuSrv.Offset(DescriptorIndices::TEXTURE_SRV, increment);
-
-    // Describe and create a SRV for the texture WITH ALL MIP LEVELS
-    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Format = textureDesc.Format;
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Texture2D.MostDetailedMip = 0;
-    srvDesc.Texture2D.MipLevels = mipLevelsUINT; // ALL mips!
-    srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-    pipeline_dx12.m_device->CreateShaderResourceView(graphics_resources.m_texture, &srvDesc, cpuSrv);
-}
-
-{
-    // Heightmap texture (R8_UNORM, 256x256)
-    const UINT hmWidth = 256, hmHeight = 256;
-    const UINT hmPixelSize = 1;                         // bytes per pixel
-    std::vector<UINT8> hmData(hmWidth * hmHeight, 128); // mid grey
-
-    // todo: load from dds here, if not exist then make up one then write it, and reload it
-    for (int x = 0; x < hmWidth; ++x)
-    {
-        for (int y = 0; y < hmWidth; ++y)
-        {
-            hmData[x + y * hmWidth] = (int)(rand() % 255);
-        }
-    }
-
-    // Describe the texture
-    D3D12_RESOURCE_DESC hmDesc = {};
-    hmDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-    hmDesc.Width = hmWidth;
-    hmDesc.Height = hmHeight;
-    hmDesc.DepthOrArraySize = 1;
-    hmDesc.MipLevels = 1;
-    hmDesc.Format = DXGI_FORMAT_R8_UNORM;
-    hmDesc.SampleDesc.Count = 1;
-    hmDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
-
-    // Create default heap texture
-    HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-        D3D12_HEAP_FLAG_NONE,
-        &hmDesc,
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        nullptr,
-        IID_PPV_ARGS(&graphics_resources.m_heightmapTexture)));
-
-    // Upload via staging heap
-    UINT64 uploadSize = GetRequiredIntermediateSize(graphics_resources.m_heightmapTexture, 0, 1);
-    HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-        D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(uploadSize),
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(&stagingHeap)));
-
-    D3D12_SUBRESOURCE_DATA subData = {};
-    subData.pData = hmData.data();
-    subData.RowPitch = hmWidth * hmPixelSize;
-    subData.SlicePitch = subData.RowPitch * hmHeight;
-
-    UpdateSubresources(pipeline_dx12.m_commandList[0],
-                       graphics_resources.m_heightmapTexture,
-                       stagingHeap,
-                       0, 0, 1, &subData);
-
-    // Transition to shader‑readable state
-    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        graphics_resources.m_heightmapTexture,
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-    pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
-
-    // Create SRV in the main heap at DescriptorIndices::HEIGHTMAP_SRV
-    UINT inc = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuSrv(cpuStart);
-    cpuSrv.Offset(DescriptorIndices::HEIGHTMAP_SRV, inc);
-
-    D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-    srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-    srvDesc.Format = DXGI_FORMAT_R8_UNORM;
-    srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
-    srvDesc.Texture2D.MostDetailedMip = 0;
-    srvDesc.Texture2D.MipLevels = 1;
-    pipeline_dx12.m_device->CreateShaderResourceView(graphics_resources.m_heightmapTexture, &srvDesc, cpuSrv);
-
-    // Store CPU data for later editing
-    graphics_resources.m_heightmapData = (UINT8 *)malloc(hmWidth * hmHeight);
-    memcpy(graphics_resources.m_heightmapData, hmData.data(), hmWidth * hmHeight);
-    graphics_resources.m_heightmapWidth = hmWidth;
-    graphics_resources.m_heightmapHeight = hmHeight;
-
-    // Add stagingHeap to a list of temporary resources to release after WaitForGpu()
-    // (For now, we'll just keep it and release at the end of LoadAssets)
-}
-
-// Close the command list and execute it to begin the initial GPU setup.
-if (!HRAssert(pipeline_dx12.m_commandList[0]->Close()))
-    return false;
-ID3D12CommandList *ppCommandLists[] = {pipeline_dx12.m_commandList[0]};
-pipeline_dx12.m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-
-// Create synchronization objects and wait until assets have been uploaded to the GPU.
-{
-    if (!HRAssert(pipeline_dx12.m_device->CreateFence(sync_state.m_fenceValues[sync_state.m_frameIndex], D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&sync_state.m_fence))))
-        return false;
-    sync_state.m_fenceValues[sync_state.m_frameIndex]++;
-
-    for (UINT i = 0; i < g_FrameCount; i++)
-    {
-        sync_state.m_fenceValues[i] = 1;
-    }
-
-    // Create an event handle to use for frame synchronization.
-    sync_state.m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-    if (sync_state.m_fenceEvent == nullptr)
-    {
-        if (!HRAssert(HRESULT_FROM_WIN32(GetLastError())))
+        if (!HRAssert(pipeline_dx12.m_device->CreateFence(sync_state.m_fenceValues[sync_state.m_frameIndex], D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&sync_state.m_fence))))
             return false;
-    }
+        sync_state.m_fenceValues[sync_state.m_frameIndex]++;
 
-    // Wait for the command list to execute; we are reusing the same command
-    // list in our main loop but for now, we just want to wait for setup to
-    // complete before continuing.
-    WaitForGpu();
-}
-for (int i = 0; i < PrimitiveType::PRIMITIVE_COUNT; ++i)
-{
-    g_vertexBufferUploadPrimitives[i]->Release();
-    g_indexBufferUploadPrimitives[i]->Release();
-}
-textureUploadHeap->Release();
-stagingHeap->Release();
-return true;
+        for (UINT i = 0; i < g_FrameCount; i++)
+        {
+            sync_state.m_fenceValues[i] = 1;
+        }
+
+        // Create an event handle to use for frame synchronization.
+        sync_state.m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+        if (sync_state.m_fenceEvent == nullptr)
+        {
+            if (!HRAssert(HRESULT_FROM_WIN32(GetLastError())))
+                return false;
+        }
+
+        // Wait for the command list to execute; we are reusing the same command
+        // list in our main loop but for now, we just want to wait for setup to
+        // complete before continuing.
+        WaitForGpu();
+    }
+    for (int i = 0; i < PrimitiveType::PRIMITIVE_COUNT; ++i)
+    {
+        g_vertexBufferUploadPrimitives[i]->Release();
+        g_indexBufferUploadPrimitives[i]->Release();
+    }
+    textureUploadHeap->Release();
+    stagingHeap->Release();
+    return true;
 }
 
 #include "OnDestroy_generated.cpp"

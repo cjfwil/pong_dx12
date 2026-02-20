@@ -2,7 +2,7 @@
 // PIPELINE CREATION – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_pipelines.py
-//   Generated: 2026-02-17 16:46:36
+//   Generated: 2026-02-20 12:24:02
 //------------------------------------------------------------------------
 
 
@@ -17,12 +17,12 @@ bool CreateAllPipelines(const D3D12_INPUT_ELEMENT_DESC* inputLayout, UINT numInp
     ID3DBlob* vertexShaders[RENDER_COUNT] = {};
     ID3DBlob* pixelShaders[RENDER_COUNT] = {};
 
-    if (!CompileShader(L"shader_source\\shaders.hlsl", "VSMain", "vs_5_0", &vertexShaders[RENDER_DEFAULT], nullptr)) {
+    if (!CompileShader(L"shader_source\\shaders.hlsl", "VSMain", "vs_5_1", &vertexShaders[RENDER_DEFAULT], nullptr)) {
         HRAssert(E_FAIL);
         return false;
     }
 
-    if (!CompileShader(L"shader_source\\shaders.hlsl", "PSMain", "ps_5_0", &pixelShaders[RENDER_DEFAULT], nullptr)) {
+    if (!CompileShader(L"shader_source\\shaders.hlsl", "PSMain", "ps_5_1", &pixelShaders[RENDER_DEFAULT], nullptr)) {
         HRAssert(E_FAIL);
         return false;
     }
@@ -32,12 +32,12 @@ bool CreateAllPipelines(const D3D12_INPUT_ELEMENT_DESC* inputLayout, UINT numInp
         {nullptr, nullptr}
     };
 
-    if (!CompileShader(L"shader_source\\shaders.hlsl", "VSMain", "vs_5_0", &vertexShaders[RENDER_TRIPLANAR], render_triplanar_defines)) {
+    if (!CompileShader(L"shader_source\\shaders.hlsl", "VSMain", "vs_5_1", &vertexShaders[RENDER_TRIPLANAR], render_triplanar_defines)) {
         HRAssert(E_FAIL);
         return false;
     }
 
-    if (!CompileShader(L"shader_source\\shaders.hlsl", "PSMain", "ps_5_0", &pixelShaders[RENDER_TRIPLANAR], render_triplanar_defines)) {
+    if (!CompileShader(L"shader_source\\shaders.hlsl", "PSMain", "ps_5_1", &pixelShaders[RENDER_TRIPLANAR], render_triplanar_defines)) {
         HRAssert(E_FAIL);
         return false;
     }
@@ -47,12 +47,12 @@ bool CreateAllPipelines(const D3D12_INPUT_ELEMENT_DESC* inputLayout, UINT numInp
         {nullptr, nullptr}
     };
 
-    if (!CompileShader(L"shader_source\\shaders.hlsl", "VSMain", "vs_5_0", &vertexShaders[RENDER_HEIGHTFIELD], render_heightfield_defines)) {
+    if (!CompileShader(L"shader_source\\shaders.hlsl", "VSMain", "vs_5_1", &vertexShaders[RENDER_HEIGHTFIELD], render_heightfield_defines)) {
         HRAssert(E_FAIL);
         return false;
     }
 
-    if (!CompileShader(L"shader_source\\shaders.hlsl", "PSMain", "ps_5_0", &pixelShaders[RENDER_HEIGHTFIELD], render_heightfield_defines)) {
+    if (!CompileShader(L"shader_source\\shaders.hlsl", "PSMain", "ps_5_1", &pixelShaders[RENDER_HEIGHTFIELD], render_heightfield_defines)) {
         HRAssert(E_FAIL);
         return false;
     }
