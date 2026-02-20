@@ -1,5 +1,5 @@
 {
-	"objectCount":	21,
+	"objectCount":	24,
 	"objects":	[{
 			"nametag":	"floor",
 			"pos":	[-6.1656446962537e-23, -1.0072767734527588, -1.8521596168354929e-25],
@@ -183,9 +183,9 @@
 			}
 		}, {
 			"nametag":	"HF",
-			"pos":	[-22, -0.79999995231628418, 0],
-			"rot":	[0, 0, 0, 1],
-			"scale":	[32, 5, 32],
+			"pos":	[-22, -5.0809454917907715, -1.0757056401189402e-07],
+			"rot":	[7.3018986412876075e-09, -3.0379812443470655e-08, 2.21830305589376e-16, 1],
+			"scale":	[32, 5.00000524520874, 32.000003814697266],
 			"objectType":	1,
 			"pipeline":	"Heightfield",
 			"heightfieldData":	{
@@ -204,15 +204,45 @@
 				"width":	256
 			}
 		}, {
-			"nametag":	"HF3",
-			"pos":	[-82.777107238769531, -256, -89.018684387207031],
+			"nametag":	"HF distant",
+			"pos":	[0, -128, 0],
 			"rot":	[0, 0, 0, 1],
-			"scale":	[2048, 256, 2045],
+			"scale":	[3000, 256, 3000],
 			"objectType":	1,
 			"pipeline":	"Heightfield",
 			"heightfieldData":	{
 				"pathToHeightmap":	"assets/clouds.dds",
 				"width":	256
+			}
+		}, {
+			"nametag":	"distant tower",
+			"pos":	[-45.406356811523438, -41.847412109375, -389.03411865234375],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[256, 50, 256],
+			"objectType":	0,
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"diustant building 1",
+			"pos":	[49.248554229736328, -13.934816360473633, -331.9979248046875],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[16, 10, 8],
+			"objectType":	0,
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"",
+			"pos":	[29.508659362792969, -13.24067211151123, -333],
+			"rot":	[0, 0.39073112607002258, 0, 0.920504868030548],
+			"scale":	[10, 35, 10],
+			"objectType":	0,
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
 			}
 		}]
 }

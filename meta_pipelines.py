@@ -90,7 +90,7 @@ def generate_pipeline_code(output_path: Path) -> bool:
     lines.append("        psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);")
     lines.append("        psoDesc.DepthStencilState.DepthEnable = true;")
     lines.append("        psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;")
-    lines.append("        psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS;")
+    lines.append("        psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_GREATER;") ##todo, be able specify reverse or not?
     lines.append("        psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;")
     lines.append("        psoDesc.SampleMask = UINT_MAX;")
     lines.append("        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;")

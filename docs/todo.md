@@ -92,3 +92,5 @@ should we allow for different kinds of vertices?
 
 
 ## if all heightmaps are found to have the same size and format then switch to Texture2DArray
+
+## add selection of specific primitive if type is primitive

@@ -369,7 +369,7 @@ bool PopulateCommandList()
     // Common rendering operations
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ClearRenderTargetView(rtvHandle, g_rtClearValue.Color, 0, nullptr);
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
+    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 0, nullptr);
 
     // Draw geometry (same for both MSAA)
     pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
@@ -584,8 +584,8 @@ void Update()
     g_projection = DirectX::XMMatrixPerspectiveFovLH(
         DirectX::XMConvertToRadians(g_fov_deg),
         viewport_state.m_aspectRatio,
-        0.01f,
-        1000.0f);
+        2048.0f,
+        0.01f);
 
     // TRANSPOSE before storing (shader expects column‑major)
     DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].view,

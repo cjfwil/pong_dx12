@@ -129,7 +129,7 @@ static_assert((sizeof(PerSceneConstantBuffer) % 256) == 0, " Per Scene Constant 
 
 static DXGI_FORMAT g_screenFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
 static D3D12_CLEAR_VALUE g_rtClearValue = {g_screenFormat, {0.0f, 0.2f, 0.4f, 1.0f}};
-static D3D12_CLEAR_VALUE g_depthOptimizedClearValue = {DXGI_FORMAT_D32_FLOAT, {1.0f, 0}};
+static D3D12_CLEAR_VALUE g_depthOptimizedClearValue = {DXGI_FORMAT_D32_FLOAT, {0.0f, 0}};
 
 static constexpr UINT g_FrameCount = 3; // double, triple buffering etc...
 
