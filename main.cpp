@@ -405,7 +405,6 @@ bool PopulateCommandList()
 
         currentDrawConstants.heightmapIndex = g_draw_list.heightmapIndices[i];
 
-        
         pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
 
         if (objectType == OBJECT_PRIMITIVE)
@@ -999,6 +998,18 @@ void DrawEditorGUI()
                         break;
                     }
                 }
+            }
+            if (obj.objectType == OBJECT_PRIMITIVE)
+            {
+                ImGui::Indent(16.0f);
+                int currentPrimitive = (int)obj.data.primitive.primitiveType;
+                if (ImGui::Combo("Primitive", &currentPrimitive,
+                                 g_primitiveNames, PRIMITIVE_COUNT))
+                {
+                    obj.data.primitive.primitiveType = (PrimitiveType)currentPrimitive;
+                    write_scene();
+                }
+                ImGui::Unindent(16.0f);
             }
 
             // ---- Pipeline dropdown ----

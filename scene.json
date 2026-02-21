@@ -242,7 +242,7 @@
 			"objectType":	"Primitive",
 			"pipeline":	"Default",
 			"primitiveData":	{
-				"primitiveType":	"Cube"
+				"primitiveType":	"Cylinder"
 			}
 		}]
 }

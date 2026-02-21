@@ -2,7 +2,7 @@
 #include "mesh_data.h" 
 #include "render_pipeline_data.h"
 
-#define MAX_SCENE_OBJECTS 32
+#define MAX_SCENE_OBJECTS 512
 
 enum ObjectType : uint32_t
 {
