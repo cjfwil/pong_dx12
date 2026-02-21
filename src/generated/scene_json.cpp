@@ -2,7 +2,7 @@
 // GENERATED – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_scene_json.py
-//   Generated: 2026-02-20 06:20:55
+//   Generated: 2026-02-21 09:18:51
 //------------------------------------------------------------------------
 
 
@@ -40,7 +40,7 @@ char* scene_to_json(const Scene* scene) {
         cJSON* scaleArr = cJSON_CreateFloatArray((float*)&obj->scale, 3);
         cJSON_AddItemToObject(objJson, "scale", scaleArr);
 
-        cJSON_AddNumberToObject(objJson, "objectType", obj->objectType);
+        cJSON_AddStringToObject(objJson, "objectType", g_objectTypeNames[obj->objectType]);
         cJSON_AddStringToObject(objJson, "pipeline", g_renderPipelineNames[obj->pipeline]);
 
         // Type‑specific data
@@ -135,7 +135,23 @@ int scene_from_json(const char* json, Scene* scene) {
             }
 
             cJSON* objectTypeItem = cJSON_GetObjectItem(objJson, "objectType");
-            if (cJSON_IsNumber(objectTypeItem)) obj->objectType = (ObjectType)objectTypeItem->valueint;
+            if (cJSON_IsNumber(objectTypeItem)) {
+                obj->objectType = (ObjectType)objectTypeItem->valueint;
+            } else if (cJSON_IsString(objectTypeItem)) {
+                const char* typeName = objectTypeItem->valuestring;
+                int found = -1;
+                for (int idx = 0; idx < OBJECT_COUNT; idx++) {
+                    if (strcmp(typeName, g_objectTypeNames[idx]) == 0) {
+                        found = idx;
+                        break;
+                    }
+                }
+                if (found != -1) obj->objectType = (ObjectType)found;
+                else {
+                    obj->objectType = OBJECT_PRIMITIVE;
+                    fprintf(stderr, "Unknown object type \"%s\", defaulting to Primitive\n", typeName);
+                }
+            }
 
             cJSON* pipelineItem = cJSON_GetObjectItem(objJson, "pipeline");
             if (cJSON_IsNumber(pipelineItem)) {
