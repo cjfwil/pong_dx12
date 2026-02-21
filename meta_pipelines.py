@@ -29,6 +29,12 @@ PIPELINES = [
         "ps_entry": "PSMain",
         "defines": [("HEIGHTFIELD", "1")],
     },
+        {
+        "name": "RENDER_SKY",
+        "vs_entry": "VSMain",
+        "ps_entry": "PSMain",
+        "defines": [("SKY", "1")],
+    },
 ]
 
 def generate_pipeline_code(output_path: Path) -> bool:

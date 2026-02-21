@@ -2,7 +2,7 @@
 // PIPELINE CREATION – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_pipelines.py
-//   Generated: 2026-02-20 13:34:48
+//   Generated: 2026-02-21 16:20:02
 //------------------------------------------------------------------------
 
 
@@ -53,6 +53,21 @@ bool CreateAllPipelines(const D3D12_INPUT_ELEMENT_DESC* inputLayout, UINT numInp
     }
 
     if (!CompileShader(L"shader_source\\shaders.hlsl", "PSMain", "ps_5_1", &pixelShaders[RENDER_HEIGHTFIELD], render_heightfield_defines)) {
+        HRAssert(E_FAIL);
+        return false;
+    }
+
+    static const D3D_SHADER_MACRO render_sky_defines[] = {
+        {"SKY", "1"},
+        {nullptr, nullptr}
+    };
+
+    if (!CompileShader(L"shader_source\\shaders.hlsl", "VSMain", "vs_5_1", &vertexShaders[RENDER_SKY], render_sky_defines)) {
+        HRAssert(E_FAIL);
+        return false;
+    }
+
+    if (!CompileShader(L"shader_source\\shaders.hlsl", "PSMain", "ps_5_1", &pixelShaders[RENDER_SKY], render_sky_defines)) {
         HRAssert(E_FAIL);
         return false;
     }

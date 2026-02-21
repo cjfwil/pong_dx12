@@ -30,7 +30,8 @@ cbuffer PerSceneConstantBuffer : register(b2)
 };
 
 Texture2D g_texture : register(t0);
-Texture2D g_heightmaps[] : register(t1); // todo place under heightfield define
+Texture2D g_heightmaps[] : register(t1);    // todo place under heightfield define
+Texture2D g_skyTextures[] : register(t257); // after heightmaps (t1..t256)
 SamplerState g_sampler : register(s0);
 // add a separate sampler for sampling heightfield?
 
@@ -116,7 +117,10 @@ PSInput VSMain(VSInput input)
 // ----------------------------------------------------------------------------
 float4 PSMain(PSInput input) : SV_TARGET
 {
-#ifdef HEIGHTFIELD
+#ifdef SKY
+    float4 texColor = g_skyTextures[heightmapIndex].Sample(g_sampler, input.uv);
+    return texColor;
+#elif defined(HEIGHTFIELD)
     float4 texColor = float4(input.uv, input.uv.x, 1.0f);
 #elif defined(TRIPLANAR)
     float4 texColor = SampleTriplanar(g_texture, g_sampler,

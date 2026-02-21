@@ -407,7 +407,7 @@ bool PopulateCommandList()
 
         pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
 
-        if (objectType == OBJECT_PRIMITIVE)
+        if (objectType == OBJECT_PRIMITIVE || objectType == OBJECT_SKY_SPHERE)
         {
             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView[currentPrimitiveToDraw]);
             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_indexBufferView[currentPrimitiveToDraw]);
@@ -485,7 +485,7 @@ void FillDrawList()
     for (int i = 0; i < g_scene.objectCount && drawCount < g_draw_list_element_total; ++i)
     {
         const SceneObject &obj = g_scene.objects[i];
-        if (obj.objectType != OBJECT_PRIMITIVE && obj.objectType != OBJECT_HEIGHTFIELD)
+        if (obj.objectType != OBJECT_PRIMITIVE && obj.objectType != OBJECT_HEIGHTFIELD && obj.objectType != OBJECT_SKY_SPHERE)
             continue;
 
         g_draw_list.transforms.pos[drawCount] = obj.pos;
@@ -494,14 +494,20 @@ void FillDrawList()
 
         g_draw_list.objectTypes[drawCount] = obj.objectType;
 
-        if (obj.objectType == ObjectType::OBJECT_PRIMITIVE)
+        if (obj.objectType == OBJECT_PRIMITIVE)
         {
             g_draw_list.primitiveTypes[drawCount] = obj.data.primitive.primitiveType;
         }
-        else if (obj.objectType == ObjectType::OBJECT_HEIGHTFIELD)
+        else if (obj.objectType == OBJECT_HEIGHTFIELD)
         {
             g_draw_list.heightmapIndices[drawCount] = graphics_resources.m_heightmapIndices[i];
         }
+        else if (obj.objectType == OBJECT_SKY_SPHERE)
+        {
+            g_draw_list.primitiveTypes[drawCount] = PRIMITIVE_INVERTED_SPHERE;
+            g_draw_list.heightmapIndices[drawCount] = graphics_resources.m_skyIndices[i];
+        }
+
         g_draw_list.pipelines[drawCount] = obj.pipeline;
         drawCount++;
     }
@@ -987,6 +993,7 @@ void DrawEditorGUI()
                     case OBJECT_SKY_SPHERE:
                     {
                         strcpy_s(obj.data.sky_sphere.pathToTexture, sizeof(obj.data.sky_sphere.pathToTexture), "");
+                        obj.pipeline = RENDER_SKY; // ← set pipeline to sky
                     }
                     break;
                     case OBJECT_WATER:
@@ -1138,6 +1145,7 @@ int main(void)
 
     read_scene();
 
+    // TODO: Abstract and unifiy this texture loading stuff
     // After reading scene, load heightmap textures
     {
         pipeline_dx12.m_commandAllocators[0]->Reset();
@@ -1183,6 +1191,75 @@ int main(void)
         for (auto *heap : graphics_resources.m_textureUploadHeaps)
         {
             heap->Release();
+        }
+        graphics_resources.m_textureUploadHeaps.clear();
+    }
+
+    // After reading scene, load sky sphere textures
+    {
+        // Reset command list for uploads
+        pipeline_dx12.m_commandAllocators[0]->Reset();
+        pipeline_dx12.m_commandList[0]->Reset(pipeline_dx12.m_commandAllocators[0], nullptr);
+
+        // Load all textures (heightmaps and sky)
+        for (int i = 0; i < g_scene.objectCount; ++i)
+        {
+            if (g_scene.objects[i].objectType == OBJECT_HEIGHTFIELD)
+            {
+                const char *path = g_scene.objects[i].data.heightfield.pathToHeightmap;
+                if (path[0] != '\0')
+                {
+                    UINT outIndex = 0;
+                    ID3D12Resource *tex = nullptr;
+                    if (LoadTextureFromFile(pipeline_dx12.m_device, pipeline_dx12.m_commandList[0], path, &tex, &outIndex))
+                    {
+                        SDL_Log("Loaded heightmap: %s, index %u", path, outIndex);
+                        graphics_resources.m_heightmapIndices[i] = outIndex;
+                    }
+                    else
+                    {
+                        graphics_resources.m_heightmapIndices[i] = g_errorHeightmapIndex;
+                    }
+                }
+                else
+                {
+                    graphics_resources.m_heightmapIndices[i] = g_errorHeightmapIndex;
+                }
+            }
+            else if (g_scene.objects[i].objectType == OBJECT_SKY_SPHERE)
+            {
+                const char *path = g_scene.objects[i].data.sky_sphere.pathToTexture;
+                if (path[0] != '\0')
+                {
+                    UINT outIndex = 0;
+                    ID3D12Resource *tex = nullptr;
+                    if (LoadSkyTextureFromFile(pipeline_dx12.m_device, pipeline_dx12.m_commandList[0], path, &tex, &outIndex))
+                    {
+                        SDL_Log("Loaded sky texture: %s, index %u", path, outIndex);
+                        graphics_resources.m_skyIndices[i] = outIndex;
+                    }
+                    else
+                    {
+                        graphics_resources.m_skyIndices[i] = 0; // fallback to error texture (index 0)
+                    }
+                }
+                else
+                {
+                    graphics_resources.m_skyIndices[i] = 0;
+                }
+            }
+        }
+
+        // Close and execute the upload command list
+        pipeline_dx12.m_commandList[0]->Close();
+        ID3D12CommandList *ppLists[] = {pipeline_dx12.m_commandList[0]};
+        pipeline_dx12.m_commandQueue->ExecuteCommandLists(1, ppLists);
+        WaitForGpu();
+
+        // Release upload heaps
+        for (auto *heap : graphics_resources.m_textureUploadHeaps)
+        {
+            // heap->Release();
         }
         graphics_resources.m_textureUploadHeaps.clear();
     }

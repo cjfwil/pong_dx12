@@ -189,19 +189,18 @@
 			"objectType":	"Heightfield",
 			"pipeline":	"Heightfield",
 			"heightfieldData":	{
-				"pathToHeightmap":	"assets/clouds.dds",
+				"pathToHeightmap":	"assets/islands.dds",
 				"width":	256
 			}
 		}, {
-			"nametag":	"HF2",
-			"pos":	[-6.0148801803588867, -0.800000011920929, -48.090999603271484],
-			"rot":	[0, 0, 0, 1],
-			"scale":	[64, 0.20000000298023224, 64],
-			"objectType":	"Heightfield",
-			"pipeline":	"Heightfield",
-			"heightfieldData":	{
-				"pathToHeightmap":	"",
-				"width":	256
+			"nametag":	"sky",
+			"pos":	[0, 0, 0],
+			"rot":	[-2.2990054413148109e-13, 1.1212843940020326e-13, -0.99999988079071045, -1.1920928955078125e-07],
+			"scale":	[3000, 3000, 3000],
+			"objectType":	"Sky",
+			"pipeline":	"Sky",
+			"sky_sphereData":	{
+				"pathToTexture":	"assets/sky1.dds"
 			}
 		}, {
 			"nametag":	"HF distant",

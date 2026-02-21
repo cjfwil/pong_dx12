@@ -85,3 +85,8 @@ should we allow for different kinds of vertices?
 
 
 ## if all heightmaps are found to have the same size and format then switch to Texture2DArray???
+
+## deletable objects in scene
+
+## solve problem of wasd being typed in the UI fields
+massive repeating even if input while switching mode on/off, enough to crash program

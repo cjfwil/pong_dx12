@@ -135,13 +135,15 @@ static constexpr UINT g_FrameCount = 3; // double, triple buffering etc...
 
 // #define MAX_GENERAL_TEXTURES 1024
 #define MAX_HEIGHTMAP_TEXTURES 256
+#define MAX_SKY_TEXTURES 16
 namespace DescriptorIndices
 {
     constexpr UINT PER_FRAME_CBV_START = 0;
-    constexpr UINT PER_SCENE_CBV = g_FrameCount;                       // index after all per-frame CBVs
-    constexpr UINT TEXTURE_SRV = PER_SCENE_CBV + 1;                    // SRV for texture: after all CBVs
+    constexpr UINT PER_SCENE_CBV = g_FrameCount;    // index after all per-frame CBVs
+    constexpr UINT TEXTURE_SRV = PER_SCENE_CBV + 1; // SRV for texture: after all CBVs
     constexpr UINT HEIGHTMAP_SRV = TEXTURE_SRV + 1; // SRV for heightmap: after all CBVs
-    constexpr UINT NUM_DESCRIPTORS = HEIGHTMAP_SRV + MAX_HEIGHTMAP_TEXTURES;
+    constexpr UINT SKY_SRV = HEIGHTMAP_SRV + MAX_HEIGHTMAP_TEXTURES;
+    constexpr UINT NUM_DESCRIPTORS = SKY_SRV + MAX_SKY_TEXTURES;
 }
 static UINT g_errorHeightmapIndex = 0;
 
@@ -268,7 +270,13 @@ static struct
     ID3D12Resource *m_heightmapResources[MAX_HEIGHTMAP_TEXTURES] = {}; // textures by heap slot
     UINT m_heightmapIndices[MAX_SCENE_OBJECTS] = {};                   // per‑object heap index
     UINT m_nextHeightmapIndex = 0;                                     // next free slot (starts at 0)
-    
+
+    ID3D12Resource *m_skyResources[MAX_SKY_TEXTURES] = {};
+    UINT m_skyIndices[MAX_SCENE_OBJECTS] = {}; // per‑object texture index
+    UINT m_nextSkyIndex = 0;
+
+    // todo: merge m_heightmapIndices and m_skyIndices
+
     std::vector<ID3D12Resource *> m_textureUploadHeaps;
 } graphics_resources;
 
@@ -374,6 +382,113 @@ bool LoadTextureFromFile(ID3D12Device *device,
     *outIndex = index;
 
     // Track upload heap for later release
+    graphics_resources.m_textureUploadHeaps.push_back(uploadHeap);
+
+    return true;
+}
+
+bool LoadSkyTextureFromFile(ID3D12Device *device,
+                            ID3D12GraphicsCommandList *cmdList,
+                            const char *path,
+                            ID3D12Resource **outResource,
+                            UINT *outIndex) // returns allocated index
+{
+    // Convert narrow string to wide string
+    int wlen = MultiByteToWideChar(CP_UTF8, 0, path, -1, nullptr, 0);
+    std::wstring wpath(wlen, L'\0');
+    MultiByteToWideChar(CP_UTF8, 0, path, -1, &wpath[0], wlen);
+
+    DirectX::ScratchImage image;
+    HRESULT hr = DirectX::LoadFromDDSFile(wpath.c_str(), DirectX::DDS_FLAGS_NONE, nullptr, image);
+    if (FAILED(hr))
+    {
+        SDL_Log("Failed to load DDS: %s", path);
+        return false;
+    }
+
+    const DirectX::TexMetadata &metadata = image.GetMetadata();
+    const DirectX::Image *img = image.GetImage(0, 0, 0);
+    if (!img)
+        return false;
+
+    D3D12_RESOURCE_DESC texDesc = {};
+    texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+    texDesc.Width = metadata.width;
+    texDesc.Height = metadata.height;
+    texDesc.DepthOrArraySize = 1;
+    texDesc.MipLevels = (UINT16)metadata.mipLevels;
+    texDesc.Format = metadata.format;
+    texDesc.SampleDesc.Count = 1;
+    texDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
+
+    hr = device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+        D3D12_HEAP_FLAG_NONE,
+        &texDesc,
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr,
+        IID_PPV_ARGS(outResource));
+    if (FAILED(hr))
+        return false;
+
+    UINT64 uploadSize = GetRequiredIntermediateSize(*outResource, 0, (UINT)image.GetImageCount());
+    ID3D12Resource *uploadHeap = nullptr;
+    hr = device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+        D3D12_HEAP_FLAG_NONE,
+        &CD3DX12_RESOURCE_DESC::Buffer(uploadSize),
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&uploadHeap));
+    if (FAILED(hr))
+    {
+        (*outResource)->Release();
+        *outResource = nullptr;
+        return false;
+    }
+
+    std::vector<D3D12_SUBRESOURCE_DATA> subresources(image.GetImageCount());
+    for (size_t i = 0; i < image.GetImageCount(); ++i)
+    {
+        const DirectX::Image *subImg = image.GetImage(i, 0, 0);
+        subresources[i].pData = subImg->pixels;
+        subresources[i].RowPitch = subImg->rowPitch;
+        subresources[i].SlicePitch = subImg->slicePitch;
+    }
+
+    UpdateSubresources(cmdList, *outResource, uploadHeap, 0, 0, (UINT)image.GetImageCount(), subresources.data());
+
+    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        *outResource,
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    cmdList->ResourceBarrier(1, &barrier);
+
+    // Allocate index in the sky texture array
+    UINT index = graphics_resources.m_nextSkyIndex;
+    if (index >= MAX_SKY_TEXTURES)
+    {
+        SDL_Log("Out of sky texture slots!");
+        (*outResource)->Release();
+        *outResource = nullptr;
+        uploadHeap->Release();
+        return false;
+    }
+
+    // Create SRV in the main heap at DescriptorIndices::SKY_SRV + index
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(
+        pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart(),
+        DescriptorIndices::SKY_SRV + index,
+        g_cbvSrvDescriptorSize);
+    device->CreateShaderResourceView(*outResource, nullptr, cpuHandle);
+
+    // Store the resource in the array
+    graphics_resources.m_skyResources[index] = *outResource;
+    graphics_resources.m_nextSkyIndex = index + 1;
+
+    *outIndex = index;
+
+    // Track upload heap for later release (reuse same vector)
     graphics_resources.m_textureUploadHeaps.push_back(uploadHeap);
 
     return true;
@@ -849,7 +964,7 @@ bool LoadPipeline(HWND hwnd)
 #if defined(_DEBUG)
     // Enable the debug layer (requires the Graphics Tools "optional feature").
     // NOTE: Enabling the debug layer after device creation will invalidate the active device.
-    bool useDxDebugLayer = false;
+    bool useDxDebugLayer = true;
     if (useDxDebugLayer)
     {
         ID3D12Debug *debugController;
@@ -1107,8 +1222,9 @@ bool CompileShader(
             SDL_Log("Failed to compile shader: %S, entry %s, target %s", filename, entryPoint, target);
         }
         return false;
-    }
-
+    } else {
+        SDL_Log("Compiled %s (%s) - blob size %zu", entryPoint, target, (*outBlob)->GetBufferSize());     
+    }    
     return true;
 }
 
@@ -1116,29 +1232,21 @@ bool CompileShader(
 // Load the startup assets. Returns true on success, false on fail.
 bool LoadAssets()
 {
-    // Create root signature.
+    // Create root signature (using 1.0 structures for compatibility)
     {
-        D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
+        CD3DX12_DESCRIPTOR_RANGE cbvRange;
+        cbvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2);
 
-        // This is the highest version the sample supports. If CheckFeatureSupport succeeds, the HighestVersion returned will not be greater than this.
-        featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
+        CD3DX12_DESCRIPTOR_RANGE srvRanges[3];
+        srvRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
+        srvRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, MAX_HEIGHTMAP_TEXTURES, 1);
+        srvRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, MAX_SKY_TEXTURES, 1 + MAX_HEIGHTMAP_TEXTURES); // base register = 257
 
-        if (FAILED(pipeline_dx12.m_device->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &featureData, sizeof(featureData))))
-        {
-            featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
-        }
-
-        CD3DX12_DESCRIPTOR_RANGE1 cbvRange;
-        cbvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
-        CD3DX12_DESCRIPTOR_RANGE1 srvRanges[2];
-        srvRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
-        srvRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, MAX_HEIGHTMAP_TEXTURES, 1, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DATA_STATIC);
-
-        CD3DX12_ROOT_PARAMETER1 rootParameters[4];
-        rootParameters[0].InitAsConstants(sizeof(PerDrawRootConstants) / 4, 0, 0, D3D12_SHADER_VISIBILITY_VERTEX);             // root constants
-        rootParameters[1].InitAsConstantBufferView(1, 0, D3D12_ROOT_DESCRIPTOR_FLAG_DATA_STATIC, D3D12_SHADER_VISIBILITY_ALL); // inline CBV
-        rootParameters[2].InitAsDescriptorTable(1, &cbvRange, D3D12_SHADER_VISIBILITY_ALL);                                    // per frame CB
-        rootParameters[3].InitAsDescriptorTable(2, srvRanges, D3D12_SHADER_VISIBILITY_ALL);
+        CD3DX12_ROOT_PARAMETER rootParameters[4];
+        rootParameters[0].InitAsConstants(sizeof(PerDrawRootConstants) / 4, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
+        rootParameters[1].InitAsConstantBufferView(1, 0, D3D12_SHADER_VISIBILITY_ALL);
+        rootParameters[2].InitAsDescriptorTable(1, &cbvRange, D3D12_SHADER_VISIBILITY_ALL);
+        rootParameters[3].InitAsDescriptorTable(3, srvRanges, D3D12_SHADER_VISIBILITY_ALL);
 
         D3D12_STATIC_SAMPLER_DESC sampler = {};
         sampler.Filter = D3D12_FILTER_ANISOTROPIC;
@@ -1147,7 +1255,6 @@ bool LoadAssets()
         sampler.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
         sampler.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
         sampler.MipLODBias = 0;
-        sampler.MaxAnisotropy = 0;
         sampler.ComparisonFunc = D3D12_COMPARISON_FUNC_NEVER;
         sampler.BorderColor = D3D12_STATIC_BORDER_COLOR_TRANSPARENT_BLACK;
         sampler.MinLOD = 0.0f;
@@ -1156,17 +1263,25 @@ bool LoadAssets()
         sampler.RegisterSpace = 0;
         sampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
 
-        CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
-        rootSignatureDesc.Init_1_1(_countof(rootParameters), rootParameters, 1, &sampler, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+        CD3DX12_ROOT_SIGNATURE_DESC rootSignatureDesc;
+        rootSignatureDesc.Init(_countof(rootParameters), rootParameters, 1, &sampler, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
         ID3DBlob *signature;
         ID3DBlob *error;
-        if (!HRAssert(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, featureData.HighestVersion, &signature, &error)))
+        HRESULT hr = D3D12SerializeRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1, &signature, &error);
+        if (FAILED(hr))
+        {
+            if (error)
+            {
+                SDL_Log("Root signature serialization error: %s", (const char *)error->GetBufferPointer());
+                error->Release();
+            }
+            HRAssert(hr);
             return false;
+        }
         if (!HRAssert(pipeline_dx12.m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&pipeline_dx12.m_rootSignature))))
             return false;
     }
-
     // Create the pipeline states, which includes compiling and loading shaders.
     // Define the vertex input layout.
     D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =
@@ -1296,7 +1411,7 @@ bool LoadAssets()
             D3D12_RESOURCE_STATE_COPY_DEST,
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
-        
+
         graphics_resources.m_textureUploadHeaps.push_back(errUpload);
 
         // After resource creation, create SRV at HEIGHTMAP_SRV + 0
