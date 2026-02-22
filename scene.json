@@ -177,7 +177,7 @@
 			"rot":	[0, 0, 0, 1],
 			"scale":	[1, 9, 1],
 			"objectType":	"Primitive",
-			"pipeline":	"Triplanar",
+			"pipeline":	"Default",
 			"primitiveData":	{
 				"primitiveType":	"Cylinder"
 			}
@@ -236,7 +236,7 @@
 		}, {
 			"nametag":	"sky",
 			"pos":	[0, 0, 0],
-			"rot":	[0, 0.99660241603851318, 0, 0.082363098859787],
+			"rot":	[-0.0093788942322134972, 0.990133285522461, -0.11323805898427963, -0.082007370889186859],
 			"scale":	[3000, 3000, 3000],
 			"objectType":	"Sky",
 			"pipeline":	"Sky",
@@ -246,7 +246,7 @@
 		}, {
 			"nametag":	"Clouds2",
 			"pos":	[0, 0, 0],
-			"rot":	[0.20075960457324982, 0, 0, 0.979640543460846],
+			"rot":	[0.28084969520568848, 0, 0, 0.959751784801483],
 			"scale":	[2800, 2800, 2800],
 			"objectType":	"Sky",
 			"pipeline":	"Sky",

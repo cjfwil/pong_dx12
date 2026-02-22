@@ -531,7 +531,7 @@ struct FlyCamera
     DirectX::XMFLOAT3 position = {0.0f, 2.0f, -5.0f};
     float yaw = 0.0f;
     float pitch = 0.0f;
-    float moveSpeed = 500.0f;
+    float moveSpeed = 5.0f;
     float lookSpeed = 0.002f;
     float padSpeed = 1.5f;
 
@@ -580,8 +580,8 @@ inline DirectX::XMVECTOR EulerToQuaternion(float pitch, float yaw, float roll)
     using namespace DirectX;
 
     float halfPitch = pitch * 0.5f;
-    float halfYaw   = yaw   * 0.5f;
-    float halfRoll  = roll  * 0.5f;
+    float halfYaw = yaw * 0.5f;
+    float halfRoll = roll * 0.5f;
 
     float sp = sinf(halfPitch);
     float cp = cosf(halfPitch);
@@ -630,8 +630,8 @@ void Update()
            sizeof(PerFrameConstantBuffer));
 
     float _t = 0.01f;
-    DirectX::XMStoreFloat4(&g_scene.objects[24].rot, EulerToQuaternion(program_state.timing.upTime*_t * 0.5f, 0, 0));    
-    DirectX::XMStoreFloat4(&g_scene.objects[23].rot, EulerToQuaternion(0, program_state.timing.upTime*_t+65, 0));
+    DirectX::XMStoreFloat4(&g_scene.objects[23].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.2f, program_state.timing.upTime * _t + 65, 0));
+    DirectX::XMStoreFloat4(&g_scene.objects[24].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.5f, 0, 0));
 
     FillDrawList();
 }
@@ -1100,6 +1100,89 @@ void DrawEditorGUI()
     ImGui::End();
 }
 
+void LoadAllTextures()
+{
+    std::vector<ID3D12Resource *> localUploadHeaps;
+
+    pipeline_dx12.m_commandAllocators[0]->Reset();
+    pipeline_dx12.m_commandList[0]->Reset(pipeline_dx12.m_commandAllocators[0], nullptr);
+
+    for (int i = 0; i < g_scene.objectCount; ++i)
+    {
+        const auto &obj = g_scene.objects[i];
+
+        if (obj.objectType == OBJECT_HEIGHTFIELD)
+        {
+            const char *path = obj.data.heightfield.pathToHeightmap;
+            UINT &outIndex = graphics_resources.m_heightmapIndices[i];
+            UINT errorIndex = g_errorHeightmapIndex;
+
+            if (path[0] != '\0')
+            {
+                ID3D12Resource *tex = nullptr; // not used directly
+                TextureLoadResult tl = LoadTextureFromFile(pipeline_dx12.m_device, pipeline_dx12.m_commandList[0], path, &tex);
+                if (tl.success)
+                {
+                    SDL_Log("Loaded heightmap: %s, index %u", path, tl.outIndex);
+                    outIndex = tl.outIndex;
+                    if (tl.uploadHeap)
+                        localUploadHeaps.push_back(tl.uploadHeap);
+                }
+                else
+                {
+                    SDL_Log("Failed to load heightmap: %s, using error texture", path);
+                    outIndex = errorIndex;
+                }
+            }
+            else
+            {
+                outIndex = errorIndex;
+            }
+        }
+        else if (obj.objectType == OBJECT_SKY_SPHERE)
+        {
+            const char *path = obj.data.sky_sphere.pathToTexture;
+            UINT &outIndex = graphics_resources.m_skyIndices[i];
+            UINT errorIndex = 0; // assuming index 0 is the error texture
+
+            if (path[0] != '\0')
+            {
+                ID3D12Resource *tex = nullptr;
+                TextureLoadResult tl = LoadSkyTextureFromFile(pipeline_dx12.m_device,
+                                                              pipeline_dx12.m_commandList[0],
+                                                              path, &tex);
+                if (tl.success)
+                {
+                    SDL_Log("Loaded sky texture: %s, index %u", path, tl.outIndex);
+                    outIndex = tl.outIndex;
+                    if (tl.uploadHeap)
+                        localUploadHeaps.push_back(tl.uploadHeap);
+                }
+                else
+                {
+                    SDL_Log("Failed to load sky texture: %s, using error texture", path);
+                    outIndex = errorIndex;
+                }
+            }
+            else
+            {
+                outIndex = errorIndex;
+            }
+        }
+        // TODO: Add further object types here (e.g., OBJECT_TERRAIN, OBJECT_DECAL) as needed
+    }
+
+    pipeline_dx12.m_commandList[0]->Close();
+    ID3D12CommandList *ppLists[] = {pipeline_dx12.m_commandList[0]};
+    pipeline_dx12.m_commandQueue->ExecuteCommandLists(1, ppLists);
+
+    WaitForAllFrames();
+
+    for (auto *heap : localUploadHeaps)
+        heap->Release();
+    // localUploadHeaps.clear();
+}
+
 int main(void)
 {
     program_state.timing.InitTimer();
@@ -1178,124 +1261,7 @@ int main(void)
 
     read_scene();
 
-    // TODO: Abstract and unifiy this texture loading stuff
-    // After reading scene, load heightmap textures
-    {
-        pipeline_dx12.m_commandAllocators[0]->Reset();
-        pipeline_dx12.m_commandList[0]->Reset(pipeline_dx12.m_commandAllocators[0], nullptr);
-
-        for (int i = 0; i < g_scene.objectCount; ++i)
-        {
-            if (g_scene.objects[i].objectType == OBJECT_HEIGHTFIELD)
-            {
-                const char *path = g_scene.objects[i].data.heightfield.pathToHeightmap;
-                if (path[0] != '\0')
-                {
-                    UINT outIndex = 0;
-                    ID3D12Resource *tex = nullptr; // not needed but kept for consistency
-                    if (LoadTextureFromFile(pipeline_dx12.m_device, pipeline_dx12.m_commandList[0], path, &tex, &outIndex))
-                    {
-                        SDL_Log("Loaded heightmap: %s, index %u", path, outIndex);
-                        graphics_resources.m_heightmapIndices[i] = outIndex;
-                    }
-                    else
-                    {
-                        SDL_Log("Failed to load heightmap: %s, using error texture", path);
-                        graphics_resources.m_heightmapIndices[i] = g_errorHeightmapIndex;
-                    }
-                }
-                else
-                {
-                    // Empty path – use error texture
-                    graphics_resources.m_heightmapIndices[i] = g_errorHeightmapIndex;
-                }
-            }
-        }
-
-        // Close and execute the upload command list
-        pipeline_dx12.m_commandList[0]->Close();
-        ID3D12CommandList *ppLists[] = {pipeline_dx12.m_commandList[0]};
-        pipeline_dx12.m_commandQueue->ExecuteCommandLists(1, ppLists);
-
-        // Wait for uploads to complete
-        WaitForGpu();
-
-        // Release upload heaps
-        for (auto *heap : graphics_resources.m_textureUploadHeaps)
-        {
-            heap->Release();
-        }
-        graphics_resources.m_textureUploadHeaps.clear();
-    }
-
-    // After reading scene, load sky sphere textures
-    {
-        // Reset command list for uploads
-        pipeline_dx12.m_commandAllocators[0]->Reset();
-        pipeline_dx12.m_commandList[0]->Reset(pipeline_dx12.m_commandAllocators[0], nullptr);
-
-        // Load all textures (heightmaps and sky)
-        for (int i = 0; i < g_scene.objectCount; ++i)
-        {
-            if (g_scene.objects[i].objectType == OBJECT_HEIGHTFIELD)
-            {
-                const char *path = g_scene.objects[i].data.heightfield.pathToHeightmap;
-                if (path[0] != '\0')
-                {
-                    UINT outIndex = 0;
-                    ID3D12Resource *tex = nullptr;
-                    if (LoadTextureFromFile(pipeline_dx12.m_device, pipeline_dx12.m_commandList[0], path, &tex, &outIndex))
-                    {
-                        SDL_Log("Loaded heightmap: %s, index %u", path, outIndex);
-                        graphics_resources.m_heightmapIndices[i] = outIndex;
-                    }
-                    else
-                    {
-                        graphics_resources.m_heightmapIndices[i] = g_errorHeightmapIndex;
-                    }
-                }
-                else
-                {
-                    graphics_resources.m_heightmapIndices[i] = g_errorHeightmapIndex;
-                }
-            }
-            else if (g_scene.objects[i].objectType == OBJECT_SKY_SPHERE)
-            {
-                const char *path = g_scene.objects[i].data.sky_sphere.pathToTexture;
-                if (path[0] != '\0')
-                {
-                    UINT outIndex = 0;
-                    ID3D12Resource *tex = nullptr;
-                    if (LoadSkyTextureFromFile(pipeline_dx12.m_device, pipeline_dx12.m_commandList[0], path, &tex, &outIndex))
-                    {
-                        SDL_Log("Loaded sky texture: %s, index %u", path, outIndex);
-                        graphics_resources.m_skyIndices[i] = outIndex;
-                    }
-                    else
-                    {
-                        graphics_resources.m_skyIndices[i] = 0; // fallback to error texture (index 0)
-                    }
-                }
-                else
-                {
-                    graphics_resources.m_skyIndices[i] = 0;
-                }
-            }
-        }
-
-        // Close and execute the upload command list
-        pipeline_dx12.m_commandList[0]->Close();
-        ID3D12CommandList *ppLists[] = {pipeline_dx12.m_commandList[0]};
-        pipeline_dx12.m_commandQueue->ExecuteCommandLists(1, ppLists);
-        WaitForGpu();
-
-        // Release upload heaps
-        for (auto *heap : graphics_resources.m_textureUploadHeaps)
-        {
-            // heap->Release();
-        }
-        graphics_resources.m_textureUploadHeaps.clear();
-    }
+    LoadAllTextures();
 
     while (program_state.isRunning)
     {

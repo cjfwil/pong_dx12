@@ -220,7 +220,7 @@ static struct
         // list, that command list can then be reset at any time and must be before
         // re-recording.
         UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
-        BlendMode b = BlendMode::BLEND_OPAQUE;        
+        BlendMode b = BlendMode::BLEND_OPAQUE;
         HRAssert(
             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->Reset(
                 pipeline_dx12.m_commandAllocators[sync_state.m_frameIndex],
@@ -276,17 +276,18 @@ static struct
     UINT m_skyIndices[MAX_SCENE_OBJECTS] = {}; // per‑object texture index
     UINT m_nextSkyIndex = 0;
 
-    // todo: merge m_heightmapIndices and m_skyIndices
-
-    std::vector<ID3D12Resource *> m_textureUploadHeaps;
+    // todo: merge m_heightmapIndices and m_skyIndices  ?????
 } graphics_resources;
 
-bool LoadTextureFromFile(ID3D12Device *device,
-                         ID3D12GraphicsCommandList *cmdList,
-                         const char *path,
-                         ID3D12Resource **outResource,
-                         UINT *outIndex) // returns allocated index
+struct TextureLoadResult
 {
+    UINT outIndex;
+    ID3D12Resource *uploadHeap = nullptr;
+    bool success = false;
+};
+TextureLoadResult LoadTextureFromFile(ID3D12Device *device, ID3D12GraphicsCommandList *cmdList, const char *path, ID3D12Resource **outResource)
+{
+    TextureLoadResult result = {};
     // Convert narrow string to wide string
     int wlen = MultiByteToWideChar(CP_UTF8, 0, path, -1, nullptr, 0);
     std::wstring wpath(wlen, L'\0');
@@ -297,18 +298,22 @@ bool LoadTextureFromFile(ID3D12Device *device,
     if (FAILED(hr))
     {
         SDL_Log("Failed to load DDS: %s", path);
-        return false;
+        result.success = false;
+        return result;
     }
 
     const DirectX::TexMetadata &metadata = image.GetMetadata();
     const DirectX::Image *img = image.GetImage(0, 0, 0);
     if (!img)
-        return false;
+    {
+        result.success = false;
+        return result;
+    }
 
     D3D12_RESOURCE_DESC texDesc = {};
     texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-    texDesc.Width = metadata.width;
-    texDesc.Height = metadata.height;
+    texDesc.Width = (UINT)metadata.width;
+    texDesc.Height = (UINT)metadata.height;
     texDesc.DepthOrArraySize = 1;
     texDesc.MipLevels = (UINT16)metadata.mipLevels;
     texDesc.Format = metadata.format;
@@ -323,22 +328,26 @@ bool LoadTextureFromFile(ID3D12Device *device,
         nullptr,
         IID_PPV_ARGS(outResource));
     if (FAILED(hr))
-        return false;
+    {
+        result.success = false;
+        return result;
+    }
 
     UINT64 uploadSize = GetRequiredIntermediateSize(*outResource, 0, (UINT)image.GetImageCount());
-    ID3D12Resource *uploadHeap = nullptr;
+
     hr = device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
         D3D12_HEAP_FLAG_NONE,
         &CD3DX12_RESOURCE_DESC::Buffer(uploadSize),
         D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
-        IID_PPV_ARGS(&uploadHeap));
+        IID_PPV_ARGS(&result.uploadHeap));
     if (FAILED(hr))
     {
         (*outResource)->Release();
         *outResource = nullptr;
-        return false;
+        result.success = false;
+        return result;
     }
 
     std::vector<D3D12_SUBRESOURCE_DATA> subresources(image.GetImageCount());
@@ -350,7 +359,7 @@ bool LoadTextureFromFile(ID3D12Device *device,
         subresources[i].SlicePitch = subImg->slicePitch;
     }
 
-    UpdateSubresources(cmdList, *outResource, uploadHeap, 0, 0, (UINT)image.GetImageCount(), subresources.data());
+    UpdateSubresources(cmdList, *outResource, result.uploadHeap, 0, 0, (UINT)image.GetImageCount(), subresources.data());
 
     auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
         *outResource,
@@ -365,8 +374,9 @@ bool LoadTextureFromFile(ID3D12Device *device,
         SDL_Log("Out of heightmap texture slots!");
         (*outResource)->Release();
         *outResource = nullptr;
-        uploadHeap->Release();
-        return false;
+        result.uploadHeap->Release();
+        result.success = false;
+        return result;
     }
 
     // Create SRV in the main heap at DescriptorIndices::HEIGHTMAP_SRV + index
@@ -380,20 +390,14 @@ bool LoadTextureFromFile(ID3D12Device *device,
     graphics_resources.m_heightmapResources[index] = *outResource;
     graphics_resources.m_nextHeightmapIndex = index + 1;
 
-    *outIndex = index;
-
-    // Track upload heap for later release
-    graphics_resources.m_textureUploadHeaps.push_back(uploadHeap);
-
-    return true;
+    result.outIndex = index;
+    result.success = true;
+    return result;
 }
 
-bool LoadSkyTextureFromFile(ID3D12Device *device,
-                            ID3D12GraphicsCommandList *cmdList,
-                            const char *path,
-                            ID3D12Resource **outResource,
-                            UINT *outIndex) // returns allocated index
+TextureLoadResult LoadSkyTextureFromFile(ID3D12Device *device, ID3D12GraphicsCommandList *cmdList, const char *path, ID3D12Resource **outResource) // returns allocated index
 {
+    TextureLoadResult result = {};
     // Convert narrow string to wide string
     int wlen = MultiByteToWideChar(CP_UTF8, 0, path, -1, nullptr, 0);
     std::wstring wpath(wlen, L'\0');
@@ -404,13 +408,14 @@ bool LoadSkyTextureFromFile(ID3D12Device *device,
     if (FAILED(hr))
     {
         SDL_Log("Failed to load DDS: %s", path);
-        return false;
+        result.success = false;
+        return result;
     }
 
     const DirectX::TexMetadata &metadata = image.GetMetadata();
     const DirectX::Image *img = image.GetImage(0, 0, 0);
     if (!img)
-        return false;
+        return result;
 
     D3D12_RESOURCE_DESC texDesc = {};
     texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -430,22 +435,21 @@ bool LoadSkyTextureFromFile(ID3D12Device *device,
         nullptr,
         IID_PPV_ARGS(outResource));
     if (FAILED(hr))
-        return false;
+        return result;
 
     UINT64 uploadSize = GetRequiredIntermediateSize(*outResource, 0, (UINT)image.GetImageCount());
-    ID3D12Resource *uploadHeap = nullptr;
     hr = device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
         D3D12_HEAP_FLAG_NONE,
         &CD3DX12_RESOURCE_DESC::Buffer(uploadSize),
         D3D12_RESOURCE_STATE_GENERIC_READ,
         nullptr,
-        IID_PPV_ARGS(&uploadHeap));
+        IID_PPV_ARGS(&result.uploadHeap));
     if (FAILED(hr))
     {
         (*outResource)->Release();
         *outResource = nullptr;
-        return false;
+        return result;
     }
 
     std::vector<D3D12_SUBRESOURCE_DATA> subresources(image.GetImageCount());
@@ -457,7 +461,7 @@ bool LoadSkyTextureFromFile(ID3D12Device *device,
         subresources[i].SlicePitch = subImg->slicePitch;
     }
 
-    UpdateSubresources(cmdList, *outResource, uploadHeap, 0, 0, (UINT)image.GetImageCount(), subresources.data());
+    UpdateSubresources(cmdList, *outResource, result.uploadHeap, 0, 0, (UINT)image.GetImageCount(), subresources.data());
 
     auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
         *outResource,
@@ -472,8 +476,8 @@ bool LoadSkyTextureFromFile(ID3D12Device *device,
         SDL_Log("Out of sky texture slots!");
         (*outResource)->Release();
         *outResource = nullptr;
-        uploadHeap->Release();
-        return false;
+        result.uploadHeap->Release();
+        return result;
     }
 
     // Create SRV in the main heap at DescriptorIndices::SKY_SRV + index
@@ -487,12 +491,9 @@ bool LoadSkyTextureFromFile(ID3D12Device *device,
     graphics_resources.m_skyResources[index] = *outResource;
     graphics_resources.m_nextSkyIndex = index + 1;
 
-    *outIndex = index;
-
-    // Track upload heap for later release (reuse same vector)
-    graphics_resources.m_textureUploadHeaps.push_back(uploadHeap);
-
-    return true;
+    result.outIndex = index;
+    result.success = true;
+    return result;
 }
 
 bool CreateHeightfieldMesh(
@@ -1223,9 +1224,11 @@ bool CompileShader(
             SDL_Log("Failed to compile shader: %S, entry %s, target %s", filename, entryPoint, target);
         }
         return false;
-    } else {
-        SDL_Log("Compiled %s (%s) - blob size %zu", entryPoint, target, (*outBlob)->GetBufferSize());     
-    }    
+    }
+    else
+    {
+        SDL_Log("Compiled %s (%s) - blob size %zu", entryPoint, target, (*outBlob)->GetBufferSize());
+    }
     return true;
 }
 
@@ -1414,8 +1417,6 @@ bool LoadAssets()
             D3D12_RESOURCE_STATE_COPY_DEST,
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
-
-        graphics_resources.m_textureUploadHeaps.push_back(errUpload);
 
         // After resource creation, create SRV at HEIGHTMAP_SRV + 0
         UINT errorIndex = 0;
