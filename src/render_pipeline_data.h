@@ -12,6 +12,12 @@ enum RenderPipeline : UINT
     RENDER_COUNT
 };
 
+enum BlendMode : UINT {
+    BLEND_OPAQUE = 0,
+    BLEND_ALPHA,
+    BLEND_COUNT
+};
+
 static const char* g_renderPipelineNames[RenderPipeline::RENDER_COUNT] = {
     "Default",
     "Triplanar",

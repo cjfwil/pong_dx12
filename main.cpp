@@ -381,8 +381,10 @@ bool PopulateCommandList()
         PrimitiveType currentPrimitiveToDraw = g_draw_list.primitiveTypes[i];
         RenderPipeline pl = g_draw_list.pipelines[i];
 
-        UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
-        ID3D12PipelineState *currentPSO = pipeline_dx12.m_pipelineStates[pl][psoIndex];
+        UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;        
+        // TODO desired api: UINT activeBlendMode = (object->usesAlpha) ? BLEND_ALPHA : BLEND_OPAQUE;
+        UINT activeBlendMode = (true) ? BLEND_ALPHA : BLEND_OPAQUE;
+        ID3D12PipelineState *currentPSO = pipeline_dx12.m_pipelineStates[pl][activeBlendMode][psoIndex];
         if (!currentPSO)
             SDL_Log("ERROR: PSO null for pipeline %d, msaa %d", pl, psoIndex);
 

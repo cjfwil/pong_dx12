@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 """
 meta_pipelines.py - Generate pipeline creation function for all shader variants.
-Reads a list of pipeline definitions and produces a .cpp file with a function
-CreateAllPipelines() that compiles shaders and creates PSOs.
-Call this function from LoadAssets() after defining inputElementDescs.
+Now creates both opaque and alpha‑blended PSOs for each tech and MSAA level.
 """
 
 import sys
@@ -29,7 +27,7 @@ PIPELINES = [
         "ps_entry": "PSMain",
         "defines": [("HEIGHTFIELD", "1")],
     },
-        {
+    {
         "name": "RENDER_SKY",
         "vs_entry": "VSMain",
         "ps_entry": "PSMain",
@@ -92,7 +90,6 @@ def generate_pipeline_code(output_path: Path) -> bool:
     lines.append("        psoDesc.InputLayout = {inputLayout, numInputElements};")
     lines.append("        psoDesc.pRootSignature = pipeline_dx12.m_rootSignature;")
     lines.append("        psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);")
-    lines.append("        psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);")
     lines.append("        psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);")
     lines.append("        psoDesc.DepthStencilState.DepthEnable = true;")
     lines.append("        psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;")
@@ -107,13 +104,29 @@ def generate_pipeline_code(output_path: Path) -> bool:
     lines.append("")
     lines.append("        for (UINT tech = 0; tech < RENDER_COUNT; ++tech)")
     lines.append("        {")
-    lines.append("            if (vertexShaders[tech] && pixelShaders[tech])")
+    lines.append("            if (!vertexShaders[tech] || !pixelShaders[tech]) continue;")
+    lines.append("            psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaders[tech]);")
+    lines.append("            psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaders[tech]);")
+    lines.append("")
+    lines.append("            for (UINT blend = 0; blend < BLEND_COUNT; ++blend)")
     lines.append("            {")
-    lines.append("                psoDesc.VS = CD3DX12_SHADER_BYTECODE(vertexShaders[tech]);")
-    lines.append("                psoDesc.PS = CD3DX12_SHADER_BYTECODE(pixelShaders[tech]);")
+    lines.append("                // Start from default opaque blend state")
+    lines.append("                psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);")
+    lines.append("                if (blend == BLEND_ALPHA)")
+    lines.append("                {")
+    lines.append("                    psoDesc.BlendState.RenderTarget[0].BlendEnable = TRUE;")
+    lines.append("                    psoDesc.BlendState.RenderTarget[0].SrcBlend  = D3D12_BLEND_SRC_ALPHA;")
+    lines.append("                    psoDesc.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;")
+    lines.append("                    psoDesc.BlendState.RenderTarget[0].BlendOp   = D3D12_BLEND_OP_ADD;")
+    lines.append("                    psoDesc.BlendState.RenderTarget[0].SrcBlendAlpha  = D3D12_BLEND_ONE;")
+    lines.append("                    psoDesc.BlendState.RenderTarget[0].DestBlendAlpha = D3D12_BLEND_INV_SRC_ALPHA;")
+    lines.append("                    psoDesc.BlendState.RenderTarget[0].BlendOpAlpha   = D3D12_BLEND_OP_ADD;")
+    lines.append("                }")
+    lines.append("                // For BLEND_OPAQUE, the default opaque state is used (no changes)")
+    lines.append("")
     lines.append("                HRAssert(pipeline_dx12.m_device->CreateGraphicsPipelineState(")
     lines.append("                    &psoDesc,")
-    lines.append("                    IID_PPV_ARGS(&pipeline_dx12.m_pipelineStates[tech][msaaIdx])));")
+    lines.append("                    IID_PPV_ARGS(&pipeline_dx12.m_pipelineStates[tech][blend][msaaIdx])));")
     lines.append("            }")
     lines.append("        }")
     lines.append("    }\n")

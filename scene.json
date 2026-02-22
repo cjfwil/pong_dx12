@@ -200,7 +200,7 @@
 			"objectType":	"Sky",
 			"pipeline":	"Sky",
 			"sky_sphereData":	{
-				"pathToTexture":	"assets/sky1.dds"
+				"pathToTexture":	"assets/alpha_clouds.dds"
 			}
 		}, {
 			"nametag":	"HF distant",

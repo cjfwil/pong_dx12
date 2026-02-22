@@ -199,7 +199,7 @@ static struct
     ID3D12DescriptorHeap *m_dsvHeap;
     ID3D12Resource *m_depthStencil;
 
-    ID3D12PipelineState *m_pipelineStates[RenderPipeline::RENDER_COUNT][4]; // 1x, 2x, 4x, 8x
+    ID3D12PipelineState *m_pipelineStates[RenderPipeline::RENDER_COUNT][BlendMode::BLEND_COUNT][4]; // 1x, 2x, 4x, 8x
 
     // MSAA resources
     ID3D12DescriptorHeap *m_msaaRtvHeap;
@@ -220,10 +220,11 @@ static struct
         // list, that command list can then be reset at any time and must be before
         // re-recording.
         UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
+        BlendMode b = BlendMode::BLEND_OPAQUE;        
         HRAssert(
             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->Reset(
                 pipeline_dx12.m_commandAllocators[sync_state.m_frameIndex],
-                pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][psoIndex]));
+                pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][b][psoIndex]));
     }
 } pipeline_dx12;
 
@@ -1296,11 +1297,13 @@ bool LoadAssets()
     // Create the command lists
     for (UINT i = 0; i < g_FrameCount; ++i)
     {
+        // do i do another loop for every blend mode? or what, just stick with blendemode = 0?
+        BlendMode b = BlendMode::BLEND_OPAQUE;
         HRAssert(
             pipeline_dx12.m_device->CreateCommandList(
                 0, D3D12_COMMAND_LIST_TYPE_DIRECT,
                 pipeline_dx12.m_commandAllocators[i],
-                pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][0],
+                pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][b][0],
                 IID_PPV_ARGS(&pipeline_dx12.m_commandList[i])));
         HRAssert(pipeline_dx12.m_commandList[i]->Close());
     }
@@ -1308,7 +1311,7 @@ bool LoadAssets()
     // Reset the first command list for setup recording
     HRAssert(pipeline_dx12.m_commandList[0]->Reset(
         pipeline_dx12.m_commandAllocators[0],
-        pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][0]));
+        pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][BlendMode::BLEND_OPAQUE][0]));
 
     for (UINT i = 0; i < PrimitiveType::PRIMITIVE_COUNT; ++i)
     {
