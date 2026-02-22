@@ -30,6 +30,7 @@
 #include <dxgi1_2.h>
 #include <directx/d3dx12.h>
 #include <DirectXTex.h>
+#include <DirectXMath.h>
 
 #include <imgui.h>
 #include <backends/imgui_impl_sdl3.h>
@@ -530,7 +531,7 @@ struct FlyCamera
     DirectX::XMFLOAT3 position = {0.0f, 2.0f, -5.0f};
     float yaw = 0.0f;
     float pitch = 0.0f;
-    float moveSpeed = 50.0f;
+    float moveSpeed = 500.0f;
     float lookSpeed = 0.002f;
     float padSpeed = 1.5f;
 
@@ -572,6 +573,32 @@ struct FlyCamera
     }
 } g_camera;
 
+// Convert pitch (X), yaw (Y), roll (Z) in radians to a quaternion.
+// Order of rotations: first pitch (X), then yaw (Y), then roll (Z).
+inline DirectX::XMVECTOR EulerToQuaternion(float pitch, float yaw, float roll)
+{
+    using namespace DirectX;
+
+    float halfPitch = pitch * 0.5f;
+    float halfYaw   = yaw   * 0.5f;
+    float halfRoll  = roll  * 0.5f;
+
+    float sp = sinf(halfPitch);
+    float cp = cosf(halfPitch);
+    float sy = sinf(halfYaw);
+    float cy = cosf(halfYaw);
+    float sr = sinf(halfRoll);
+    float cr = cosf(halfRoll);
+
+    // Derived from q = q_roll * q_yaw * q_pitch
+    float x = cr * cy * sp - sr * cp * sy;
+    float y = cr * cp * sy + sr * cy * sp;
+    float z = cy * cp * sr - cr * sy * sp;
+    float w = cr * cy * cp + sr * sy * sp;
+
+    return XMVectorSet(x, y, z, w);
+}
+
 void Update()
 {
     // g_input.mouseCaptured = !g_view_editor;
@@ -589,8 +616,8 @@ void Update()
     g_projection = DirectX::XMMatrixPerspectiveFovLH(
         DirectX::XMConvertToRadians(g_fov_deg),
         viewport_state.m_aspectRatio,
-        2048.0f,
-        0.01f);
+        4192.0f,
+        0.1f);
 
     // TRANSPOSE before storing (shader expects column‑major)
     DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].view,
@@ -601,6 +628,10 @@ void Update()
     memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex],
            &graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex],
            sizeof(PerFrameConstantBuffer));
+
+    float _t = 0.01f;
+    DirectX::XMStoreFloat4(&g_scene.objects[24].rot, EulerToQuaternion(program_state.timing.upTime*_t * 0.5f, 0, 0));    
+    DirectX::XMStoreFloat4(&g_scene.objects[23].rot, EulerToQuaternion(0, program_state.timing.upTime*_t+65, 0));
 
     FillDrawList();
 }
