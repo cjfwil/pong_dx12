@@ -382,8 +382,8 @@ bool PopulateCommandList()
         RenderPipeline pl = g_draw_list.pipelines[i];
 
         UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
-        // TODO figure out desired api? should we be allowed to set transparency per object?: UINT activeBlendMode = (object->usesAlpha) ? BLEND_ALPHA : BLEND_OPAQUE;
-        UINT activeBlendMode = (objectType == ObjectType::OBJECT_SKY_SPHERE) ? BLEND_ALPHA : BLEND_OPAQUE;
+        bool enableAlphaForSky = true; // TODO: make this per object
+        UINT activeBlendMode = (objectType == ObjectType::OBJECT_SKY_SPHERE && enableAlphaForSky) ? BLEND_ALPHA : BLEND_OPAQUE;
         ID3D12PipelineState *currentPSO = pipeline_dx12.m_pipelineStates[pl][activeBlendMode][psoIndex];
         if (!currentPSO)
             SDL_Log("ERROR: PSO null for pipeline %d, msaa %d", pl, psoIndex);
@@ -530,7 +530,7 @@ struct FlyCamera
     DirectX::XMFLOAT3 position = {0.0f, 2.0f, -5.0f};
     float yaw = 0.0f;
     float pitch = 0.0f;
-    float moveSpeed = 5.0f;
+    float moveSpeed = 50.0f;
     float lookSpeed = 0.002f;
     float padSpeed = 1.5f;
 
@@ -574,8 +574,6 @@ struct FlyCamera
 
 void Update()
 {
-    FillDrawList();
-
     // g_input.mouseCaptured = !g_view_editor;
     g_camera.UpdateFlyCamera((float)program_state.timing.deltaTime);
 
@@ -603,6 +601,8 @@ void Update()
     memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex],
            &graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex],
            sizeof(PerFrameConstantBuffer));
+
+    FillDrawList();
 }
 
 // Convert quaternion → pitch/yaw/roll (radians), order: pitch (X), yaw (Y), roll (Z)

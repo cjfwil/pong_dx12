@@ -1,5 +1,5 @@
 {
-	"objectCount":	24,
+	"objectCount":	25,
 	"objects":	[{
 			"nametag":	"floor",
 			"pos":	[-6.1656446962537e-23, -1.0072767734527588, -1.8521596168354929e-25],
@@ -193,16 +193,6 @@
 				"width":	256
 			}
 		}, {
-			"nametag":	"sky",
-			"pos":	[0, 0, 0],
-			"rot":	[-2.2990054413148109e-13, 1.1212843940020326e-13, -0.99999988079071045, -1.1920928955078125e-07],
-			"scale":	[3000, 3000, 3000],
-			"objectType":	"Sky",
-			"pipeline":	"Sky",
-			"sky_sphereData":	{
-				"pathToTexture":	"assets/alpha_clouds.dds"
-			}
-		}, {
 			"nametag":	"HF distant",
 			"pos":	[0, -128, 0],
 			"rot":	[0, 0, 0, 1],
@@ -242,6 +232,26 @@
 			"pipeline":	"Default",
 			"primitiveData":	{
 				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"sky",
+			"pos":	[0, 0, 0],
+			"rot":	[-2.2990054413148109e-13, 1.1212843940020326e-13, -0.99999988079071045, -1.1920928955078125e-07],
+			"scale":	[3000, 3000, 3000],
+			"objectType":	"Sky",
+			"pipeline":	"Sky",
+			"sky_sphereData":	{
+				"pathToTexture":	"assets/gen_clouds.dds"
+			}
+		}, {
+			"nametag":	"Clouds2",
+			"pos":	[0, 0, 0],
+			"rot":	[-0.39073112607002258, 3.5755892895394936e-05, 1.5177477507677395e-05, 0.920504868030548],
+			"scale":	[2800, 2800, 2800],
+			"objectType":	"Sky",
+			"pipeline":	"Sky",
+			"sky_sphereData":	{
+				"pathToTexture":	"assets/gen_clouds.dds"
 			}
 		}]
 }
