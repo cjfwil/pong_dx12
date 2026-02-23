@@ -90,3 +90,7 @@ should we allow for different kinds of vertices?
 
 ## solve problem of wasd being typed in the UI fields
 massive repeating even if input while switching mode on/off, enough to crash program
+
+## non wrapping sampling for heightmaps
+
+## add billboard objecttype and also imposter (animated billboard by viewing angle, with blending between frames), and animated sprite (animated billboard by time t)

@@ -24,6 +24,8 @@ struct Vertex
 #include "render_pipeline_data.h"
 #include "scene_data.h"
 
+void WaitForAllFrames();
+
 static ID3D12Resource *g_vertexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
 static ID3D12Resource *g_indexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
 static UINT g_cbvSrvDescriptorSize = 0;
@@ -133,6 +135,7 @@ static D3D12_CLEAR_VALUE g_depthOptimizedClearValue = {DXGI_FORMAT_D32_FLOAT, {0
 
 static constexpr UINT g_FrameCount = 3; // double, triple buffering etc...
 
+#define MAX_LOADED_MODELS 64
 // #define MAX_GENERAL_TEXTURES 1024
 #define MAX_HEIGHTMAP_TEXTURES 256
 #define MAX_SKY_TEXTURES 16
@@ -269,14 +272,22 @@ static struct
     ID3D12Resource *m_heightfieldIndexUpload = nullptr;
 
     ID3D12Resource *m_heightmapResources[MAX_HEIGHTMAP_TEXTURES] = {}; // textures by heap slot
-    UINT m_heightmapIndices[MAX_SCENE_OBJECTS] = {};                   // per‑object heap index
-    UINT m_nextHeightmapIndex = 0;                                     // next free slot (starts at 0)
-
     ID3D12Resource *m_skyResources[MAX_SKY_TEXTURES] = {};
-    UINT m_skyIndices[MAX_SCENE_OBJECTS] = {}; // per‑object texture index
-    UINT m_nextSkyIndex = 0;
 
-    // todo: merge m_heightmapIndices and m_skyIndices  ?????
+    // TODO move to the scene struct?
+    UINT m_sceneObjectIndices[MAX_SCENE_OBJECTS] = {}; // per‑object texture index
+    UINT m_nextSceneObject = 0;                        // next free slot (starts at 0)
+
+    struct
+    {
+        ID3D12Resource *vertexBuffer;
+        ID3D12Resource *indexBuffer;
+        D3D12_VERTEX_BUFFER_VIEW vertexView;
+        D3D12_INDEX_BUFFER_VIEW indexView;
+        UINT indexCount;
+        UINT textureIndex = 0; // TODO: this will be more complicated in the future
+    } m_models[MAX_LOADED_MODELS];
+    UINT m_numModelsLoaded = 0;
 } graphics_resources;
 
 struct TextureLoadResult
@@ -285,6 +296,7 @@ struct TextureLoadResult
     ID3D12Resource *uploadHeap = nullptr;
     bool success = false;
 };
+
 TextureLoadResult LoadTextureFromFile(ID3D12Device *device, ID3D12GraphicsCommandList *cmdList, const char *path, ID3D12Resource **outResource)
 {
     TextureLoadResult result = {};
@@ -368,7 +380,7 @@ TextureLoadResult LoadTextureFromFile(ID3D12Device *device, ID3D12GraphicsComman
     cmdList->ResourceBarrier(1, &barrier);
 
     // Allocate index in the heightmap heap
-    UINT index = graphics_resources.m_nextHeightmapIndex;
+    UINT index = graphics_resources.m_nextSceneObject;
     if (index >= MAX_HEIGHTMAP_TEXTURES)
     {
         SDL_Log("Out of heightmap texture slots!");
@@ -388,14 +400,14 @@ TextureLoadResult LoadTextureFromFile(ID3D12Device *device, ID3D12GraphicsComman
 
     // Store the resource in the array
     graphics_resources.m_heightmapResources[index] = *outResource;
-    graphics_resources.m_nextHeightmapIndex = index + 1;
+    graphics_resources.m_nextSceneObject = index + 1;
 
     result.outIndex = index;
     result.success = true;
     return result;
 }
 
-TextureLoadResult LoadSkyTextureFromFile(ID3D12Device *device, ID3D12GraphicsCommandList *cmdList, const char *path, ID3D12Resource **outResource) // returns allocated index
+TextureLoadResult LoadSkyTextureFromFile(ID3D12Device *device, ID3D12GraphicsCommandList *cmdList, const char *path, ID3D12Resource **outResource)
 {
     TextureLoadResult result = {};
     // Convert narrow string to wide string
@@ -470,7 +482,7 @@ TextureLoadResult LoadSkyTextureFromFile(ID3D12Device *device, ID3D12GraphicsCom
     cmdList->ResourceBarrier(1, &barrier);
 
     // Allocate index in the sky texture array
-    UINT index = graphics_resources.m_nextSkyIndex;
+    UINT index = graphics_resources.m_nextSceneObject;
     if (index >= MAX_SKY_TEXTURES)
     {
         SDL_Log("Out of sky texture slots!");
@@ -489,7 +501,7 @@ TextureLoadResult LoadSkyTextureFromFile(ID3D12Device *device, ID3D12GraphicsCom
 
     // Store the resource in the array
     graphics_resources.m_skyResources[index] = *outResource;
-    graphics_resources.m_nextSkyIndex = index + 1;
+    graphics_resources.m_nextSceneObject = index + 1;
 
     result.outIndex = index;
     result.success = true;
@@ -584,6 +596,192 @@ bool CreateHeightfieldMesh(
 
     outIndexCount = indexCount;
     return true;
+}
+
+// maybe unifiy with texture heap?
+struct ModelLoadResult
+{
+    UINT index;
+    ID3D12Resource *uploadHeap = nullptr;
+    bool success = false;
+};
+
+ModelLoadResult LoadModelFromFile(const char *path)
+{
+    ModelLoadResult result = {};
+    cgltf_options options = {};
+    cgltf_data *data = nullptr;
+    cgltf_result cgltf_res = cgltf_parse_file(&options, path, &data);
+    if (cgltf_res != cgltf_result_success)
+        return result;
+    cgltf_res = cgltf_load_buffers(&options, data, path);
+    if (cgltf_res != cgltf_result_success)
+    {
+        cgltf_free(data);
+        return result;
+    }
+
+    // Count total vertices & indices across all primitives
+    UINT totalVerts = 0, totalIndices = 0;
+    for (cgltf_size i = 0; i < data->meshes_count; ++i)
+    {
+        for (cgltf_size j = 0; j < data->meshes[i].primitives_count; ++j)
+        {
+            auto &prim = data->meshes[i].primitives[j];
+            // Use the first attribute's count (all attributes share the same vertex count)
+            if (prim.attributes_count > 0)
+                totalVerts += (UINT)prim.attributes[0].data->count;
+            totalIndices += prim.indices ? (UINT)prim.indices->count : 0;
+        }
+    }
+
+    std::vector<Vertex> vertices(totalVerts);
+    std::vector<uint32_t> indices(totalIndices);
+    UINT vOffset = 0, iOffset = 0;
+
+    for (cgltf_size i = 0; i < data->meshes_count; ++i)
+    {
+        for (cgltf_size j = 0; j < data->meshes[i].primitives_count; ++j)
+        {
+            auto &prim = data->meshes[i].primitives[j];
+
+            // Find attribute indices for position, normal, and texcoord (first set)
+            const cgltf_attribute *posAttr = nullptr;
+            const cgltf_attribute *normAttr = nullptr;
+            const cgltf_attribute *uvAttr = nullptr;
+            for (cgltf_size a = 0; a < prim.attributes_count; ++a)
+            {
+                auto &attr = prim.attributes[a];
+                if (attr.type == cgltf_attribute_type_position)
+                    posAttr = &attr;
+                else if (attr.type == cgltf_attribute_type_normal)
+                    normAttr = &attr;
+                else if (attr.type == cgltf_attribute_type_texcoord && attr.index == 0)
+                    uvAttr = &attr;
+            }
+
+            if (!posAttr)
+            {
+                // Position is mandatory; skip primitive if missing
+                SDL_Log("Warning: primitive missing position attribute, skipping");
+                continue;
+            }
+
+            cgltf_size vertexCount = posAttr->data->count;
+            // For each vertex in this primitive
+            for (cgltf_size k = 0; k < vertexCount; ++k)
+            {
+                Vertex &v = vertices[vOffset + k];
+
+                // Read position (3 floats)
+                cgltf_accessor_read_float(posAttr->data, k, &v.position.x, 3);
+
+                // Read normal if available, else default (0,1,0)
+                if (normAttr)
+                    cgltf_accessor_read_float(normAttr->data, k, &v.normal.x, 3);
+                else
+                    v.normal = {0.0f, 1.0f, 0.0f}; // up
+
+                // Read UV if available, else default (0,0)
+                if (uvAttr)
+                    cgltf_accessor_read_float(uvAttr->data, k, &v.uv.x, 2);
+                else
+                    v.uv = {0.0f, 0.0f};
+            }
+
+            // Extract indices (if any)
+            if (prim.indices)
+            {
+                cgltf_size indexCount = prim.indices->count;
+                for (cgltf_size k = 0; k < indexCount; ++k)
+                {
+                    uint32_t idx = (uint32_t)cgltf_accessor_read_index(prim.indices, k);
+                    indices[iOffset + k] = vOffset + idx; // offset by the cumulative vertex count
+                }
+                iOffset += (UINT)indexCount;
+            }
+
+            vOffset += (UINT)vertexCount;
+        }
+    }
+
+    SDL_Log("Model %s: %u verts, %u indices", path, totalVerts, totalIndices);
+    if (totalVerts > 0)
+    {
+        SDL_Log("First vertex: pos(%.2f,%.2f,%.2f) norm(%.2f,%.2f,%.2f) uv(%.2f,%.2f)",
+                vertices[0].position.x, vertices[0].position.y, vertices[0].position.z,
+                vertices[0].normal.x, vertices[0].normal.y, vertices[0].normal.z,
+                vertices[0].uv.x, vertices[0].uv.y);
+    }
+    if (totalIndices > 0)
+    {
+        SDL_Log("First index: %u", indices[0]);
+    }
+
+    // --- Start of upload section ---
+    // Ensure command list is open for recording
+    HRAssert(pipeline_dx12.m_commandAllocators[0]->Reset());
+    HRAssert(pipeline_dx12.m_commandList[0]->Reset(
+        pipeline_dx12.m_commandAllocators[0],
+        pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][BlendMode::BLEND_OPAQUE][0]));
+
+    // Create GPU buffers using CreateDefaultBuffer
+    ID3D12Resource *vb = nullptr, *ib = nullptr, *vbUpload = nullptr, *ibUpload = nullptr;
+    if (!CreateDefaultBuffer(pipeline_dx12.m_device, pipeline_dx12.m_commandList[0],
+                             vertices.data(), totalVerts * sizeof(Vertex),
+                             D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
+                             &vb, &vbUpload))
+    {
+        cgltf_free(data);
+        return result;
+    }
+    if (!CreateDefaultBuffer(pipeline_dx12.m_device, pipeline_dx12.m_commandList[0],
+                             indices.data(), totalIndices * sizeof(uint32_t),
+                             D3D12_RESOURCE_STATE_INDEX_BUFFER,
+                             &ib, &ibUpload))
+    {
+        vb->Release();
+        vbUpload->Release();
+        cgltf_free(data);
+        return result;
+    }
+
+    //upload 
+    HRAssert(pipeline_dx12.m_commandList[0]->Close());
+
+    ID3D12CommandList *ppLists[] = {pipeline_dx12.m_commandList[0]};
+    pipeline_dx12.m_commandQueue->ExecuteCommandLists(1, ppLists);
+
+    // Wait for the GPU to finish copying
+    WaitForAllFrames();
+
+    // Upload heaps can now be released (the copy is done)
+    vbUpload->Release();
+    ibUpload->Release();
+
+    // Do NOT reset the command list or allocator here – leave them as they are.
+    // The main loop will reset them when needed via ResetCommandObjects.
+
+    static UINT currentModelIndex = 0;
+    // Store in current model index
+    graphics_resources.m_models[currentModelIndex].vertexBuffer = vb;
+    graphics_resources.m_models[currentModelIndex].indexBuffer = ib;
+    // todo pass back the upload buffers so we can free them later
+    // graphics_resources.m_models[currentModelIndex].vertexUpload = vbUpload;
+    // graphics_resources.m_models[currentModelIndex].indexUpload = ibUpload;
+    graphics_resources.m_models[currentModelIndex].vertexView.BufferLocation = vb->GetGPUVirtualAddress();
+    graphics_resources.m_models[currentModelIndex].vertexView.StrideInBytes = sizeof(Vertex);
+    graphics_resources.m_models[currentModelIndex].vertexView.SizeInBytes = totalVerts * sizeof(Vertex);
+    graphics_resources.m_models[currentModelIndex].indexView.BufferLocation = ib->GetGPUVirtualAddress();
+    graphics_resources.m_models[currentModelIndex].indexView.SizeInBytes = totalIndices * sizeof(uint32_t);
+    graphics_resources.m_models[currentModelIndex].indexView.Format = DXGI_FORMAT_R32_UINT;
+    graphics_resources.m_models[currentModelIndex].indexCount = totalIndices;
+
+    cgltf_free(data);
+    result.success = true;
+    result.index = currentModelIndex;
+    currentModelIndex++;
+    return result;
 }
 
 void WaitForFrameReady()
@@ -1427,7 +1625,7 @@ bool LoadAssets()
         pipeline_dx12.m_device->CreateShaderResourceView(graphics_resources.m_heightmapResources[0], nullptr, cpuHandle);
 
         graphics_resources.m_heightmapResources[errorIndex] = graphics_resources.m_heightmapResources[0];
-        graphics_resources.m_nextHeightmapIndex = 1; // next free index is 1
+        graphics_resources.m_nextSceneObject = 1; // next free index is 1
         g_errorHeightmapIndex = errorIndex;
     }
 

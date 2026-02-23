@@ -37,6 +37,7 @@
 #include <backends/imgui_impl_dx12.h>
 #include <ImGuizmo.h>
 
+#define CGLTF_IMPLEMENTATION
 #include <cgltf.h>
 #include <cJSON.h>
 #pragma warning(pop)
@@ -422,6 +423,11 @@ bool PopulateCommandList()
             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_heightfieldVertexView);
             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_heightfieldIndexView);
             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_heightfieldIndexCount, 1, 0, 0, 0);
+        } else if (objectType == OBJECT_LOADED_MODEL) {
+            // blah
+            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_models[0].vertexView);
+            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_models[0].indexView);
+            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_models[0].indexCount, 1, 0, 0, 0);
         }
     }
 
@@ -488,7 +494,7 @@ void FillDrawList()
     for (int i = 0; i < g_scene.objectCount && drawCount < g_draw_list_element_total; ++i)
     {
         const SceneObject &obj = g_scene.objects[i];
-        if (obj.objectType != OBJECT_PRIMITIVE && obj.objectType != OBJECT_HEIGHTFIELD && obj.objectType != OBJECT_SKY_SPHERE)
+        if (obj.objectType != OBJECT_PRIMITIVE && obj.objectType != OBJECT_HEIGHTFIELD && obj.objectType != OBJECT_SKY_SPHERE && obj.objectType != OBJECT_LOADED_MODEL)
             continue;
 
         g_draw_list.transforms.pos[drawCount] = obj.pos;
@@ -503,12 +509,12 @@ void FillDrawList()
         }
         else if (obj.objectType == OBJECT_HEIGHTFIELD)
         {
-            g_draw_list.heightmapIndices[drawCount] = graphics_resources.m_heightmapIndices[i];
+            g_draw_list.heightmapIndices[drawCount] = graphics_resources.m_sceneObjectIndices[i];
         }
         else if (obj.objectType == OBJECT_SKY_SPHERE)
         {
             g_draw_list.primitiveTypes[drawCount] = PRIMITIVE_INVERTED_SPHERE;
-            g_draw_list.heightmapIndices[drawCount] = graphics_resources.m_skyIndices[i];
+            g_draw_list.heightmapIndices[drawCount] = graphics_resources.m_sceneObjectIndices[i];
         }
 
         g_draw_list.pipelines[drawCount] = obj.pipeline;
@@ -630,8 +636,8 @@ void Update()
            sizeof(PerFrameConstantBuffer));
 
     float _t = 0.01f;
-    DirectX::XMStoreFloat4(&g_scene.objects[23].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.2f, program_state.timing.upTime * _t + 65, 0));
-    DirectX::XMStoreFloat4(&g_scene.objects[24].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.5f, 0, 0));
+    DirectX::XMStoreFloat4(&g_scene.objects[24].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.2f, program_state.timing.upTime * _t + 65, 0));
+    DirectX::XMStoreFloat4(&g_scene.objects[25].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.5f, 0, 0));
 
     FillDrawList();
 }
@@ -1114,7 +1120,7 @@ void LoadAllTextures()
         if (obj.objectType == OBJECT_HEIGHTFIELD)
         {
             const char *path = obj.data.heightfield.pathToHeightmap;
-            UINT &outIndex = graphics_resources.m_heightmapIndices[i];
+            UINT &outIndex = graphics_resources.m_sceneObjectIndices[i];
             UINT errorIndex = g_errorHeightmapIndex;
 
             if (path[0] != '\0')
@@ -1142,7 +1148,7 @@ void LoadAllTextures()
         else if (obj.objectType == OBJECT_SKY_SPHERE)
         {
             const char *path = obj.data.sky_sphere.pathToTexture;
-            UINT &outIndex = graphics_resources.m_skyIndices[i];
+            UINT &outIndex = graphics_resources.m_sceneObjectIndices[i];
             UINT errorIndex = 0; // assuming index 0 is the error texture
 
             if (path[0] != '\0')
@@ -1262,6 +1268,8 @@ int main(void)
     read_scene();
 
     LoadAllTextures();
+    
+    ModelLoadResult __testModel = LoadModelFromFile("assets/DamagedHelmet.glb");    
 
     while (program_state.isRunning)
     {

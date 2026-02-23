@@ -2,7 +2,7 @@
 // PIPELINE CREATION – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_pipelines.py
-//   Generated: 2026-02-22 05:52:25
+//   Generated: 2026-02-23 09:41:26
 //------------------------------------------------------------------------
 
 
@@ -81,6 +81,7 @@ bool CreateAllPipelines(const D3D12_INPUT_ELEMENT_DESC* inputLayout, UINT numInp
         psoDesc.InputLayout = {inputLayout, numInputElements};
         psoDesc.pRootSignature = pipeline_dx12.m_rootSignature;
         psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+        // psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
         psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
         psoDesc.DepthStencilState.DepthEnable = true;
         psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
