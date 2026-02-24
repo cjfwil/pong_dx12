@@ -276,6 +276,7 @@ static struct
     int drawAmount = g_draw_list_element_total; // this should not be greater than g_draw_list_element_total
     ObjectType objectTypes[g_draw_list_element_total] = {};
     PrimitiveType primitiveTypes[g_draw_list_element_total] = {};
+    UINT loadedModelIndex[g_draw_list_element_total] = {};
     RenderPipeline pipelines[g_draw_list_element_total] = {};
     UINT heightmapIndices[g_draw_list_element_total] = {};
     struct
@@ -381,6 +382,7 @@ bool PopulateCommandList()
     {
         ObjectType objectType = g_draw_list.objectTypes[i];
         PrimitiveType currentPrimitiveToDraw = g_draw_list.primitiveTypes[i];
+        UINT loadedModelIndex = g_draw_list.loadedModelIndex[i];
         RenderPipeline pl = g_draw_list.pipelines[i];
 
         UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
@@ -423,11 +425,13 @@ bool PopulateCommandList()
             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_heightfieldVertexView);
             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_heightfieldIndexView);
             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_heightfieldIndexCount, 1, 0, 0, 0);
-        } else if (objectType == OBJECT_LOADED_MODEL) {
-            // blah
-            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_models[0].vertexView);
-            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_models[0].indexView);
-            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_models[0].indexCount, 1, 0, 0, 0);
+        }
+        else if (objectType == OBJECT_LOADED_MODEL)
+        {
+
+            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_models[loadedModelIndex].vertexView);
+            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_models[loadedModelIndex].indexView);
+            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_models[loadedModelIndex].indexCount, 1, 0, 0, 0);
         }
     }
 
@@ -515,6 +519,10 @@ void FillDrawList()
         {
             g_draw_list.primitiveTypes[drawCount] = PRIMITIVE_INVERTED_SPHERE;
             g_draw_list.heightmapIndices[drawCount] = graphics_resources.m_sceneObjectIndices[i];
+        }
+        else if (obj.objectType == OBJECT_LOADED_MODEL)
+        {
+            g_draw_list.loadedModelIndex[drawCount] = g_scene.objects[i].data.loaded_model.model_index;
         }
 
         g_draw_list.pipelines[drawCount] = obj.pipeline;
@@ -1186,7 +1194,7 @@ void LoadAllTextures()
 
     for (auto *heap : localUploadHeaps)
         heap->Release();
-    localUploadHeaps.clear(); 
+    localUploadHeaps.clear();
 }
 
 int main(void)
@@ -1267,7 +1275,6 @@ int main(void)
 
     read_scene();
 
-
     // todo: when we load everything, make a big table that keeps track of everything we have loaded, filenames, objecttypes, and where it is placed
     // todo: do not load same filename more than once
 
@@ -1276,7 +1283,7 @@ int main(void)
     // m_heightmapTextures[MAX_HEIGHTMAP_TEXTURES]
     // m_skyTextures[MAX_SKY_TEXTURES]
 
-    // m_loadedModels[MAX_LOADED_MODELS]    
+    // m_loadedModels[MAX_LOADED_MODELS]
 
     // loaded resource:
     // char* filename
@@ -1294,16 +1301,24 @@ int main(void)
     // maybe instead of adding to global albedo textures, maybe be linked to the model
     // {
     //      m_modelDataStuff[MAX_MODELS]
-    //      m_modelAlbedoTexture[MAX_MODELS]            
+    //      m_modelAlbedoTexture[MAX_MODELS]
     //      m_modelOcclusionTexture[MAX_MODELS]
     //      .. expandable slots here, be it normal, roughness etc... if it is determinted relevant
-    // }   
+    // }
 
-    // then custom shader only for models which has bindless for model textures?    
+    // then custom shader only for models which has bindless for model textures?
 
     LoadAllTextures();
-    
-    ModelLoadResult __testModel = LoadModelFromFile("assets/models/DamagedHelmet.glb");    
+
+    for (int i = 0; i < g_scene.objectCount; ++i)
+    {
+        SceneObject so = g_scene.objects[i];
+        if (so.objectType == ObjectType::OBJECT_LOADED_MODEL)
+        {
+            ModelLoadResult mlr = LoadModelFromFile(so.data.loaded_model.pathTo);
+            g_scene.objects[i].data.loaded_model.model_index = mlr.index;
+        }
+    }
 
     while (program_state.isRunning)
     {

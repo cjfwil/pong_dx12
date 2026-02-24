@@ -288,8 +288,14 @@ static struct
         UINT indexCount;
         UINT textureIndex = 0; // TODO: this will be more complicated in the future
     } m_models[MAX_LOADED_MODELS];
-    UINT m_numModelsLoaded = 0;
+    UINT m_numModelsLoaded = 0;    
 } graphics_resources;
+
+struct {
+        bool loaded = false;
+        UINT index = 0; // index into m_models        
+        char* filename = "";
+} g_loadedModels[MAX_LOADED_MODELS];
 
 struct TextureLoadResult
 {

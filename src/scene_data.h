@@ -39,6 +39,7 @@ struct SceneObject {
         } heightfield;
         struct {
             char pathTo[256]; //example only, placeholder 
+            uint32_t model_index;
         } loaded_model;
         struct {            
             char pathToTexture[256]; //example only, placeholder             
