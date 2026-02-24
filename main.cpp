@@ -1315,8 +1315,23 @@ int main(void)
         SceneObject so = g_scene.objects[i];
         if (so.objectType == ObjectType::OBJECT_LOADED_MODEL)
         {
-            ModelLoadResult mlr = LoadModelFromFile(so.data.loaded_model.pathTo);
-            g_scene.objects[i].data.loaded_model.model_index = mlr.index;
+            bool modelAlreadyLoaded = false;
+            // todo: if so.data.loaded_model.pathTo already loaded, then skip
+            for (int j = 0; j < graphics_resources.m_numModelsLoaded; ++j)
+            {
+                if (strcmp(graphics_resources.m_modelPaths[j], so.data.loaded_model.pathTo) == 0)
+                {
+                    // we have already loaded this path
+                    g_scene.objects[i].data.loaded_model.model_index = j;
+                    modelAlreadyLoaded = true;
+                    break;
+                }
+            }
+            if (!modelAlreadyLoaded)
+            {
+                ModelLoadResult mlr = LoadModelFromFile(so.data.loaded_model.pathTo);
+                g_scene.objects[i].data.loaded_model.model_index = mlr.index;
+            }
         }
     }
 

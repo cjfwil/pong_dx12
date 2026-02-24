@@ -289,6 +289,7 @@ static struct
         UINT textureIndex = 0; // TODO: this will be more complicated in the future
     } m_models[MAX_LOADED_MODELS];
     UINT m_numModelsLoaded = 0;    
+    char m_modelPaths[MAX_LOADED_MODELS][256];   // resolved path
 } graphics_resources;
 
 struct {
@@ -784,11 +785,13 @@ ModelLoadResult LoadModelFromFile(const char *path)
     graphics_resources.m_models[currentModelIndex].indexView.SizeInBytes = totalIndices * sizeof(uint32_t);
     graphics_resources.m_models[currentModelIndex].indexView.Format = DXGI_FORMAT_R32_UINT;
     graphics_resources.m_models[currentModelIndex].indexCount = totalIndices;
+    strcpy_s(graphics_resources.m_modelPaths[currentModelIndex], sizeof(graphics_resources.m_modelPaths[currentModelIndex]), path);
+    graphics_resources.m_numModelsLoaded++;
 
     cgltf_free(data);
     result.success = true;
     result.index = currentModelIndex;
-    currentModelIndex++;
+    currentModelIndex++;    
     return result;
 }
 
