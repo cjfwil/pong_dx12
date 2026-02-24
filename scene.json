@@ -189,7 +189,7 @@
 			"objectType":	"Heightfield",
 			"pipeline":	"Heightfield",
 			"heightfieldData":	{
-				"pathToHeightmap":	"assets/islands.dds",
+				"pathToHeightmap":	"assets/heightmaps/islands.dds",
 				"width":	256
 			}
 		}, {
@@ -200,7 +200,7 @@
 			"objectType":	"Heightfield",
 			"pipeline":	"Heightfield",
 			"heightfieldData":	{
-				"pathToHeightmap":	"assets/clouds.dds",
+				"pathToHeightmap":	"assets/heightmaps/clouds.dds",
 				"width":	256
 			}
 		}, {
@@ -235,33 +235,33 @@
 			}
 		}, {
 			"nametag":	"avocado",
-			"pos":	[0, 0, 0],
-			"rot":	[-7.0619218594711635e-37, -3.7057678820601156e-22, 1.905656842315093e-15, 1],
+			"pos":	[1.6000000238418579, 1.5, -10.399999618530273],
+			"rot":	[0.70710676908493042, -6.18922866448923e-15, 6.1892290880057044e-15, 0.70710670948028564],
 			"scale":	[1, 1, 1],
 			"objectType":	"Loaded Model",
 			"pipeline":	"Default",
 			"loaded_modelData":	{
-				"pathTo":	"assets/DamagedHelmet.glb"
+				"pathTo":	"assets/models/DamagedHelmet.glb"
 			}
 		}, {
 			"nametag":	"sky",
 			"pos":	[0, 0, 0],
-			"rot":	[-0.00494330795481801, 0.99324667453765869, -0.10631993412971497, -0.046180654317140579],
+			"rot":	[0.0040807793848216534, 0.9052694439888, -0.00869779009371996, 0.42472916841506958],
 			"scale":	[3500, 3500, 3500],
 			"objectType":	"Sky",
 			"pipeline":	"Sky",
 			"sky_sphereData":	{
-				"pathToTexture":	"assets/gen_clouds.dds"
+				"pathToTexture":	"assets/sky/gen_clouds.dds"
 			}
 		}, {
 			"nametag":	"Clouds2",
 			"pos":	[0, 0, 0],
-			"rot":	[0.26344528794288635, 0, 0, 0.96467435359954834],
+			"rot":	[0.024016844108700752, 0, 0, 0.999711573123932],
 			"scale":	[3400, 3400, 3400],
 			"objectType":	"Sky",
 			"pipeline":	"Sky",
 			"sky_sphereData":	{
-				"pathToTexture":	"assets/gen_clouds.dds"
+				"pathToTexture":	"assets/sky/gen_clouds.dds"
 			}
 		}]
 }

@@ -26,26 +26,49 @@ except ImportError:
 # Parser - exact original, proven to work
 # ----------------------------------------------------------------------
 def parse_dx12_resources(content: str) -> list:
-    """Parse the header content and extract D3D12 resource declarations."""
     resources = []
     
-    # Pattern to match COM pointer declarations in structs
-    # Matches: ID3D12Something *name or ID3D12Something *name[N]
-    pattern = r'(ID3D\w+|IDXGISwapChain\d*)\s*\*\s*(\w+)(\[[^\]]*\])?\s*(=\s*[^;]*)?;'
+    # Pattern for COM pointer declarations
+    com_pattern = r'(ID3D\w+|IDXGISwapChain\d*)\s*\*\s*(\w+)(\[[^\]]*\])?\s*(=\s*[^;]*)?;'
     
-    # Find all static struct definitions with their names
+    # Find all static struct definitions
     struct_pattern = r'static struct\s*\{(.+?)\}\s*(\w+);'
     
     for struct_match in re.finditer(struct_pattern, content, re.DOTALL):
         struct_body = struct_match.group(1)
         struct_name = struct_match.group(2)
         
-        # Only process our known structs
         if struct_name not in ['pipeline_dx12', 'graphics_resources', 'sync_state']:
             continue
         
-        # Find all COM pointers in this specific struct
-        for match in re.finditer(pattern, struct_body):
+        # --- First, find and process nested struct arrays ---
+        # Pattern for: struct { ... } arrayName[arraySize];
+        nested_array_pattern = r'struct\s*\{([^}]*)\}\s*(\w+)\[([^\]]+)\]\s*;'
+        for nested_match in re.finditer(nested_array_pattern, struct_body, re.DOTALL):
+            inner_body = nested_match.group(1)
+            array_name = nested_match.group(2)
+            array_size = nested_match.group(3).strip()
+            
+            # Parse inner body for COM pointers
+            for com_match in re.finditer(com_pattern, inner_body):
+                type_name = com_match.group(1)
+                var_name = com_match.group(2)
+                # Inside a nested struct, the member is not an array itself
+                resources.append({
+                    'struct': struct_name,
+                    'type': type_name,
+                    'name': var_name,
+                    'is_array': False,
+                    'array_size': None,
+                    'parent_array': array_name,
+                    'array_size_parent': array_size
+                })
+            
+            # Remove this nested definition from struct_body so we don't double‑count
+            struct_body = struct_body.replace(nested_match.group(0), '')
+        
+        # --- Now parse the remaining body for top‑level COM pointers ---
+        for match in re.finditer(com_pattern, struct_body):
             type_name = match.group(1)
             var_name = match.group(2)
             is_array = match.group(3) is not None
@@ -158,7 +181,6 @@ def get_category_comment(name: str) -> str:
 # Code generation - original logic with fixes
 # ----------------------------------------------------------------------
 def generate_cleanup_code(resources: list) -> str:
-    """Generate C++ cleanup code."""
     lines = []
     lines.append("#pragma once")
     lines.append("#include \"renderer_dx12.cpp\"")
@@ -171,7 +193,7 @@ def generate_cleanup_code(resources: list) -> str:
     lines.append("    WaitForGpu();")
     lines.append("")
     
-    # FIX 1: Use case‑insensitive detection (lowercase 'constantbuffer')
+    # 1. Constant buffers (special unmapping)
     cb_resources = [r for r in resources if 'constantbuffer' in r['name'].lower()]
     if cb_resources:
         lines.append("    // Unmap and release constant buffers")
@@ -195,18 +217,39 @@ def generate_cleanup_code(resources: list) -> str:
                 lines.append(f"        {res['struct']}.{res['name']}->Unmap(0, nullptr);")
                 lines.append(f"        {res['struct']}.{res['name']}->Release();")
                 lines.append(f"        {res['struct']}.{res['name']} = nullptr;")
-                # FIX 2: For the per‑scene constant buffer, also clear its mapped pointer
                 if res['struct'] == 'graphics_resources' and res['name'] == 'm_PerSceneConstantBuffer':
                     lines.append("            graphics_resources.m_pPerSceneCbvDataBegin = nullptr;")
                 lines.append("    }")
         lines.append("")
     
-    # Generate cleanup for other COM resources
-    other_resources = [r for r in resources if 'constantbuffer' not in r['name'].lower()]
+    # Separate resources with parent_array from top‑level ones
+    nested_resources = [r for r in resources if 'parent_array' in r]
+    other_resources = [r for r in resources if 'constantbuffer' not in r['name'].lower() and 'parent_array' not in r]
     
+    # Group nested resources by parent array
+    nested_by_parent = {}
+    for res in nested_resources:
+        key = (res['struct'], res['parent_array'], res['array_size_parent'])
+        nested_by_parent.setdefault(key, []).append(res)
+    
+    # Generate nested loops for each parent array
+    if nested_by_parent:
+        lines.append("    // Release resources inside arrays of structs")
+        for (struct_name, parent_array, array_size), members in nested_by_parent.items():
+            lines.append(f"    for (UINT i = 0; i < {array_size}; i++)")
+            lines.append("    {")
+            for res in members:
+                lines.append(f"        if ({struct_name}.{parent_array}[i].{res['name']})")
+                lines.append("        {")
+                lines.append(f"            {struct_name}.{parent_array}[i].{res['name']}->Release();")
+                lines.append(f"            {struct_name}.{parent_array}[i].{res['name']} = nullptr;")
+                lines.append("        }")
+            lines.append("    }")
+        lines.append("")
+    
+    # 2. Other COM resources (top‑level)
     current_category = None
     for res in other_resources:
-        # Add category comments
         category = get_category_comment(res['name'])
         if category != current_category:
             if current_category is not None:

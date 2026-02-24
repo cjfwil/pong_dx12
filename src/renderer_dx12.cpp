@@ -246,13 +246,14 @@ static struct
     PerFrameConstantBuffer m_PerFrameConstantBufferData[g_FrameCount];
     PerSceneConstantBuffer m_PerSceneConstantBufferData;
 
+    // todo: unify this:
     D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView[PrimitiveType::PRIMITIVE_COUNT] = {};
     D3D12_INDEX_BUFFER_VIEW m_indexBufferView[PrimitiveType::PRIMITIVE_COUNT] = {};
     ID3D12Resource *m_vertexBuffer[PrimitiveType::PRIMITIVE_COUNT] = {};
     ID3D12Resource *m_indexBuffer[PrimitiveType::PRIMITIVE_COUNT] = {};
     UINT m_indexCount[PrimitiveType::PRIMITIVE_COUNT] = {};
 
-    ID3D12Resource *m_texture = nullptr;
+    ID3D12Resource *m_albedoTexture = nullptr;
     ID3D12Resource *m_PerSceneConstantBuffer = nullptr;
     UINT8 *m_pPerSceneCbvDataBegin = nullptr;
     ID3D12Resource *m_PerFrameConstantBuffer[g_FrameCount] = {};
@@ -746,6 +747,7 @@ ModelLoadResult LoadModelFromFile(const char *path)
         return result;
     }
 
+    // todo separate out into mass upload for all models?
     //upload 
     HRAssert(pipeline_dx12.m_commandList[0]->Close());
 
@@ -1835,12 +1837,12 @@ bool LoadAssets()
                 &textureDesc,
                 D3D12_RESOURCE_STATE_COPY_DEST,
                 nullptr,
-                IID_PPV_ARGS(&graphics_resources.m_texture))))
+                IID_PPV_ARGS(&graphics_resources.m_albedoTexture))))
             return false;
 
         // Calculate upload buffer size for ALL mip levels
         const UINT64 uploadBufferSize = GetRequiredIntermediateSize(
-            graphics_resources.m_texture,
+            graphics_resources.m_albedoTexture,
             0,
             imageCountUINT // Already cast to UINT
         );
@@ -1866,14 +1868,14 @@ bool LoadAssets()
 
         // Copy ALL mip levels to the GPU
         UpdateSubresources(pipeline_dx12.m_commandList[0],
-                           graphics_resources.m_texture,
+                           graphics_resources.m_albedoTexture,
                            textureUploadHeap,
                            0, 0,
                            imageCountUINT, // Already cast to UINT
                            subresources.data());
 
         auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-            graphics_resources.m_texture,
+            graphics_resources.m_albedoTexture,
             D3D12_RESOURCE_STATE_COPY_DEST,
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
@@ -1891,7 +1893,7 @@ bool LoadAssets()
         srvDesc.Texture2D.MostDetailedMip = 0;
         srvDesc.Texture2D.MipLevels = mipLevelsUINT; // ALL mips!
         srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-        pipeline_dx12.m_device->CreateShaderResourceView(graphics_resources.m_texture, &srvDesc, cpuSrv);
+        pipeline_dx12.m_device->CreateShaderResourceView(graphics_resources.m_albedoTexture, &srvDesc, cpuSrv);
     }
 
     {

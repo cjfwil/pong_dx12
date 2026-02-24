@@ -2,7 +2,7 @@
 // GENERATED ONDESTROY – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_ondestroy.py
-//   Generated: 2026-02-20 12:46:07
+//   Generated: 2026-02-24 06:43:51
 //------------------------------------------------------------------------
 
 #pragma once
@@ -34,6 +34,21 @@ void OnDestroy()
         }
     }
 
+    // Release resources inside arrays of structs
+    for (UINT i = 0; i < MAX_LOADED_MODELS; i++)
+    {
+        if (graphics_resources.m_models[i].vertexBuffer)
+        {
+            graphics_resources.m_models[i].vertexBuffer->Release();
+            graphics_resources.m_models[i].vertexBuffer = nullptr;
+        }
+        if (graphics_resources.m_models[i].indexBuffer)
+        {
+            graphics_resources.m_models[i].indexBuffer->Release();
+            graphics_resources.m_models[i].indexBuffer = nullptr;
+        }
+    }
+
     // Release sync objects
     if (sync_state.m_fence)
     {
@@ -54,11 +69,6 @@ void OnDestroy()
             graphics_resources.m_vertexBuffer[i]->Release();
             graphics_resources.m_vertexBuffer[i] = nullptr;
         }
-    }
-    if (graphics_resources.m_texture)
-    {
-        graphics_resources.m_texture->Release();
-        graphics_resources.m_texture = nullptr;
     }
 
     // Release pipeline objects
@@ -168,6 +178,11 @@ void OnDestroy()
     }
 
     // Release other resources
+    if (graphics_resources.m_albedoTexture)
+    {
+        graphics_resources.m_albedoTexture->Release();
+        graphics_resources.m_albedoTexture = nullptr;
+    }
     if (graphics_resources.m_heightmapTexture)
     {
         graphics_resources.m_heightmapTexture->Release();
@@ -199,6 +214,14 @@ void OnDestroy()
         {
             graphics_resources.m_heightmapResources[i]->Release();
             graphics_resources.m_heightmapResources[i] = nullptr;
+        }
+    }
+    for (UINT i = 0; i < MAX_SKY_TEXTURES; i++)
+    {
+        if (graphics_resources.m_skyResources[i])
+        {
+            graphics_resources.m_skyResources[i]->Release();
+            graphics_resources.m_skyResources[i] = nullptr;
         }
     }
 

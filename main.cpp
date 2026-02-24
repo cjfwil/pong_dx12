@@ -1186,7 +1186,7 @@ void LoadAllTextures()
 
     for (auto *heap : localUploadHeaps)
         heap->Release();
-    // localUploadHeaps.clear();
+    localUploadHeaps.clear(); 
 }
 
 int main(void)
@@ -1267,9 +1267,43 @@ int main(void)
 
     read_scene();
 
+
+    // todo: when we load everything, make a big table that keeps track of everything we have loaded, filenames, objecttypes, and where it is placed
+    // todo: do not load same filename more than once
+
+    // new pattern?:
+    // m_albedoTextures[MAX_ALBEDO_TEXTURES]
+    // m_heightmapTextures[MAX_HEIGHTMAP_TEXTURES]
+    // m_skyTextures[MAX_SKY_TEXTURES]
+
+    // m_loadedModels[MAX_LOADED_MODELS]    
+
+    // loaded resource:
+    // char* filename
+    // texture_type m_tt = albedo/sky/heightmap
+    // UINT index or LoadedTexture* m_pLocation
+    // if m_tt==albedo then index in     m_albedoTextures[index], if m_tt==sky then index in m_skyTextures[index] etc...
+
+    // assets/
+    // -> models
+    // -> sky
+    // -> heightmaps
+
+    // look in each folder and load all and track all locations
+
+    // maybe instead of adding to global albedo textures, maybe be linked to the model
+    // {
+    //      m_modelDataStuff[MAX_MODELS]
+    //      m_modelAlbedoTexture[MAX_MODELS]            
+    //      m_modelOcclusionTexture[MAX_MODELS]
+    //      .. expandable slots here, be it normal, roughness etc... if it is determinted relevant
+    // }   
+
+    // then custom shader only for models which has bindless for model textures?    
+
     LoadAllTextures();
     
-    ModelLoadResult __testModel = LoadModelFromFile("assets/DamagedHelmet.glb");    
+    ModelLoadResult __testModel = LoadModelFromFile("assets/models/DamagedHelmet.glb");    
 
     while (program_state.isRunning)
     {
