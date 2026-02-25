@@ -8,7 +8,7 @@
 cbuffer PerDrawRootConstants : register(b0)
 {
     float4x4 world;
-    uint heightmapIndex;
+    uint heightmapIndex; // TODO: rename this because in practice it is just an abstract index into albedo, heightmap or sky texture arrays
     float per_draw_padding[3];
 };
 
@@ -29,9 +29,14 @@ cbuffer PerSceneConstantBuffer : register(b2)
     float per_scene_padding[52];
 };
 
-Texture2D g_texture : register(t0);
+Texture2D g_defaultTexture : register(t0);
 Texture2D g_heightmaps[] : register(t1);    // todo place under heightfield define
 Texture2D g_skyTextures[] : register(t257); // after heightmaps (t1..t256)
+Texture2D g_albedoTextures[] : register(t273); // because MAX_SKY_TEXTURES = 16 right now
+
+// TODO: METAPROGRAM all these register positions, or calculate with macros? doesn't matter just get rid of magic numbers
+
+
 SamplerState g_sampler : register(s0);
 // add a separate sampler for sampling heightfield?
 
@@ -48,7 +53,7 @@ struct VSInput
 struct PSInput
 {
     float4 position : SV_POSITION;
-    float3 worldPos : POSITION2; // world space position (triplanar) / unused
+    float3 worldPos : POSITION2; // world space position (triplanar) / unused. TODO: remove this or conditional compilation
     float3 normal : NORMAL;      // world space normal (normalised)
     float2 uv : TEXCOORD;
 };
@@ -91,17 +96,14 @@ PSInput VSMain(VSInput input)
     result.normal = worldNormal;
     // result.uv = input.uv;
     result.uv = float2(h, h);
-
-#elif defined(TRIPLANAR)
-    // ----- Triplanar path -----
+#elif defined(TRIPLANAR)    
     float4 worldPosition = mul(input.position, world);
     result.position = mul(mul(worldPosition, view), projection);
     result.worldPos = worldPosition.xyz;
     result.normal = normalize(mul(input.norm, (float3x3)world));
     result.uv = input.uv;
 
-#else
-    // ----- Default UV path -----
+#else    
     float4 pos = mul(input.position, world);
     result.position = mul(mul(pos, view), projection);
     result.worldPos = 0.0; // unused
@@ -112,9 +114,6 @@ PSInput VSMain(VSInput input)
     return result;
 }
 
-// ----------------------------------------------------------------------------
-// Pixel shader – common lighting for both paths
-// ----------------------------------------------------------------------------
 float4 PSMain(PSInput input) : SV_TARGET
 {
 #ifdef SKY
@@ -123,10 +122,10 @@ float4 PSMain(PSInput input) : SV_TARGET
 #elif defined(HEIGHTFIELD)
     float4 texColor = float4(input.uv, input.uv.x, 1.0f);
 #elif defined(TRIPLANAR)
-    float4 texColor = SampleTriplanar(g_texture, g_sampler,
+    float4 texColor = SampleTriplanar(g_defaultTexture, g_sampler,
                                       input.worldPos, input.normal, g_Tiling);
 #else
-    float4 texColor = g_texture.Sample(g_sampler, input.uv);
+    float4 texColor = g_defaultTexture.Sample(g_sampler, input.uv);
 #endif
 
     float3 N = normalize(input.normal);

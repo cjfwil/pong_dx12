@@ -33,6 +33,12 @@ PIPELINES = [
         "ps_entry": "PSMain",
         "defines": [("SKY", "1")],
     },
+        {
+        "name": "RENDER_LOADED_MODEL",
+        "vs_entry": "VSMain",
+        "ps_entry": "PSMain",
+        "defines": [("LOADED_MODEL", "1")],
+    },
 ]
 
 def generate_pipeline_code(output_path: Path) -> bool:

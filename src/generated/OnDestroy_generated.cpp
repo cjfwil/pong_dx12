@@ -2,7 +2,7 @@
 // GENERATED ONDESTROY – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_ondestroy.py
-//   Generated: 2026-02-24 06:43:51
+//   Generated: 2026-02-25 05:00:07
 //------------------------------------------------------------------------
 
 #pragma once
@@ -178,10 +178,10 @@ void OnDestroy()
     }
 
     // Release other resources
-    if (graphics_resources.m_albedoTexture)
+    if (graphics_resources.m_defaultTexture)
     {
-        graphics_resources.m_albedoTexture->Release();
-        graphics_resources.m_albedoTexture = nullptr;
+        graphics_resources.m_defaultTexture->Release();
+        graphics_resources.m_defaultTexture = nullptr;
     }
     if (graphics_resources.m_heightmapTexture)
     {

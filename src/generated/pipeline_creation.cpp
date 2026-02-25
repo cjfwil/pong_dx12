@@ -2,7 +2,7 @@
 // PIPELINE CREATION – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_pipelines.py
-//   Generated: 2026-02-23 09:41:26
+//   Generated: 2026-02-25 06:16:40
 //------------------------------------------------------------------------
 
 
@@ -72,6 +72,21 @@ bool CreateAllPipelines(const D3D12_INPUT_ELEMENT_DESC* inputLayout, UINT numInp
         return false;
     }
 
+    static const D3D_SHADER_MACRO render_loaded_model_defines[] = {
+        {"LOADED_MODEL", "1"},
+        {nullptr, nullptr}
+    };
+
+    if (!CompileShader(L"shader_source\\shaders.hlsl", "VSMain", "vs_5_1", &vertexShaders[RENDER_LOADED_MODEL], render_loaded_model_defines)) {
+        HRAssert(E_FAIL);
+        return false;
+    }
+
+    if (!CompileShader(L"shader_source\\shaders.hlsl", "PSMain", "ps_5_1", &pixelShaders[RENDER_LOADED_MODEL], render_loaded_model_defines)) {
+        HRAssert(E_FAIL);
+        return false;
+    }
+
     // Create PSO for each supported MSAA level
     for (UINT msaaIdx = 0; msaaIdx < 4; ++msaaIdx)
     {
@@ -81,7 +96,6 @@ bool CreateAllPipelines(const D3D12_INPUT_ELEMENT_DESC* inputLayout, UINT numInp
         psoDesc.InputLayout = {inputLayout, numInputElements};
         psoDesc.pRootSignature = pipeline_dx12.m_rootSignature;
         psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-        // psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
         psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
         psoDesc.DepthStencilState.DepthEnable = true;
         psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;

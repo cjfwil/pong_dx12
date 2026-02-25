@@ -139,6 +139,8 @@ static constexpr UINT g_FrameCount = 3; // double, triple buffering etc...
 // #define MAX_GENERAL_TEXTURES 1024
 #define MAX_HEIGHTMAP_TEXTURES 256
 #define MAX_SKY_TEXTURES 16
+
+//TODO: metaprogram this so it is automatically correct?
 namespace DescriptorIndices
 {
     constexpr UINT PER_FRAME_CBV_START = 0;
@@ -146,6 +148,7 @@ namespace DescriptorIndices
     constexpr UINT TEXTURE_SRV = PER_SCENE_CBV + 1; // SRV for texture: after all CBVs
     constexpr UINT HEIGHTMAP_SRV = TEXTURE_SRV + 1; // SRV for heightmap: after all CBVs
     constexpr UINT SKY_SRV = HEIGHTMAP_SRV + MAX_HEIGHTMAP_TEXTURES;
+    constexpr UINT MODEL_ALBEDO_SRV = SKY_SRV + MAX_SKY_TEXTURES;
     constexpr UINT NUM_DESCRIPTORS = SKY_SRV + MAX_SKY_TEXTURES;
 }
 static UINT g_errorHeightmapIndex = 0;
@@ -253,7 +256,7 @@ static struct
     ID3D12Resource *m_indexBuffer[PrimitiveType::PRIMITIVE_COUNT] = {};
     UINT m_indexCount[PrimitiveType::PRIMITIVE_COUNT] = {};
 
-    ID3D12Resource *m_albedoTexture = nullptr;
+    ID3D12Resource *m_defaultTexture = nullptr;
     ID3D12Resource *m_PerSceneConstantBuffer = nullptr;
     UINT8 *m_pPerSceneCbvDataBegin = nullptr;
     ID3D12Resource *m_PerFrameConstantBuffer[g_FrameCount] = {};
@@ -1175,7 +1178,7 @@ bool LoadPipeline(HWND hwnd)
 #if defined(_DEBUG)
     // Enable the debug layer (requires the Graphics Tools "optional feature").
     // NOTE: Enabling the debug layer after device creation will invalidate the active device.
-    bool useDxDebugLayer = true;
+    bool useDxDebugLayer = false;
     if (useDxDebugLayer)
     {
         ID3D12Debug *debugController;
@@ -1450,16 +1453,18 @@ bool LoadAssets()
         CD3DX12_DESCRIPTOR_RANGE cbvRange;
         cbvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2);
 
-        CD3DX12_DESCRIPTOR_RANGE srvRanges[3];
+        // TODO: Metaprogram ranges so it is automatically correct, unify with descriptorIndices struct
+        CD3DX12_DESCRIPTOR_RANGE srvRanges[4];
         srvRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
         srvRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, MAX_HEIGHTMAP_TEXTURES, 1);
         srvRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, MAX_SKY_TEXTURES, 1 + MAX_HEIGHTMAP_TEXTURES); // base register = 257
+        srvRanges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, MAX_LOADED_MODELS, 1 + MAX_HEIGHTMAP_TEXTURES + MAX_SKY_TEXTURES); // g_modelAlbedo
 
         CD3DX12_ROOT_PARAMETER rootParameters[4];
         rootParameters[0].InitAsConstants(sizeof(PerDrawRootConstants) / 4, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
         rootParameters[1].InitAsConstantBufferView(1, 0, D3D12_SHADER_VISIBILITY_ALL);
         rootParameters[2].InitAsDescriptorTable(1, &cbvRange, D3D12_SHADER_VISIBILITY_ALL);
-        rootParameters[3].InitAsDescriptorTable(3, srvRanges, D3D12_SHADER_VISIBILITY_ALL);
+        rootParameters[3].InitAsDescriptorTable(4, srvRanges, D3D12_SHADER_VISIBILITY_ALL);
 
         D3D12_STATIC_SAMPLER_DESC sampler = {};
         sampler.Filter = D3D12_FILTER_ANISOTROPIC;
@@ -1846,12 +1851,12 @@ bool LoadAssets()
                 &textureDesc,
                 D3D12_RESOURCE_STATE_COPY_DEST,
                 nullptr,
-                IID_PPV_ARGS(&graphics_resources.m_albedoTexture))))
+                IID_PPV_ARGS(&graphics_resources.m_defaultTexture))))
             return false;
 
         // Calculate upload buffer size for ALL mip levels
         const UINT64 uploadBufferSize = GetRequiredIntermediateSize(
-            graphics_resources.m_albedoTexture,
+            graphics_resources.m_defaultTexture,
             0,
             imageCountUINT // Already cast to UINT
         );
@@ -1877,14 +1882,14 @@ bool LoadAssets()
 
         // Copy ALL mip levels to the GPU
         UpdateSubresources(pipeline_dx12.m_commandList[0],
-                           graphics_resources.m_albedoTexture,
+                           graphics_resources.m_defaultTexture,
                            textureUploadHeap,
                            0, 0,
                            imageCountUINT, // Already cast to UINT
                            subresources.data());
 
         auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-            graphics_resources.m_albedoTexture,
+            graphics_resources.m_defaultTexture,
             D3D12_RESOURCE_STATE_COPY_DEST,
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
         pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
@@ -1902,7 +1907,7 @@ bool LoadAssets()
         srvDesc.Texture2D.MostDetailedMip = 0;
         srvDesc.Texture2D.MipLevels = mipLevelsUINT; // ALL mips!
         srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-        pipeline_dx12.m_device->CreateShaderResourceView(graphics_resources.m_albedoTexture, &srvDesc, cpuSrv);
+        pipeline_dx12.m_device->CreateShaderResourceView(graphics_resources.m_defaultTexture, &srvDesc, cpuSrv);
     }
 
     {

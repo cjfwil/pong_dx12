@@ -1315,8 +1315,7 @@ int main(void)
         SceneObject so = g_scene.objects[i];
         if (so.objectType == ObjectType::OBJECT_LOADED_MODEL)
         {
-            bool modelAlreadyLoaded = false;
-            // todo: if so.data.loaded_model.pathTo already loaded, then skip
+            bool modelAlreadyLoaded = false;            
             for (int j = 0; j < graphics_resources.m_numModelsLoaded; ++j)
             {
                 if (strcmp(graphics_resources.m_modelPaths[j], so.data.loaded_model.pathTo) == 0)
