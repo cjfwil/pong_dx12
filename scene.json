@@ -234,16 +234,6 @@
 				"primitiveType":	"Cylinder"
 			}
 		}, {
-			"nametag":	"helmet",
-			"pos":	[1.6000000238418579, 1.5, -10.399999618530273],
-			"rot":	[0.70710676908493042, -6.18922866448923e-15, 6.1892290880057044e-15, 0.70710670948028564],
-			"scale":	[1, 1, 1],
-			"objectType":	"Loaded Model",
-			"pipeline":	"Loaded Model",
-			"loaded_modelData":	{
-				"pathTo":	"assets/models/DamagedHelmet.glb"
-			}
-		}, {
 			"nametag":	"sky",
 			"pos":	[0, 0, 0],
 			"rot":	[0.0070167188532650471, 0.92257392406463623, -0.016797089949250221, 0.38539066910743713],
@@ -256,12 +246,22 @@
 		}, {
 			"nametag":	"Clouds2",
 			"pos":	[0, 0, 0],
-			"rot":	[0.045496184378862381, 0, 0, 0.998964488506317],
+			"rot":	[0.010431990027427673, 0.94816875457763672, -0.031296569854021072, 0.31605023145675659],
 			"scale":	[3400, 3400, 3400],
 			"objectType":	"Sky",
 			"pipeline":	"Sky",
 			"sky_sphereData":	{
 				"pathToTexture":	"assets/sky/gen_clouds.dds"
+			}
+		}, {
+			"nametag":	"helmet",
+			"pos":	[1.812592625617981, 1.9228713512420654, -10.405879020690918],
+			"rot":	[0.75754916667938232, 0, 0, 0.652778148651123],
+			"scale":	[0.999999463558197, 1.0000731945037842, 1.0000731945037842],
+			"objectType":	"Loaded Model",
+			"pipeline":	"Loaded Model",
+			"loaded_modelData":	{
+				"pathTo":	"assets/models/DamagedHelmet.glb"
 			}
 		}, {
 			"nametag":	"model2",

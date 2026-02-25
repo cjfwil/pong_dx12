@@ -108,6 +108,7 @@ static constexpr UINT g_FrameCount = 3; // double, triple buffering etc...
 // #define MAX_GENERAL_TEXTURES 1024
 #define MAX_HEIGHTMAP_TEXTURES 256
 #define MAX_SKY_TEXTURES 16
+#define MAX_ALBEDO_TEXTURES MAX_LOADED_MODELS
 
 // TODO: metaprogram this so it is automatically correct?
 namespace DescriptorIndices
@@ -118,7 +119,7 @@ namespace DescriptorIndices
     constexpr UINT HEIGHTMAP_SRV = TEXTURE_SRV + 1; // SRV for heightmap: after all CBVs
     constexpr UINT SKY_SRV = HEIGHTMAP_SRV + MAX_HEIGHTMAP_TEXTURES;
     constexpr UINT MODEL_ALBEDO_SRV = SKY_SRV + MAX_SKY_TEXTURES;
-    constexpr UINT NUM_DESCRIPTORS = SKY_SRV + MAX_SKY_TEXTURES;
+    constexpr UINT NUM_DESCRIPTORS = MODEL_ALBEDO_SRV + MAX_ALBEDO_TEXTURES;
 }
 static UINT g_errorHeightmapIndex = 0;
 
@@ -251,6 +252,7 @@ static struct
     UINT m_sceneObjectIndices[MAX_SCENE_OBJECTS] = {}; // per‑object texture index
     UINT m_nextSceneObject = 0;                        // next free slot (starts at 0)
 
+    ID3D12Resource *m_modelAlbedoTextures[MAX_LOADED_MODELS] = {};
     struct
     {
         ID3D12Resource *vertexBuffer;
@@ -261,10 +263,11 @@ static struct
         UINT textureIndex = 0; // index into m_modelAlbedoTextures
     } m_models[MAX_LOADED_MODELS];
     UINT m_numModelsLoaded = 0;
-    char m_modelPaths[MAX_LOADED_MODELS][256]; // resolved path
-
-    ID3D12Resource *m_modelAlbedoTextures[MAX_LOADED_MODELS] = {};
+    
+    
 } graphics_resources;
+
+static char g_modelPaths[MAX_LOADED_MODELS][256] = {};
 
 struct
 {
@@ -834,18 +837,7 @@ ModelLoadResult LoadModelFromFile(const char *path)
         }
     }
 
-    SDL_Log("Model %s: %u verts, %u indices", path, totalVerts, totalIndices);
-    if (totalVerts > 0)
-    {
-        SDL_Log("First vertex: pos(%.2f,%.2f,%.2f) norm(%.2f,%.2f,%.2f) uv(%.2f,%.2f)",
-                vertices[0].position.x, vertices[0].position.y, vertices[0].position.z,
-                vertices[0].normal.x, vertices[0].normal.y, vertices[0].normal.z,
-                vertices[0].uv.x, vertices[0].uv.y);
-    }
-    if (totalIndices > 0)
-    {
-        SDL_Log("First index: %u", indices[0]);
-    }
+    SDL_Log("Loaded Model %s: %u verts, %u indices", path, totalVerts, totalIndices);
 
     // ... after filling vertices and indices ...
 
@@ -922,6 +914,11 @@ ModelLoadResult LoadModelFromFile(const char *path)
 
     // Store model data (including texture index)
     static UINT currentModelIndex = 0;
+    if (currentModelIndex >= MAX_LOADED_MODELS)
+    {
+        SDL_Log("Max models reached!");
+        return result;
+    }
     graphics_resources.m_models[currentModelIndex].vertexBuffer = vb;
     graphics_resources.m_models[currentModelIndex].indexBuffer = ib;
     graphics_resources.m_models[currentModelIndex].vertexView.BufferLocation = vb->GetGPUVirtualAddress();
@@ -932,7 +929,7 @@ ModelLoadResult LoadModelFromFile(const char *path)
     graphics_resources.m_models[currentModelIndex].indexView.Format = DXGI_FORMAT_R32_UINT;
     graphics_resources.m_models[currentModelIndex].indexCount = totalIndices;
     graphics_resources.m_models[currentModelIndex].textureIndex = textureIndex; // store it!
-    strcpy_s(graphics_resources.m_modelPaths[currentModelIndex], sizeof(graphics_resources.m_modelPaths[currentModelIndex]), path);
+    strcpy_s(g_modelPaths[currentModelIndex], sizeof(g_modelPaths[currentModelIndex]), path);
     graphics_resources.m_numModelsLoaded++;
 
     cgltf_free(data);
@@ -1322,7 +1319,7 @@ bool LoadPipeline(HWND hwnd)
 #if defined(_DEBUG)
     // Enable the debug layer (requires the Graphics Tools "optional feature").
     // NOTE: Enabling the debug layer after device creation will invalidate the active device.
-    bool useDxDebugLayer = false;
+    bool useDxDebugLayer = true;
     if (useDxDebugLayer)
     {
         ID3D12Debug *debugController;

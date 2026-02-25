@@ -190,6 +190,7 @@ def generate_cleanup_code(resources: list) -> str:
     lines.append("{")
     lines.append("    // Ensure that the GPU is no longer referencing resources that are about to be")
     lines.append("    // cleaned up by the destructor.")
+    lines.append("    WaitForGpu();")
     lines.append("    WaitForAllFrames();")
     lines.append("")
     

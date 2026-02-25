@@ -429,7 +429,7 @@ bool PopulateCommandList()
         else if (objectType == OBJECT_LOADED_MODEL)
         {
             // todo unify outside this if statement
-            currentDrawConstants.heightmapIndex = graphics_resources.m_models[loadedModelIndex].textureIndex;            
+            currentDrawConstants.heightmapIndex = graphics_resources.m_models[loadedModelIndex].textureIndex;
             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
 
             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_models[loadedModelIndex].vertexView);
@@ -649,8 +649,8 @@ void Update()
            sizeof(PerFrameConstantBuffer));
 
     float _t = 0.01f;
-    DirectX::XMStoreFloat4(&g_scene.objects[24].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.2f, program_state.timing.upTime * _t + 65, 0));
-    DirectX::XMStoreFloat4(&g_scene.objects[25].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.5f, 0, 0));
+    // DirectX::XMStoreFloat4(&g_scene.objects[24].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.2f, program_state.timing.upTime * _t + 65, 0));
+    // DirectX::XMStoreFloat4(&g_scene.objects[25].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.5f, 0, 0));
 
     FillDrawList();
 }
@@ -1313,6 +1313,10 @@ int main(void)
 
     // then custom shader only for models which has bindless for model textures?
 
+    SDL_Log("&pipeline_dx12      = %p", &pipeline_dx12);
+    SDL_Log("&graphics_resources = %p", &graphics_resources);
+    SDL_Log("&sync_state         = %p", &sync_state);
+
     LoadAllTextures();
 
     for (int i = 0; i < g_scene.objectCount; ++i)
@@ -1323,7 +1327,7 @@ int main(void)
             bool modelAlreadyLoaded = false;
             for (int j = 0; j < graphics_resources.m_numModelsLoaded; ++j)
             {
-                if (strcmp(graphics_resources.m_modelPaths[j], so.data.loaded_model.pathTo) == 0)
+                if (strcmp(g_modelPaths[j], so.data.loaded_model.pathTo) == 0)
                 {
                     // we have already loaded this path
                     g_scene.objects[i].data.loaded_model.model_index = j;

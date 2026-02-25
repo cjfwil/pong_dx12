@@ -2,7 +2,7 @@
 // GENERATED ONDESTROY – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_ondestroy.py
-//   Generated: 2026-02-25 06:40:43
+//   Generated: 2026-02-25 13:43:01
 //------------------------------------------------------------------------
 
 #pragma once
@@ -13,6 +13,7 @@ void OnDestroy()
 {
     // Ensure that the GPU is no longer referencing resources that are about to be
     // cleaned up by the destructor.
+    WaitForGpu();
     WaitForAllFrames();
 
     // Unmap and release constant buffers
@@ -95,14 +96,6 @@ void OnDestroy()
             pipeline_dx12.m_renderTargets[i] = nullptr;
         }
     }
-    for (UINT i = 0; i < g_FrameCount; i++)
-    {
-        if (pipeline_dx12.m_commandAllocators[i])
-        {
-            pipeline_dx12.m_commandAllocators[i]->Release();
-            pipeline_dx12.m_commandAllocators[i] = nullptr;
-        }
-    }
 
     // Release descriptor heaps
     if (pipeline_dx12.m_rtvHeap)
@@ -140,6 +133,16 @@ void OnDestroy()
     {
         pipeline_dx12.m_device->Release();
         pipeline_dx12.m_device = nullptr;
+    }
+
+    // Release per-frame resources
+    for (UINT i = 0; i < g_FrameCount; i++)
+    {
+        if (pipeline_dx12.m_commandAllocators[i])
+        {
+            pipeline_dx12.m_commandAllocators[i]->Release();
+            pipeline_dx12.m_commandAllocators[i] = nullptr;
+        }
     }
 
     // Release other resources

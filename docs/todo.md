@@ -94,3 +94,8 @@ massive repeating even if input while switching mode on/off, enough to crash pro
 ## non wrapping sampling for heightmaps
 
 ## add billboard objecttype and also imposter (animated billboard by viewing angle, with blending between frames), and animated sprite (animated billboard by time t)
+
+
+## fix crashing on exit command allocators
+
+## make descision about milk truck wheels problem (child models problem)
