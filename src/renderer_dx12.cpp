@@ -30,32 +30,13 @@ static ID3D12Resource *g_vertexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_C
 static ID3D12Resource *g_indexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
 static UINT g_cbvSrvDescriptorSize = 0;
 
-bool CreateDefaultBuffer(
-    ID3D12Device *device,
-    ID3D12GraphicsCommandList *cmdList,
-    const void *data,
-    UINT64 size,
-    D3D12_RESOURCE_STATES targetState,
-    ID3D12Resource **outResource,
-    ID3D12Resource **outUploadBuffer) // caller must release after GPU work
+bool CreateDefaultBuffer(ID3D12Device *device, ID3D12GraphicsCommandList *cmdList, const void *data, UINT64 size, D3D12_RESOURCE_STATES targetState, ID3D12Resource **outResource, ID3D12Resource **outUploadBuffer) // caller must release after GPU work
 {
-    HRESULT hr = device->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-        D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(size),
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        nullptr,
-        IID_PPV_ARGS(outResource));
+    HRESULT hr = device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(size), D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(outResource));
     if (FAILED(hr))
         return false;
 
-    hr = device->CreateCommittedResource(
-        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-        D3D12_HEAP_FLAG_NONE,
-        &CD3DX12_RESOURCE_DESC::Buffer(size),
-        D3D12_RESOURCE_STATE_GENERIC_READ,
-        nullptr,
-        IID_PPV_ARGS(outUploadBuffer));
+    hr = device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(size), D3D12_RESOURCE_STATE_GENERIC_READ, nullptr, IID_PPV_ARGS(outUploadBuffer));
     if (FAILED(hr))
         return false;
 
@@ -68,25 +49,13 @@ bool CreateDefaultBuffer(
 
     cmdList->CopyBufferRegion(*outResource, 0, *outUploadBuffer, 0, size);
 
-    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        *outResource,
-        D3D12_RESOURCE_STATE_COPY_DEST,
-        targetState);
+    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(*outResource, D3D12_RESOURCE_STATE_COPY_DEST, targetState);
     cmdList->ResourceBarrier(1, &barrier);
 
     return true;
 }
 
-bool CreatePrimitiveMeshBuffers(
-    ID3D12Device *device,
-    ID3D12GraphicsCommandList *cmdList,
-    PrimitiveType type,
-    const PrimitiveMeshData &data,
-    ID3D12Resource *&outVertexBuffer,
-    D3D12_VERTEX_BUFFER_VIEW &outVertexView,
-    ID3D12Resource *&outIndexBuffer,
-    D3D12_INDEX_BUFFER_VIEW &outIndexView,
-    UINT &outIndexCount)
+bool CreatePrimitiveMeshBuffers(ID3D12Device *device, ID3D12GraphicsCommandList *cmdList, PrimitiveType type, const PrimitiveMeshData &data, ID3D12Resource *&outVertexBuffer, D3D12_VERTEX_BUFFER_VIEW &outVertexView, ID3D12Resource *&outIndexBuffer, D3D12_INDEX_BUFFER_VIEW &outIndexView, UINT &outIndexCount)
 {
     // --- Vertex buffer ---
     const UINT vbSize = data.vertexCount * sizeof(Vertex);
@@ -140,7 +109,7 @@ static constexpr UINT g_FrameCount = 3; // double, triple buffering etc...
 #define MAX_HEIGHTMAP_TEXTURES 256
 #define MAX_SKY_TEXTURES 16
 
-//TODO: metaprogram this so it is automatically correct?
+// TODO: metaprogram this so it is automatically correct?
 namespace DescriptorIndices
 {
     constexpr UINT PER_FRAME_CBV_START = 0;
@@ -289,16 +258,19 @@ static struct
         D3D12_VERTEX_BUFFER_VIEW vertexView;
         D3D12_INDEX_BUFFER_VIEW indexView;
         UINT indexCount;
-        UINT textureIndex = 0; // TODO: this will be more complicated in the future
+        UINT textureIndex = 0; // index into m_modelAlbedoTextures
     } m_models[MAX_LOADED_MODELS];
-    UINT m_numModelsLoaded = 0;    
-    char m_modelPaths[MAX_LOADED_MODELS][256];   // resolved path
+    UINT m_numModelsLoaded = 0;
+    char m_modelPaths[MAX_LOADED_MODELS][256]; // resolved path
+
+    ID3D12Resource *m_modelAlbedoTextures[MAX_LOADED_MODELS] = {};
 } graphics_resources;
 
-struct {
-        bool loaded = false;
-        UINT index = 0; // index into m_models        
-        char* filename = "";
+struct
+{
+    bool loaded = false;
+    UINT index = 0; // index into m_models
+    char *filename = "";
 } g_loadedModels[MAX_LOADED_MODELS];
 
 struct TextureLoadResult
@@ -609,7 +581,153 @@ bool CreateHeightfieldMesh(
     return true;
 }
 
-// maybe unifiy with texture heap?
+struct ModelTextureLoadResult
+{
+    UINT index;
+    ID3D12Resource *textureResource;
+    ID3D12Resource *uploadHeap;
+    bool success;
+};
+
+ModelTextureLoadResult LoadTextureFromCgltfImage(
+    ID3D12Device *device,
+    ID3D12GraphicsCommandList *cmdList,
+    const cgltf_image *image,
+    const char *modelPath) // for resolving relative paths (if needed)
+{
+    ModelTextureLoadResult result = {};
+    const void *dataPtr = nullptr;
+    size_t dataSize = 0;
+
+    // Check if image data is embedded in a buffer view
+    if (image->buffer_view)
+    {
+        dataPtr = (const char *)image->buffer_view->buffer->data + image->buffer_view->offset;
+        dataSize = image->buffer_view->size;
+    }
+    else if (image->uri)
+    {
+        // External file: build full path relative to model file
+        char fullPath[256];
+        strcpy_s(fullPath, modelPath);
+        char *lastSlash = strrchr(fullPath, '\\');
+        if (!lastSlash)
+            lastSlash = strrchr(fullPath, '/');
+        if (lastSlash)
+            *(lastSlash + 1) = 0;
+        else
+            fullPath[0] = 0;
+        strcat_s(fullPath, image->uri);
+
+        // Load external file using DirectXTex (similar to your existing LoadTextureFromFile)
+        // We'll implement a simple file load later; for now assume embedded only.
+        // (You can reuse LoadTextureFromFile if needed.)
+        SDL_Log("External texture files not yet implemented, using fallback.");
+        return result;
+    }
+
+    if (!dataPtr)
+    {
+        SDL_Log("No image data found for texture");
+        return result;
+    }
+
+    // Use DirectXTex to load from memory – cast to uint8_t* as required.
+    DirectX::ScratchImage imageData;
+    HRESULT hr = DirectX::LoadFromWICMemory(
+        (const uint8_t *)dataPtr, dataSize,
+        DirectX::WIC_FLAGS_NONE,
+        nullptr, // metadata (optional)
+        imageData);
+    if (FAILED(hr))
+    {
+        hr = DirectX::LoadFromDDSMemory(
+            (const uint8_t *)dataPtr, dataSize,
+            DirectX::DDS_FLAGS_NONE,
+            nullptr,
+            imageData);
+    }
+    if (FAILED(hr))
+    {
+        SDL_Log("Failed to decode embedded image (unsupported format?)");
+        return result;
+    }
+
+    // Create GPU texture resource
+    const DirectX::TexMetadata &meta = imageData.GetMetadata();
+    D3D12_RESOURCE_DESC texDesc = CD3DX12_RESOURCE_DESC::Tex2D(
+        meta.format, (UINT)meta.width, (UINT)meta.height, 1, (UINT16)meta.mipLevels);
+
+    hr = device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+        D3D12_HEAP_FLAG_NONE,
+        &texDesc,
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        nullptr,
+        IID_PPV_ARGS(&result.textureResource));
+    if (FAILED(hr))
+        return result;
+
+    UINT64 uploadSize = GetRequiredIntermediateSize(result.textureResource, 0, (UINT)imageData.GetImageCount());
+    hr = device->CreateCommittedResource(
+        &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+        D3D12_HEAP_FLAG_NONE,
+        &CD3DX12_RESOURCE_DESC::Buffer(uploadSize),
+        D3D12_RESOURCE_STATE_GENERIC_READ,
+        nullptr,
+        IID_PPV_ARGS(&result.uploadHeap));
+    if (FAILED(hr))
+    {
+        result.textureResource->Release();
+        result.textureResource = nullptr;
+        return result;
+    }
+
+    std::vector<D3D12_SUBRESOURCE_DATA> subresources(imageData.GetImageCount());
+    for (size_t i = 0; i < imageData.GetImageCount(); ++i)
+    {
+        const DirectX::Image *subImg = imageData.GetImage(i, 0, 0);
+        subresources[i].pData = subImg->pixels;
+        subresources[i].RowPitch = (LONG)subImg->rowPitch;
+        subresources[i].SlicePitch = (LONG)subImg->slicePitch;
+    }
+
+    UpdateSubresources(cmdList, result.textureResource, result.uploadHeap, 0, 0,
+                       (UINT)imageData.GetImageCount(), subresources.data());
+
+    auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
+        result.textureResource,
+        D3D12_RESOURCE_STATE_COPY_DEST,
+        D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+    cmdList->ResourceBarrier(1, &barrier);
+
+    // Find free slot in model albedo array
+    UINT index = 0;
+    for (; index < MAX_LOADED_MODELS; ++index)
+        if (graphics_resources.m_modelAlbedoTextures[index] == nullptr)
+            break;
+    if (index >= MAX_LOADED_MODELS)
+    {
+        SDL_Log("Out of model albedo texture slots!");
+        result.textureResource->Release();
+        result.uploadHeap->Release();
+        return result;
+    }
+
+    // Create SRV at MODEL_ALBEDO_SRV + index
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(
+        pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart(),
+        DescriptorIndices::MODEL_ALBEDO_SRV + index,
+        g_cbvSrvDescriptorSize);
+    device->CreateShaderResourceView(result.textureResource, nullptr, cpuHandle);
+
+    graphics_resources.m_modelAlbedoTextures[index] = result.textureResource;
+    result.index = index;
+    result.success = true;
+    return result;
+}
+
+// TODO: maybe unifiy with texture heap?
 struct ModelLoadResult
 {
     UINT index;
@@ -729,12 +847,42 @@ ModelLoadResult LoadModelFromFile(const char *path)
         SDL_Log("First index: %u", indices[0]);
     }
 
+    // ... after filling vertices and indices ...
+
     // --- Start of upload section ---
     // Ensure command list is open for recording
     HRAssert(pipeline_dx12.m_commandAllocators[0]->Reset());
     HRAssert(pipeline_dx12.m_commandList[0]->Reset(
         pipeline_dx12.m_commandAllocators[0],
         pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][BlendMode::BLEND_OPAQUE][0]));
+
+    // We'll collect all upload heaps here to release after WaitForAllFrames
+    std::vector<ID3D12Resource *> uploadHeaps;
+
+    // --- Texture loading ---
+    UINT textureIndex = 0; // fallback to index 0
+    if (data->materials_count > 0)
+    {
+        cgltf_material *mat = &data->materials[0];
+        if (mat->has_pbr_metallic_roughness && mat->pbr_metallic_roughness.base_color_texture.texture)
+        {
+            cgltf_texture *tex = mat->pbr_metallic_roughness.base_color_texture.texture;
+            if (tex->image)
+            {
+                ModelTextureLoadResult texResult = LoadTextureFromCgltfImage(
+                    pipeline_dx12.m_device,
+                    pipeline_dx12.m_commandList[0],
+                    tex->image,
+                    path);
+                if (texResult.success)
+                {
+                    textureIndex = texResult.index;
+                    if (texResult.uploadHeap)
+                        uploadHeaps.push_back(texResult.uploadHeap);
+                }
+            }
+        }
+    }
 
     // Create GPU buffers using CreateDefaultBuffer
     ID3D12Resource *vb = nullptr, *ib = nullptr, *vbUpload = nullptr, *ibUpload = nullptr;
@@ -746,6 +894,8 @@ ModelLoadResult LoadModelFromFile(const char *path)
         cgltf_free(data);
         return result;
     }
+    uploadHeaps.push_back(vbUpload);
+
     if (!CreateDefaultBuffer(pipeline_dx12.m_device, pipeline_dx12.m_commandList[0],
                              indices.data(), totalIndices * sizeof(uint32_t),
                              D3D12_RESOURCE_STATE_INDEX_BUFFER,
@@ -756,31 +906,24 @@ ModelLoadResult LoadModelFromFile(const char *path)
         cgltf_free(data);
         return result;
     }
+    uploadHeaps.push_back(ibUpload);
 
-    // todo separate out into mass upload for all models?
-    //upload 
+    // Close and execute command list
     HRAssert(pipeline_dx12.m_commandList[0]->Close());
-
     ID3D12CommandList *ppLists[] = {pipeline_dx12.m_commandList[0]};
     pipeline_dx12.m_commandQueue->ExecuteCommandLists(1, ppLists);
 
     // Wait for the GPU to finish copying
     WaitForAllFrames();
 
-    // Upload heaps can now be released (the copy is done)
-    vbUpload->Release();
-    ibUpload->Release();
+    // Release all upload heaps
+    for (auto *upload : uploadHeaps)
+        upload->Release();
 
-    // Do NOT reset the command list or allocator here – leave them as they are.
-    // The main loop will reset them when needed via ResetCommandObjects.
-
+    // Store model data (including texture index)
     static UINT currentModelIndex = 0;
-    // Store in current model index
     graphics_resources.m_models[currentModelIndex].vertexBuffer = vb;
     graphics_resources.m_models[currentModelIndex].indexBuffer = ib;
-    // todo pass back the upload buffers so we can free them later
-    // graphics_resources.m_models[currentModelIndex].vertexUpload = vbUpload;
-    // graphics_resources.m_models[currentModelIndex].indexUpload = ibUpload;
     graphics_resources.m_models[currentModelIndex].vertexView.BufferLocation = vb->GetGPUVirtualAddress();
     graphics_resources.m_models[currentModelIndex].vertexView.StrideInBytes = sizeof(Vertex);
     graphics_resources.m_models[currentModelIndex].vertexView.SizeInBytes = totalVerts * sizeof(Vertex);
@@ -788,13 +931,14 @@ ModelLoadResult LoadModelFromFile(const char *path)
     graphics_resources.m_models[currentModelIndex].indexView.SizeInBytes = totalIndices * sizeof(uint32_t);
     graphics_resources.m_models[currentModelIndex].indexView.Format = DXGI_FORMAT_R32_UINT;
     graphics_resources.m_models[currentModelIndex].indexCount = totalIndices;
+    graphics_resources.m_models[currentModelIndex].textureIndex = textureIndex; // store it!
     strcpy_s(graphics_resources.m_modelPaths[currentModelIndex], sizeof(graphics_resources.m_modelPaths[currentModelIndex]), path);
     graphics_resources.m_numModelsLoaded++;
 
     cgltf_free(data);
     result.success = true;
     result.index = currentModelIndex;
-    currentModelIndex++;    
+    currentModelIndex++;
     return result;
 }
 
@@ -1457,7 +1601,7 @@ bool LoadAssets()
         CD3DX12_DESCRIPTOR_RANGE srvRanges[4];
         srvRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
         srvRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, MAX_HEIGHTMAP_TEXTURES, 1);
-        srvRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, MAX_SKY_TEXTURES, 1 + MAX_HEIGHTMAP_TEXTURES); // base register = 257
+        srvRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, MAX_SKY_TEXTURES, 1 + MAX_HEIGHTMAP_TEXTURES);                     // base register = 257
         srvRanges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, MAX_LOADED_MODELS, 1 + MAX_HEIGHTMAP_TEXTURES + MAX_SKY_TEXTURES); // g_modelAlbedo
 
         CD3DX12_ROOT_PARAMETER rootParameters[4];
@@ -1643,6 +1787,65 @@ bool LoadAssets()
         graphics_resources.m_heightmapResources[errorIndex] = graphics_resources.m_heightmapResources[0];
         graphics_resources.m_nextSceneObject = 1; // next free index is 1
         g_errorHeightmapIndex = errorIndex;
+    }
+
+    // Create fallback model albedo texture at index 0
+    {
+        const UINT fallbackWidth = 4, fallbackHeight = 4;
+        std::vector<uint32_t> fallbackData(fallbackWidth * fallbackHeight);
+        for (UINT y = 0; y < fallbackHeight; ++y)
+            for (UINT x = 0; x < fallbackWidth; ++x)
+            {
+                bool isMagenta = ((x ^ y) & 1) != 0;
+                fallbackData[y * fallbackWidth + x] = isMagenta ? 0xFFFF00FF : 0xFF000000;
+            }
+
+        D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Tex2D(
+            DXGI_FORMAT_R8G8B8A8_UNORM, fallbackWidth, fallbackHeight, 1, 1);
+        ID3D12Resource *tex = nullptr;
+        HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+            D3D12_HEAP_FLAG_NONE,
+            &desc,
+            D3D12_RESOURCE_STATE_COPY_DEST,
+            nullptr,
+            IID_PPV_ARGS(&tex)));
+
+        ID3D12Resource *upload = nullptr;
+        UINT64 uploadSize = GetRequiredIntermediateSize(tex, 0, 1);
+        HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+            &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+            D3D12_HEAP_FLAG_NONE,
+            &CD3DX12_RESOURCE_DESC::Buffer(uploadSize),
+            D3D12_RESOURCE_STATE_GENERIC_READ,
+            nullptr,
+            IID_PPV_ARGS(&upload)));
+
+        D3D12_SUBRESOURCE_DATA subData = {};
+        subData.pData = fallbackData.data();
+        subData.RowPitch = fallbackWidth * 4;
+        subData.SlicePitch = subData.RowPitch * fallbackHeight;
+
+        UpdateSubresources(pipeline_dx12.m_commandList[0], tex, upload, 0, 0, 1, &subData);
+        auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(tex,
+                                                            D3D12_RESOURCE_STATE_COPY_DEST,
+                                                            D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
+        pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
+
+        // Create SRV at index 0 in model albedo range
+        CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(
+            pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart(),
+            DescriptorIndices::MODEL_ALBEDO_SRV,
+            g_cbvSrvDescriptorSize);
+        pipeline_dx12.m_device->CreateShaderResourceView(tex, nullptr, cpuHandle);
+
+        graphics_resources.m_modelAlbedoTextures[0] = tex;
+        // Keep upload heap alive until after WaitForGpu (add to a list or just release after WaitForGpu)
+        // We'll add it to a temporary list and release after the final WaitForGpu at the end of LoadAssets.
+        // For simplicity, we can store it in a static variable and release at the end.
+        // Let's just add it to a vector of upload heaps to release later.
+        // Since LoadAssets already has a list of upload heaps (textureUploadHeap, stagingHeap), we can add this upload heap to that list.
+        // We'll create a vector<ID3D12Resource*> allUploads and push this upload.
     }
 
     // create the shared heightfield mesh

@@ -239,14 +239,14 @@
 			"rot":	[0.70710676908493042, -6.18922866448923e-15, 6.1892290880057044e-15, 0.70710670948028564],
 			"scale":	[1, 1, 1],
 			"objectType":	"Loaded Model",
-			"pipeline":	"Default",
+			"pipeline":	"Loaded Model",
 			"loaded_modelData":	{
 				"pathTo":	"assets/models/DamagedHelmet.glb"
 			}
 		}, {
 			"nametag":	"sky",
 			"pos":	[0, 0, 0],
-			"rot":	[-0.011400865390896797, 0.98841792345047, -0.11609727144241333, -0.0970636084675789],
+			"rot":	[0.0070167188532650471, 0.92257392406463623, -0.016797089949250221, 0.38539066910743713],
 			"scale":	[3500, 3500, 3500],
 			"objectType":	"Sky",
 			"pipeline":	"Sky",
@@ -256,7 +256,7 @@
 		}, {
 			"nametag":	"Clouds2",
 			"pos":	[0, 0, 0],
-			"rot":	[0.2881600558757782, 0, 0, 0.95758223533630371],
+			"rot":	[0.045496184378862381, 0, 0, 0.998964488506317],
 			"scale":	[3400, 3400, 3400],
 			"objectType":	"Sky",
 			"pipeline":	"Sky",
@@ -269,7 +269,7 @@
 			"rot":	[0.70710676908493042, 0, 0, 0.70710676908493042],
 			"scale":	[0.99999964237213135, 0.9999842643737793, 0.999983787536621],
 			"objectType":	"Loaded Model",
-			"pipeline":	"Default",
+			"pipeline":	"Loaded Model",
 			"loaded_modelData":	{
 				"pathTo":	"assets/models/CesiumMilkTruck.glb"
 			}
@@ -279,7 +279,7 @@
 			"rot":	[0, 0, 0, 1],
 			"scale":	[1, 1, 1],
 			"objectType":	"Loaded Model",
-			"pipeline":	"Default",
+			"pipeline":	"Loaded Model",
 			"loaded_modelData":	{
 				"pathTo":	"assets/models/CesiumMilkTruck.glb"
 			}

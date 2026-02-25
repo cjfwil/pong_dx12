@@ -428,6 +428,9 @@ bool PopulateCommandList()
         }
         else if (objectType == OBJECT_LOADED_MODEL)
         {
+            // todo unify outside this if statement
+            currentDrawConstants.heightmapIndex = graphics_resources.m_models[loadedModelIndex].textureIndex;            
+            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
 
             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_models[loadedModelIndex].vertexView);
             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_models[loadedModelIndex].indexView);
@@ -492,6 +495,7 @@ void Render(bool vsync = true)
 }
 
 // this functions exists for a future where we will do more than just render the whole scene, this will include culling here
+// TODO: update this function to group objects by rendering pipeline
 void FillDrawList()
 {
     int drawCount = 0;
@@ -523,6 +527,7 @@ void FillDrawList()
         else if (obj.objectType == OBJECT_LOADED_MODEL)
         {
             g_draw_list.loadedModelIndex[drawCount] = g_scene.objects[i].data.loaded_model.model_index;
+            // g_draw_list.heightmapIndices[drawCount] = g_scene.objects[i].data.loaded_model.model_index;
         }
 
         g_draw_list.pipelines[drawCount] = obj.pipeline;
@@ -1315,7 +1320,7 @@ int main(void)
         SceneObject so = g_scene.objects[i];
         if (so.objectType == ObjectType::OBJECT_LOADED_MODEL)
         {
-            bool modelAlreadyLoaded = false;            
+            bool modelAlreadyLoaded = false;
             for (int j = 0; j < graphics_resources.m_numModelsLoaded; ++j)
             {
                 if (strcmp(graphics_resources.m_modelPaths[j], so.data.loaded_model.pathTo) == 0)

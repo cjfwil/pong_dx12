@@ -2,7 +2,7 @@
 // GENERATED ONDESTROY – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_ondestroy.py
-//   Generated: 2026-02-25 05:00:07
+//   Generated: 2026-02-25 06:40:43
 //------------------------------------------------------------------------
 
 #pragma once
@@ -13,7 +13,7 @@ void OnDestroy()
 {
     // Ensure that the GPU is no longer referencing resources that are about to be
     // cleaned up by the destructor.
-    WaitForGpu();
+    WaitForAllFrames();
 
     // Unmap and release constant buffers
     if (graphics_resources.m_PerSceneConstantBuffer)
@@ -222,6 +222,14 @@ void OnDestroy()
         {
             graphics_resources.m_skyResources[i]->Release();
             graphics_resources.m_skyResources[i] = nullptr;
+        }
+    }
+    for (UINT i = 0; i < MAX_LOADED_MODELS; i++)
+    {
+        if (graphics_resources.m_modelAlbedoTextures[i])
+        {
+            graphics_resources.m_modelAlbedoTextures[i]->Release();
+            graphics_resources.m_modelAlbedoTextures[i] = nullptr;
         }
     }
 

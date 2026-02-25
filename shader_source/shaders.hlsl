@@ -119,6 +119,8 @@ float4 PSMain(PSInput input) : SV_TARGET
 #ifdef SKY
     float4 texColor = g_skyTextures[heightmapIndex].Sample(g_sampler, input.uv);
     return texColor;
+#elif defined(LOADED_MODEL)
+    float4 texColor = g_albedoTextures[heightmapIndex].Sample(g_sampler, input.uv);
 #elif defined(HEIGHTFIELD)
     float4 texColor = float4(input.uv, input.uv.x, 1.0f);
 #elif defined(TRIPLANAR)
