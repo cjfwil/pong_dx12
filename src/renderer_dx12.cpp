@@ -24,6 +24,8 @@ struct Vertex
 #include "render_pipeline_data.h"
 #include "scene_data.h"
 
+#include "generated/descriptor_layout.h"
+
 void WaitForAllFrames();
 
 static ID3D12Resource *g_vertexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
@@ -105,22 +107,22 @@ static D3D12_CLEAR_VALUE g_depthOptimizedClearValue = {DXGI_FORMAT_D32_FLOAT, {0
 static constexpr UINT g_FrameCount = 3; // double, triple buffering etc...
 
 #define MAX_LOADED_MODELS 64
-// #define MAX_GENERAL_TEXTURES 1024
 #define MAX_HEIGHTMAP_TEXTURES 256
 #define MAX_SKY_TEXTURES 16
 #define MAX_ALBEDO_TEXTURES MAX_LOADED_MODELS
 
-// TODO: metaprogram this so it is automatically correct?
-namespace DescriptorIndices
-{
-    constexpr UINT PER_FRAME_CBV_START = 0;
-    constexpr UINT PER_SCENE_CBV = g_FrameCount;    // index after all per-frame CBVs
-    constexpr UINT TEXTURE_SRV = PER_SCENE_CBV + 1; // SRV for texture: after all CBVs
-    constexpr UINT HEIGHTMAP_SRV = TEXTURE_SRV + 1; // SRV for heightmap: after all CBVs
-    constexpr UINT SKY_SRV = HEIGHTMAP_SRV + MAX_HEIGHTMAP_TEXTURES;
-    constexpr UINT MODEL_ALBEDO_SRV = SKY_SRV + MAX_SKY_TEXTURES;
-    constexpr UINT NUM_DESCRIPTORS = MODEL_ALBEDO_SRV + MAX_ALBEDO_TEXTURES;
-}
+// // TODO: metaprogram this so it is automatically correct?
+// namespace DescriptorIndices
+// {
+//     constexpr UINT PER_FRAME_CBV_START = 0;
+//     constexpr UINT PER_SCENE_CBV = g_FrameCount;    // index after all per-frame CBVs
+//     constexpr UINT TEXTURE_SRV = PER_SCENE_CBV + 1; // SRV for texture: after all CBVs
+//     constexpr UINT HEIGHTMAP_SRV = TEXTURE_SRV + 1; // SRV for heightmap: after all CBVs
+//     constexpr UINT SKY_SRV = HEIGHTMAP_SRV + MAX_HEIGHTMAP_TEXTURES;
+//     constexpr UINT MODEL_ALBEDO_SRV = SKY_SRV + MAX_SKY_TEXTURES;
+//     constexpr UINT NUM_DESCRIPTORS = MODEL_ALBEDO_SRV + MAX_ALBEDO_TEXTURES;
+// }
+
 static UINT g_errorHeightmapIndex = 0;
 
 static struct
@@ -263,8 +265,7 @@ static struct
         UINT textureIndex = 0; // index into m_modelAlbedoTextures
     } m_models[MAX_LOADED_MODELS];
     UINT m_numModelsLoaded = 0;
-    
-    
+
 } graphics_resources;
 
 static char g_modelPaths[MAX_LOADED_MODELS][256] = {};
@@ -1589,23 +1590,22 @@ bool CompileShader(
 // Load the startup assets. Returns true on success, false on fail.
 bool LoadAssets()
 {
-    // Create root signature (using 1.0 structures for compatibility)
+    // Create root signature
     {
         CD3DX12_DESCRIPTOR_RANGE cbvRange;
-        cbvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2);
-
-        // TODO: Metaprogram ranges so it is automatically correct, unify with descriptorIndices struct
-        CD3DX12_DESCRIPTOR_RANGE srvRanges[4];
-        srvRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0);
-        srvRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, MAX_HEIGHTMAP_TEXTURES, 1);
-        srvRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, MAX_SKY_TEXTURES, 1 + MAX_HEIGHTMAP_TEXTURES);                     // base register = 257
-        srvRanges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, MAX_LOADED_MODELS, 1 + MAX_HEIGHTMAP_TEXTURES + MAX_SKY_TEXTURES); // g_modelAlbedo
+        cbvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2); // register b2
+        
+        CD3DX12_DESCRIPTOR_RANGE srvRanges[4];                    // default texture + heightmaps + sky + models
+        srvRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // t0: default texture
+        srvRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, MAX_HEIGHTMAP_TEXTURES, RegisterLayout::HEIGHTMAP_REGISTER_BASE);
+        srvRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, MAX_SKY_TEXTURES, RegisterLayout::SKY_REGISTER_BASE);
+        srvRanges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, MAX_LOADED_MODELS, RegisterLayout::ALBEDO_REGISTER_BASE);
 
         CD3DX12_ROOT_PARAMETER rootParameters[4];
         rootParameters[0].InitAsConstants(sizeof(PerDrawRootConstants) / 4, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
-        rootParameters[1].InitAsConstantBufferView(1, 0, D3D12_SHADER_VISIBILITY_ALL);
+        rootParameters[1].InitAsConstantBufferView(1, 0, D3D12_SHADER_VISIBILITY_ALL); // register b1
         rootParameters[2].InitAsDescriptorTable(1, &cbvRange, D3D12_SHADER_VISIBILITY_ALL);
-        rootParameters[3].InitAsDescriptorTable(4, srvRanges, D3D12_SHADER_VISIBILITY_ALL);
+        rootParameters[3].InitAsDescriptorTable(_countof(srvRanges), srvRanges, D3D12_SHADER_VISIBILITY_ALL);
 
         D3D12_STATIC_SAMPLER_DESC sampler = {};
         sampler.Filter = D3D12_FILTER_ANISOTROPIC;
@@ -1641,6 +1641,7 @@ bool LoadAssets()
         if (!HRAssert(pipeline_dx12.m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&pipeline_dx12.m_rootSignature))))
             return false;
     }
+
     // Create the pipeline states, which includes compiling and loading shaders.
     // Define the vertex input layout.
     D3D12_INPUT_ELEMENT_DESC inputElementDescs[] =

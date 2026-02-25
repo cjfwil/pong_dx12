@@ -29,10 +29,14 @@ cbuffer PerSceneConstantBuffer : register(b2)
     float per_scene_padding[52];
 };
 
+#define HEIGHTMAP_REGISTER_BASE t1
+#define SKY_REGISTER_BASE t257
+#define ALBEDO_REGISTER_BASE t273
+
 Texture2D g_defaultTexture : register(t0);
-Texture2D g_heightmaps[] : register(t1);    // todo place under heightfield define
-Texture2D g_skyTextures[] : register(t257); // after heightmaps (t1..t256)
-Texture2D g_albedoTextures[] : register(t273); // because MAX_SKY_TEXTURES = 16 right now
+Texture2D g_heightmaps[] : register(HEIGHTMAP_REGISTER_BASE);
+Texture2D g_skyTextures[] : register(SKY_REGISTER_BASE);
+Texture2D g_albedoTextures[] : register(ALBEDO_REGISTER_BASE);
 
 // TODO: METAPROGRAM all these register positions, or calculate with macros? doesn't matter just get rid of magic numbers
 

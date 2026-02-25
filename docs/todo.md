@@ -99,3 +99,5 @@ massive repeating even if input while switching mode on/off, enough to crash pro
 ## fix crashing on exit command allocators
 
 ## make descision about milk truck wheels problem (child models problem)
+
+## always group sky objects to be rendered last to prevent overdraw and do alpha blending properly
