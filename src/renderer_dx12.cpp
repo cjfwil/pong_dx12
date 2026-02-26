@@ -111,18 +111,6 @@ static constexpr UINT g_FrameCount = 3; // double, triple buffering etc...
 #define MAX_SKY_TEXTURES 16
 #define MAX_ALBEDO_TEXTURES MAX_LOADED_MODELS
 
-// // TODO: metaprogram this so it is automatically correct?
-// namespace DescriptorIndices
-// {
-//     constexpr UINT PER_FRAME_CBV_START = 0;
-//     constexpr UINT PER_SCENE_CBV = g_FrameCount;    // index after all per-frame CBVs
-//     constexpr UINT TEXTURE_SRV = PER_SCENE_CBV + 1; // SRV for texture: after all CBVs
-//     constexpr UINT HEIGHTMAP_SRV = TEXTURE_SRV + 1; // SRV for heightmap: after all CBVs
-//     constexpr UINT SKY_SRV = HEIGHTMAP_SRV + MAX_HEIGHTMAP_TEXTURES;
-//     constexpr UINT MODEL_ALBEDO_SRV = SKY_SRV + MAX_SKY_TEXTURES;
-//     constexpr UINT NUM_DESCRIPTORS = MODEL_ALBEDO_SRV + MAX_ALBEDO_TEXTURES;
-// }
-
 static UINT g_errorHeightmapIndex = 0;
 
 static struct
@@ -664,7 +652,7 @@ ModelTextureLoadResult LoadTextureFromCgltfImage(
         DirectX::ScratchImage mipChain;
         hr = DirectX::GenerateMipMaps(
             *imageData.GetImage(0,0,0),          // base image
-            DirectX::TEX_FILTER_BOX,              // filter type
+            DirectX::TEX_FILTER_CUBIC,              // filter type
             0,                                     // generate all levels
             mipChain);
         if (FAILED(hr)) {
@@ -2005,7 +1993,7 @@ bool LoadAssets()
                 DirectX::ScratchImage mipChain;
                 if (SUCCEEDED(GenerateMipMaps(
                         *image.GetImage(0, 0, 0),
-                        DirectX::TEX_FILTER_BOX,
+                        DirectX::TEX_FILTER_CUBIC,
                         0, // Generate all mip levels
                         mipChain)))
                 {

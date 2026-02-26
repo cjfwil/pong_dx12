@@ -2,7 +2,7 @@
 // DESCRIPTOR LAYOUT – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_descriptors.py
-//   Generated: 2026-02-25 15:05:36
+//   Generated: 2026-02-26 03:23:00
 //------------------------------------------------------------------------
 
 

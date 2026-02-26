@@ -104,3 +104,20 @@ massive repeating even if input while switching mode on/off, enough to crash pro
 ## instead of writing into the actual field for name, bring up an input box that forces me to press yes/no so i am not stuck typing into the field when i am trying to WASD move.
 
 ## aliasing on truck part
+
+## shadow system
+- self shadowing (for example cliff shadowing own heightmap)
+- PCF (Percentage‑Closer Filtering) - most basic version, performance but not fully realistic
+- Percentage-Closer Soft Shadows (PCSS) for dynamic over area penumbra
+- VSM / ESM (Variance / Exponential Shadow Maps) - baked and fast, but can be innacurate for some types of objects
+- world space capsule/sphere occulsion for dynamic objects
+- baked lighting
+- distinguish or scale smoothly between from overcast days versus clear days
+
+## audio and music
+
+## actually playable thing/"game"
+- walk around in first person
+- collide with objects in the world and heightmap
+- dynamic npc/enemies type things who walk around and respond in a basic way
+- different modes of transport????
