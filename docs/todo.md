@@ -126,3 +126,5 @@ Heightmaps also can ony be scaled in Y and the X/Z together. The Y scale determi
 
 ## collision with heightmap
 collision with heightmap will involve the assumption that the heightmap cannot be scaled non-uniformly in XZ and also cannot be rotated, this should make collision easier, all i would have to do is get the x/z of the player pos, minus the heightmap object x/z, and that should give me a position where the origin is the centre of the heightmap, then we can divide by the scale, that should get us in the bounds in x/z = [-0.5, 0.5], if we are outside, then no collision, else we plus 0.5f and that gets us a way easy way to index into the texture, then the texture value multiply by the scale, and then we can set our player value to y
+
+## change allow support of heightmaps of 16bits precision

@@ -172,7 +172,7 @@
 			}
 		}, {
 			"nametag":	"HF walking",
-			"pos":	[0, -32, 0],
+			"pos":	[0, -16, 0],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[256, 32, 256],
 			"objectType":	"Heightfield",

@@ -55,7 +55,7 @@ struct HeightmapDataCPU
 {
     UINT8 *data;
     UINT width;
-    UINT height;    
+    UINT height;
 };
 
 static HeightmapDataCPU g_heightmapDataCPU = {};
@@ -621,14 +621,35 @@ float SampleHeightmapWorldY(const SceneObject &obj, UINT hmIdx, const DirectX::X
 
     // Clamp to avoid edge artefacts
     u = min(max(u, 0.0f), 1.0f);
-    v = min(max(v, 0.0f), 1.0f);    
+    v = min(max(v, 0.0f), 1.0f);
 
-    // Nearest‑neighbour sample
-    UINT ix = (UINT)(u * (cpu.width - 1));
-    UINT iy = (UINT)(v * (cpu.height - 1));
-    UINT8 heightVal = cpu.data[iy * cpu.width + ix];
+    // --- Bilinear interpolation ---
+    // Convert UV to texel coordinates in [0, width-1] and [0, height-1]
+    float u_tex = u * (cpu.width - 1);
+    float v_tex = v * (cpu.height - 1);
 
-    // Convert 0‑255 → [0,1] and multiply by object's Y scale
+    // Get integer texel indices and fractions
+    UINT ix0 = (UINT)u_tex;
+    UINT iy0 = (UINT)v_tex;
+    UINT ix1 = min(ix0 + 1, cpu.width - 1);
+    UINT iy1 = min(iy0 + 1, cpu.height - 1);
+    float fx = u_tex - ix0;
+    float fy = v_tex - iy0;
+
+    // Fetch four surrounding texels (values 0‑255)
+    float p00 = (float)cpu.data[iy0 * cpu.width + ix0];
+    float p10 = (float)cpu.data[iy0 * cpu.width + ix1];
+    float p01 = (float)cpu.data[iy1 * cpu.width + ix0];
+    float p11 = (float)cpu.data[iy1 * cpu.width + ix1];
+
+    // Interpolate along X first
+    float p0 = (1.0f - fx) * p00 + fx * p10;
+    float p1 = (1.0f - fx) * p01 + fx * p11;
+
+    // Interpolate along Y
+    float heightVal = (1.0f - fy) * p0 + fy * p1;
+
+    // Convert 0‑255 → [0,1] and apply object's Y scale
     float h = heightVal / 255.0f;
     return obj.pos.y + h * obj.scale.y;
 }
