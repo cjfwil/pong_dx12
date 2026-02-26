@@ -101,10 +101,6 @@ massive repeating even if input while switching mode on/off, enough to crash pro
 
 ## turn off writing to depth buffer when writing sky clouds?
 
-## instead of writing into the actual field for name, bring up an input box that forces me to press yes/no so i am not stuck typing into the field when i am trying to WASD move.
-
-## aliasing on truck part
-
 ## shadow system
 - self shadowing (for example cliff shadowing own heightmap)
 - PCF (Percentage‑Closer Filtering) - most basic version, performance but not fully realistic
@@ -119,5 +115,14 @@ massive repeating even if input while switching mode on/off, enough to crash pro
 ## actually playable thing/"game"
 - walk around in first person
 - collide with objects in the world and heightmap
-- dynamic npc/enemies type things who walk around and respond in a basic way
+- dynamic npc/enemies type things who walk around and respond in a basic way, can be talked to
+- some kind of in game ui system for player interaction
 - different modes of transport????
+
+## remove rotation from heightmaps
+our descision is that heightmaps cannot be rotated and we operate on that assumption. the rotation matrix for a heightmap is always identity, the UI does not show rotation and neither does the gizmo and the collision system will presume an axis aligned heightmap. it can be scaled, but not rotated - if we change our mind it will probably sstill be in the yaw axis only.
+heightmaps can have two types of collisions shapes: heightmap shape (collide directly with the height data) and flat plane shape (collide with flat plane - the heightmap is for visuals only (for example: a rocky surface))
+Heightmaps also can ony be scaled in Y and the X/Z together. The Y scale determines the height of the peaks, and the X/Z must be one number which specifies the horizontal scale, so it is always a square.
+
+## collision with heightmap
+collision with heightmap will involve the assumption that the heightmap cannot be scaled non-uniformly in XZ and also cannot be rotated, this should make collision easier, all i would have to do is get the x/z of the player pos, minus the heightmap object x/z, and that should give me a position where the origin is the centre of the heightmap, then we can divide by the scale, that should get us in the bounds in x/z = [-0.5, 0.5], if we are outside, then no collision, else we plus 0.5f and that gets us a way easy way to index into the texture, then the texture value multiply by the scale, and then we can set our player value to y

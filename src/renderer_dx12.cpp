@@ -270,9 +270,16 @@ struct TextureLoadResult
     UINT outIndex;
     ID3D12Resource *uploadHeap = nullptr;
     bool success = false;
+
+    struct {        
+        UINT8* data;
+        UINT width;
+        UINT height;
+        bool exists;
+    } cpu_copy;
 };
 
-TextureLoadResult LoadTextureFromFile(ID3D12Device *device, ID3D12GraphicsCommandList *cmdList, const char *path, ID3D12Resource **outResource)
+TextureLoadResult LoadTextureFromFile(ID3D12Device *device, ID3D12GraphicsCommandList *cmdList, const char *path, ID3D12Resource **outResource, bool makeCPUCopy)
 {
     TextureLoadResult result = {};
     // Convert narrow string to wide string
@@ -287,6 +294,26 @@ TextureLoadResult LoadTextureFromFile(ID3D12Device *device, ID3D12GraphicsComman
         SDL_Log("Failed to load DDS: %s", path);
         result.success = false;
         return result;
+    }
+
+    if (makeCPUCopy)
+    {
+        // make cpu copy
+        const DirectX::Image *baseImage = image.GetImage(0, 0, 0); // base level only incase accidently have mipmaps
+        if (baseImage)
+        {
+            result.cpu_copy.exists = true;
+            UINT w = (UINT)baseImage->width;
+            UINT h = (UINT)baseImage->height;
+            UINT8 *cpuData = (UINT8 *)malloc(w * h); // assumes 8-bit TODO: CHANGE WHEN SWITCH TO 16-bit
+            if (cpuData)
+            {                
+                memcpy(cpuData, baseImage->pixels, w * h);
+                result.cpu_copy.data = cpuData;
+                result.cpu_copy.width = w;
+                result.cpu_copy.height = h;                
+            }
+        }
     }
 
     const DirectX::TexMetadata &metadata = image.GetMetadata();
@@ -646,16 +673,18 @@ ModelTextureLoadResult LoadTextureFromCgltfImage(
     }
 
     // Generate mipmaps if not present
-    const DirectX::TexMetadata& meta = imageData.GetMetadata();
-    if (meta.mipLevels == 1) {
+    const DirectX::TexMetadata &meta = imageData.GetMetadata();
+    if (meta.mipLevels == 1)
+    {
         // Generate full mip chain (all levels down to 1x1)
         DirectX::ScratchImage mipChain;
         hr = DirectX::GenerateMipMaps(
-            *imageData.GetImage(0,0,0),          // base image
-            DirectX::TEX_FILTER_CUBIC,              // filter type
-            0,                                     // generate all levels
+            *imageData.GetImage(0, 0, 0), // base image
+            DirectX::TEX_FILTER_CUBIC,    // filter type
+            0,                            // generate all levels
             mipChain);
-        if (FAILED(hr)) {
+        if (FAILED(hr))
+        {
             SDL_Log("Failed to generate mipmaps");
             return result;
         }
@@ -663,7 +692,7 @@ ModelTextureLoadResult LoadTextureFromCgltfImage(
         imageData = std::move(mipChain);
     }
 
-    // Create GPU texture resource    
+    // Create GPU texture resource
     D3D12_RESOURCE_DESC texDesc = CD3DX12_RESOURCE_DESC::Tex2D(
         meta.format, (UINT)meta.width, (UINT)meta.height, 1, (UINT16)meta.mipLevels);
 
@@ -1325,7 +1354,7 @@ bool LoadPipeline(HWND hwnd)
 #if defined(_DEBUG)
     // Enable the debug layer (requires the Graphics Tools "optional feature").
     // NOTE: Enabling the debug layer after device creation will invalidate the active device.
-    bool useDxDebugLayer = true;
+    bool useDxDebugLayer = false;
     if (useDxDebugLayer)
     {
         ID3D12Debug *debugController;
@@ -1599,7 +1628,7 @@ bool LoadAssets()
     {
         CD3DX12_DESCRIPTOR_RANGE cbvRange;
         cbvRange.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 2); // register b2
-        
+
         CD3DX12_DESCRIPTOR_RANGE srvRanges[4];                    // default texture + heightmaps + sky + models
         srvRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0); // t0: default texture
         srvRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, MAX_HEIGHTMAP_TEXTURES, RegisterLayout::HEIGHTMAP_REGISTER_BASE);

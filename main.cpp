@@ -51,6 +51,15 @@
 static ConfigData g_liveConfigData = {};
 static Scene g_scene;
 
+struct HeightmapDataCPU
+{
+    UINT8 *data;
+    UINT width;
+    UINT height;    
+};
+
+static HeightmapDataCPU g_heightmapDataCPU = {};
+
 void write_scene()
 {
     char *json = scene_to_json(&g_scene);
@@ -495,7 +504,7 @@ void Render(bool vsync = true)
 }
 
 // this functions exists for a future where we will do more than just render the whole scene, this will include culling here
-// TODO: update this function to group objects by rendering pipeline
+// TODO: update this function to group objects by rendering pipeline, and make sky objects be rendered last
 void FillDrawList()
 {
     int drawCount = 0;
@@ -592,6 +601,38 @@ struct FlyCamera
     }
 } g_camera;
 
+float SampleHeightmapWorldY(const SceneObject &obj, UINT hmIdx, const DirectX::XMFLOAT3 &worldPos)
+{
+    HeightmapDataCPU cpu = g_heightmapDataCPU;
+    if (!cpu.data)
+        return obj.pos.y; // fallback
+
+    // Transform world → local object space (no rotation, uniform XZ scale)
+    float localX = (worldPos.x - obj.pos.x) / obj.scale.x; // obj.scale.x == obj.scale.z
+    float localZ = (worldPos.z - obj.pos.z) / obj.scale.z;
+
+    // Check if inside the heightmap’s square footprint ([-0.5, 0.5] in X and Z)
+    if (localX < -0.5f || localX > 0.5f || localZ < -0.5f || localZ > 0.5f)
+        return obj.pos.y; // outside – return base height
+
+    // Convert to UV [0,1]
+    float u = localX + 0.5f;
+    float v = localZ + 0.5f;
+
+    // Clamp to avoid edge artefacts
+    u = min(max(u, 0.0f), 1.0f);
+    v = min(max(v, 0.0f), 1.0f);    
+
+    // Nearest‑neighbour sample
+    UINT ix = (UINT)(u * (cpu.width - 1));
+    UINT iy = (UINT)(v * (cpu.height - 1));
+    UINT8 heightVal = cpu.data[iy * cpu.width + ix];
+
+    // Convert 0‑255 → [0,1] and multiply by object's Y scale
+    float h = heightVal / 255.0f;
+    return obj.pos.y + h * obj.scale.y;
+}
+
 // Convert pitch (X), yaw (Y), roll (Z) in radians to a quaternion.
 // Order of rotations: first pitch (X), then yaw (Y), then roll (Z).
 inline DirectX::XMVECTOR EulerToQuaternion(float pitch, float yaw, float roll)
@@ -651,6 +692,19 @@ void Update()
     float _t = 0.01f;
     // DirectX::XMStoreFloat4(&g_scene.objects[24].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.2f, program_state.timing.upTime * _t + 65, 0));
     // DirectX::XMStoreFloat4(&g_scene.objects[25].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.5f, 0, 0));
+
+    // walk on heightmap
+
+    for (int i = 0; i < g_scene.objectCount; ++i)
+    {
+        if (g_scene.objects[i].objectType == OBJECT_HEIGHTFIELD)
+        {
+            UINT hmIdx = graphics_resources.m_sceneObjectIndices[i];
+            float groundY = SampleHeightmapWorldY(g_scene.objects[i], hmIdx, g_camera.position);
+            g_camera.position.y = groundY + 1.7f; // eye height
+            break;
+        }
+    }
 
     FillDrawList();
 }
@@ -1092,9 +1146,12 @@ void DrawEditorGUI()
             float rollDeg = DirectX::XMConvertToDegrees(roll);
 
             bool rotationChanged = false;
-            rotationChanged |= ImGui::DragFloat("Pitch", &pitchDeg, 0.5f, -180.0f, 180.0f, "%.1f°");
-            rotationChanged |= ImGui::DragFloat("Yaw", &yawDeg, 0.5f, -180.0f, 180.0f, "%.1f°");
-            rotationChanged |= ImGui::DragFloat("Roll", &rollDeg, 0.5f, -180.0f, 180.0f, "%.1f°");
+            if (obj.objectType != ObjectType::OBJECT_HEIGHTFIELD)
+            {
+                rotationChanged |= ImGui::DragFloat("Pitch", &pitchDeg, 0.5f, -180.0f, 180.0f, "%.1f°");
+                rotationChanged |= ImGui::DragFloat("Yaw", &yawDeg, 0.5f, -180.0f, 180.0f, "%.1f°");
+                rotationChanged |= ImGui::DragFloat("Roll", &rollDeg, 0.5f, -180.0f, 180.0f, "%.1f°");
+            }
 
             if (rotationChanged)
             {
@@ -1136,16 +1193,22 @@ void LoadAllTextures()
             UINT &outIndex = graphics_resources.m_sceneObjectIndices[i];
             UINT errorIndex = g_errorHeightmapIndex;
 
+            // set rotation of heightmap to zero as given in decisiona
+            DirectX::XMStoreFloat4(&g_scene.objects[i].rot, DirectX::XMVectorSet(0.0f, 0.0f, 0.0f, 1.0f));
             if (path[0] != '\0')
             {
                 ID3D12Resource *tex = nullptr; // not used directly
-                TextureLoadResult tl = LoadTextureFromFile(pipeline_dx12.m_device, pipeline_dx12.m_commandList[0], path, &tex);
+                TextureLoadResult tl = LoadTextureFromFile(pipeline_dx12.m_device, pipeline_dx12.m_commandList[0], path, &tex, true);
                 if (tl.success)
                 {
                     SDL_Log("Loaded heightmap: %s, index %u", path, tl.outIndex);
                     outIndex = tl.outIndex;
                     if (tl.uploadHeap)
                         localUploadHeaps.push_back(tl.uploadHeap);
+
+                    g_heightmapDataCPU.data = tl.cpu_copy.data;
+                    g_heightmapDataCPU.width = tl.cpu_copy.width;
+                    g_heightmapDataCPU.height = tl.cpu_copy.height;
                 }
                 else
                 {

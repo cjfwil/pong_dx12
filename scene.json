@@ -1,5 +1,5 @@
 {
-	"objectCount":	29,
+	"objectCount":	27,
 	"objects":	[{
 			"nametag":	"floor",
 			"pos":	[-6.1656446962537e-23, -1.0072767734527588, -1.8521596168354929e-25],
@@ -161,17 +161,6 @@
 				"primitiveType":	"Cylinder"
 			}
 		}, {
-			"nametag":	"ground",
-			"pos":	[1.6575193405151367, -0.800000011920929, -8.2317886352539062],
-			"rot":	[0, 0, 0, 1],
-			"scale":	[16, 0.20000000298023224, 16],
-			"objectType":	"Heightfield",
-			"pipeline":	"Heightfield",
-			"heightfieldData":	{
-				"pathToHeightmap":	"",
-				"width":	256
-			}
-		}, {
 			"nametag":	"random pillar",
 			"pos":	[5.75324296951294, 2.6652393341064453, -12.122722625732422],
 			"rot":	[0, 0, 0, 1],
@@ -182,21 +171,10 @@
 				"primitiveType":	"Cylinder"
 			}
 		}, {
-			"nametag":	"HF",
-			"pos":	[-22, -5.0809454917907715, -1.0757056401189402e-07],
-			"rot":	[7.3018986412876075e-09, -3.0379812443470655e-08, 2.21830305589376e-16, 1],
-			"scale":	[32, 10, 32.000003814697266],
-			"objectType":	"Heightfield",
-			"pipeline":	"Heightfield",
-			"heightfieldData":	{
-				"pathToHeightmap":	"assets/heightmaps/islands.dds",
-				"width":	256
-			}
-		}, {
-			"nametag":	"HF distant",
-			"pos":	[0, -128, 0],
+			"nametag":	"HF walking",
+			"pos":	[0, -32, 0],
 			"rot":	[0, 0, 0, 1],
-			"scale":	[3000, 256, 3000],
+			"scale":	[256, 32, 256],
 			"objectType":	"Heightfield",
 			"pipeline":	"Heightfield",
 			"heightfieldData":	{
