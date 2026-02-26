@@ -95,9 +95,12 @@ massive repeating even if input while switching mode on/off, enough to crash pro
 
 ## add billboard objecttype and also imposter (animated billboard by viewing angle, with blending between frames), and animated sprite (animated billboard by time t)
 
-
-## fix crashing on exit command allocators
-
 ## make descision about milk truck wheels problem (child models problem)
 
 ## always group sky objects to be rendered last to prevent overdraw and do alpha blending properly
+
+## turn off writing to depth buffer when writing sky clouds?
+
+## instead of writing into the actual field for name, bring up an input box that forces me to press yes/no so i am not stuck typing into the field when i am trying to WASD move.
+
+## aliasing on truck part

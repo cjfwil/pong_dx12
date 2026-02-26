@@ -641,7 +641,7 @@ ModelTextureLoadResult LoadTextureFromCgltfImage(
     HRESULT hr = DirectX::LoadFromWICMemory(
         (const uint8_t *)dataPtr, dataSize,
         DirectX::WIC_FLAGS_NONE,
-        nullptr, // metadata (optional)
+        nullptr,
         imageData);
     if (FAILED(hr))
     {
@@ -657,8 +657,25 @@ ModelTextureLoadResult LoadTextureFromCgltfImage(
         return result;
     }
 
-    // Create GPU texture resource
-    const DirectX::TexMetadata &meta = imageData.GetMetadata();
+    // Generate mipmaps if not present
+    const DirectX::TexMetadata& meta = imageData.GetMetadata();
+    if (meta.mipLevels == 1) {
+        // Generate full mip chain (all levels down to 1x1)
+        DirectX::ScratchImage mipChain;
+        hr = DirectX::GenerateMipMaps(
+            *imageData.GetImage(0,0,0),          // base image
+            DirectX::TEX_FILTER_BOX,              // filter type
+            0,                                     // generate all levels
+            mipChain);
+        if (FAILED(hr)) {
+            SDL_Log("Failed to generate mipmaps");
+            return result;
+        }
+        // Replace imageData with the mip chain
+        imageData = std::move(mipChain);
+    }
+
+    // Create GPU texture resource    
     D3D12_RESOURCE_DESC texDesc = CD3DX12_RESOURCE_DESC::Tex2D(
         meta.format, (UINT)meta.width, (UINT)meta.height, 1, (UINT16)meta.mipLevels);
 

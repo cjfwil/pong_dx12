@@ -1023,7 +1023,7 @@ void DrawEditorGUI()
                     memset(&obj.data, 0, sizeof(obj.data));
                     obj.objectType = newType;
 
-                    // Set sensible defaults for the new type
+                    // set defaults
                     switch (newType)
                     {
                     case OBJECT_PRIMITIVE:
@@ -1045,7 +1045,7 @@ void DrawEditorGUI()
                     case OBJECT_SKY_SPHERE:
                     {
                         strcpy_s(obj.data.sky_sphere.pathToTexture, sizeof(obj.data.sky_sphere.pathToTexture), "");
-                        obj.pipeline = RENDER_SKY; // ← set pipeline to sky
+                        obj.pipeline = RENDER_SKY;
                     }
                     break;
                     case OBJECT_WATER:
@@ -1348,7 +1348,8 @@ int main(void)
         SDL_Event sdlEvent;
         while (SDL_PollEvent(&sdlEvent))
         {
-            ImGui_ImplSDL3_ProcessEvent(&sdlEvent);
+            if (g_view_editor)
+                ImGui_ImplSDL3_ProcessEvent(&sdlEvent);
             switch (sdlEvent.type)
             {
             case SDL_EVENT_KEY_DOWN:
@@ -1407,10 +1408,12 @@ int main(void)
             }
         }
 
-        ImGui_ImplDX12_NewFrame();
-        ImGui_ImplSDL3_NewFrame();
         if (g_view_editor)
+        {
+            ImGui_ImplDX12_NewFrame();
+            ImGui_ImplSDL3_NewFrame();
             DrawEditorGUI();
+        }
 
         program_state.timing.UpdateTimer();
 
