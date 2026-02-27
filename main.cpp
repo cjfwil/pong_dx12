@@ -601,7 +601,7 @@ struct FlyCamera
     }
 } g_camera;
 
-float SampleHeightmapWorldY(const SceneObject &obj, UINT hmIdx, const DirectX::XMFLOAT3 &worldPos)
+float SampleHeightmapWorldY(const SceneObject &obj, const DirectX::XMFLOAT3 &worldPos)
 {
     HeightmapDataCPU cpu = g_heightmapDataCPU;
     if (!cpu.data)
@@ -714,14 +714,12 @@ void Update()
     // DirectX::XMStoreFloat4(&g_scene.objects[24].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.2f, program_state.timing.upTime * _t + 65, 0));
     // DirectX::XMStoreFloat4(&g_scene.objects[25].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.5f, 0, 0));
 
-    // walk on heightmap
-
+    // walk on object
     for (int i = 0; i < g_scene.objectCount; ++i)
     {
         if (g_scene.objects[i].objectType == OBJECT_HEIGHTFIELD)
-        {
-            UINT hmIdx = graphics_resources.m_sceneObjectIndices[i];
-            float groundY = SampleHeightmapWorldY(g_scene.objects[i], hmIdx, g_camera.position);
+        {            
+            float groundY = SampleHeightmapWorldY(g_scene.objects[i], g_camera.position);
             g_camera.position.y = groundY + 1.7f; // eye height
             break;
         }

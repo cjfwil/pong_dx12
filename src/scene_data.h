@@ -36,6 +36,7 @@ struct SceneObject {
         struct {
             char pathToHeightmap[256];
             uint32_t width; //example only, placeholder             
+            // todo: index to cpu copy?
         } heightfield;
         struct {
             char pathTo[256]; //example only, placeholder 

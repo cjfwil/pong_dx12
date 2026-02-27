@@ -1,5 +1,5 @@
 {
-	"objectCount":	27,
+	"objectCount":	29,
 	"objects":	[{
 			"nametag":	"floor",
 			"pos":	[-6.1656446962537e-23, -1.0072767734527588, -1.8521596168354929e-25],
@@ -162,7 +162,7 @@
 			}
 		}, {
 			"nametag":	"random pillar",
-			"pos":	[5.75324296951294, 2.6652393341064453, -12.122722625732422],
+			"pos":	[5.75324296951294, 2.4826507568359375, -12.122722625732422],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[1, 9, 1],
 			"objectType":	"Primitive",
@@ -172,9 +172,9 @@
 			}
 		}, {
 			"nametag":	"HF walking",
-			"pos":	[0, -16, 0],
+			"pos":	[0, -5, 0],
 			"rot":	[0, 0, 0, 1],
-			"scale":	[256, 32, 256],
+			"scale":	[256, 10, 256],
 			"objectType":	"Heightfield",
 			"pipeline":	"Heightfield",
 			"heightfieldData":	{
@@ -270,6 +270,26 @@
 			"pipeline":	"Default",
 			"primitiveData":	{
 				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"temple greek",
+			"pos":	[33.366748809814453, 10.5086669921875, 66.6543655395508],
+			"rot":	[0.683717906475067, -0.18035788834095, 0.18035809695720673, 0.68371909856796265],
+			"scale":	[1.0000042915344238, 0.99998044967651367, 0.99998581409454346],
+			"objectType":	"Loaded Model",
+			"pipeline":	"Loaded Model",
+			"loaded_modelData":	{
+				"pathTo":	"assets/models/greek_thing.glb"
+			}
+		}, {
+			"nametag":	"ball in aur",
+			"pos":	[-63.159492492675781, 76.9239501953125, -1051.5634765625],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[64, 64, 64],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Sphere"
 			}
 		}]
 }
