@@ -1,10 +1,10 @@
 {
-	"objectCount":	29,
+	"objectCount":	37,
 	"objects":	[{
 			"nametag":	"floor",
-			"pos":	[-6.1656446962537e-23, -1.0072767734527588, -1.8521596168354929e-25],
+			"pos":	[-6.1656446962537e-23, -1.0072767734527588, -10.478248596191406],
 			"rot":	[-1.8306637488138993e-24, 0, -7.4134968644420016e-25, 1],
-			"scale":	[10.000004768371582, 0.99999964237213135, 9.9999942779541],
+			"scale":	[10.000003814697266, 0.99999964237213135, 29.8231029510498],
 			"objectType":	"Primitive",
 			"pipeline":	"Default",
 			"primitiveData":	{
@@ -14,7 +14,7 @@
 			"nametag":	"Centre box",
 			"pos":	[0, 1.5, 0],
 			"rot":	[0, 0, 0, 1],
-			"scale":	[5, 4, 5],
+			"scale":	[3, 4, 3],
 			"objectType":	"Primitive",
 			"pipeline":	"Default",
 			"primitiveData":	{
@@ -263,9 +263,9 @@
 			}
 		}, {
 			"nametag":	"distant thing",
-			"pos":	[25.83758544921875, -17.906879425048828, -1709.6956787109375],
-			"rot":	[0.075652711093425751, 0, 0, 0.99713420867919922],
-			"scale":	[200, 3000.000244140625, 200],
+			"pos":	[-260.43008422851562, -195.97137451171875, -480.85540771484375],
+			"rot":	[0.0427810326218605, -0.0459062084555626, 0.72306370735168457, 0.68792533874511719],
+			"scale":	[544.3494873046875, 170.34494018554688, 110.23480224609375],
 			"objectType":	"Primitive",
 			"pipeline":	"Default",
 			"primitiveData":	{
@@ -290,6 +290,86 @@
 			"pipeline":	"Default",
 			"primitiveData":	{
 				"primitiveType":	"Sphere"
+			}
+		}, {
+			"nametag":	"test floor 1",
+			"pos":	[36.5708999633789, -3.9262468814849854, -44.342479705810547],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 1, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"test floor 2",
+			"pos":	[33.3167381286621, -3.6920967102050781, -49.564037322998047],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[2, 1, 2],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"test floor 3",
+			"pos":	[25.907398223876953, -4.8413825035095215, -59.048042297363281],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[4, 4, 6],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"test floor 4",
+			"pos":	[14.898993492126465, -2.08108377456665, -49.873367309570312],
+			"rot":	[0.27534547448158264, 0.055661078542470932, -0.19016340374946594, 0.940704345703125],
+			"scale":	[7.0000004768371582, 7, 7.00000238418579],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"test floor 5",
+			"pos":	[9.1677150726318359, 0.55232638120651245, -69.4446487426758],
+			"rot":	[0.217687115073204, -0.04625222459435463, 0.20261979103088379, 0.953634262084961],
+			"scale":	[3.4000000953674316, 4.7800030708313, 22.3119945526123],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"test floor 6",
+			"pos":	[43.619327545166016, -0.3593517541885376, -56.468219757080078],
+			"rot":	[0, -0.2057807445526123, 0, 0.978598117828369],
+			"scale":	[4.68195629119873, 7.4872555732727051, 5.25670337677002],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"test floor 7",
+			"pos":	[125.68550109863281, 8.32122802734375, -108.67134094238281],
+			"rot":	[-0.13754101097583771, -0.063275836408138275, 0.41312739253044128, 0.89800024032592773],
+			"scale":	[48, 31.999992370605469, 24],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"jacobs ladder",
+			"pos":	[214.31033325195312, 1016.7451782226562, 0],
+			"rot":	[0, 0, -0.0471218079328537, 0.99888908863067627],
+			"scale":	[15.562236785888672, 2048, 13.120937347412109],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
 			}
 		}]
 }

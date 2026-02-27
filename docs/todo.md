@@ -124,7 +124,19 @@ our descision is that heightmaps cannot be rotated and we operate on that assump
 heightmaps can have two types of collisions shapes: heightmap shape (collide directly with the height data) and flat plane shape (collide with flat plane - the heightmap is for visuals only (for example: a rocky surface))
 Heightmaps also can ony be scaled in Y and the X/Z together. The Y scale determines the height of the peaks, and the X/Z must be one number which specifies the horizontal scale, so it is always a square.
 
-## collision with heightmap
-collision with heightmap will involve the assumption that the heightmap cannot be scaled non-uniformly in XZ and also cannot be rotated, this should make collision easier, all i would have to do is get the x/z of the player pos, minus the heightmap object x/z, and that should give me a position where the origin is the centre of the heightmap, then we can divide by the scale, that should get us in the bounds in x/z = [-0.5, 0.5], if we are outside, then no collision, else we plus 0.5f and that gets us a way easy way to index into the texture, then the texture value multiply by the scale, and then we can set our player value to y
+## collision with multiple heightmaps
+
+## collision with primitives
+for each scene object that is a cube, cylinder or sphere, we will collide with.
+
+we want to have the "just work" option - we plop down a primitive of cylinder, sphere, cube, and it will just work based on any non-uniform scale that is thrown at it. if it is slow or unoptimised - it doesnt matter. i just want a perfect 1:1 correspondence for what i see rendered and what i can walk on. there is also the triangle prism primtive but i dont know how to calculate collision against that, so we will leave that for later. if it is too slow we can add limitations back in, like uniform scaling only or whatever. because i do want to walk around on top of rotated cubes and such. and have smooth slopes, that is crucial to our gameplay.
+
+when the player is standing on top of the primitive, they will not slide or anything.
+
+perhaps there is a difference between running into a collision box from the side, like going up against a wall and standing on top? perhaps we should split them? we will start with calculate where my Y position should for each primitive(non prism) and heightmap on the scene and the highest Y value would be set as the position of the camera.y+1.7f. maybe we can worry about head on collision later?
+
+#### implementation
+start with just cubes
+define a line in 3d space - it is defined by the vertical line at y = f(x_0, z_0), where x_0 and z_0 is the camera position in x and z. now we have a vertical line we can intersect with each object. for each object we then do the maths to tranform the line? i guess? or a downward facing vector which is at position {x_0, 0, z_0} transform in reverse so it is mathematically identical, or inverse world matrix? then we can get the the intersection point in local space -> transform it back by the world which gets me, my actual y, which then we overwrite if the next y is greater than that y, skip if it is less
 
 ## change allow support of heightmaps of 16bits precision

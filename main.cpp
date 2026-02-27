@@ -279,7 +279,7 @@ static float g_fov_deg = 60.0f;
 static bool g_view_editor = true;
 
 // example for next
-const int g_draw_list_element_total = 32;
+const int g_draw_list_element_total = MAX_SCENE_OBJECTS;
 static struct
 {
     int drawAmount = g_draw_list_element_total; // this should not be greater than g_draw_list_element_total
@@ -680,6 +680,69 @@ inline DirectX::XMVECTOR EulerToQuaternion(float pitch, float yaw, float roll)
     return XMVectorSet(x, y, z, w);
 }
 
+#include <cfloat> // for FLT_MAX
+
+bool IntersectRayCube(const DirectX::XMFLOAT3 &rayOrigin, const DirectX::XMFLOAT3 &rayDir, const SceneObject &cube, float &tMin, float &tMax)
+{
+    DirectX::XMVECTOR O = DirectX::XMLoadFloat3(&rayOrigin);
+    DirectX::XMVECTOR D = DirectX::XMLoadFloat3(&rayDir);
+    DirectX::XMVECTOR P = DirectX::XMLoadFloat3(&cube.pos);
+    DirectX::XMVECTOR Q = DirectX::XMLoadFloat4(&cube.rot);
+    DirectX::XMVECTOR S = DirectX::XMLoadFloat3(&cube.scale);
+
+    // Avoid division by zero
+    DirectX::XMVECTOR zero = DirectX::XMVectorZero();
+    if (DirectX::XMVector3Equal(S, zero))
+        return false;
+
+    DirectX::XMMATRIX R = DirectX::XMMatrixRotationQuaternion(Q);
+    DirectX::XMMATRIX R_T = DirectX::XMMatrixTranspose(R); // inverse rotation
+
+    // Transform ray to cube's local space (unit cube centered at origin)
+    DirectX::XMVECTOR O_rel = DirectX::XMVectorSubtract(O, P);
+    DirectX::XMVECTOR O_local = DirectX::XMVectorDivide(XMVector3Transform(O_rel, R_T), S);
+    DirectX::XMVECTOR D_local = DirectX::XMVectorDivide(XMVector3Transform(D, R_T), S);
+
+    float o[3], d[3];
+    DirectX::XMStoreFloat3((DirectX::XMFLOAT3 *)o, O_local);
+    DirectX::XMStoreFloat3((DirectX::XMFLOAT3 *)d, D_local);
+
+    const float half = 0.5f;
+    const float eps = 1e-6f;
+
+    tMin = -FLT_MAX;
+    tMax = FLT_MAX;
+
+    for (int i = 0; i < 3; ++i)
+    {
+        if (fabsf(d[i]) < eps)
+        {
+            // Ray parallel to slab – must be inside
+            if (o[i] < -half || o[i] > half)
+                return false;
+        }
+        else
+        {
+            float t1 = (-half - o[i]) / d[i];
+            float t2 = (half - o[i]) / d[i];
+            if (t1 > t2)
+            {
+                float tmp = t1;
+                t1 = t2;
+                t2 = tmp;
+            }
+
+            if (t1 > tMin)
+                tMin = t1;
+            if (t2 < tMax)
+                tMax = t2;
+            if (tMin > tMax)
+                return false;
+        }
+    }
+    return true;
+}
+
 void Update()
 {
     // g_input.mouseCaptured = !g_view_editor;
@@ -715,15 +778,53 @@ void Update()
     // DirectX::XMStoreFloat4(&g_scene.objects[25].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.5f, 0, 0));
 
     // walk on object
+    float playerEyeHeight = 1.7f; // in metres
+    float bestGroundY = -FLT_MAX;
+    float playerFeetY = g_camera.position.y - playerEyeHeight;
+    float stepHeight = 1.0f; // the most height you can step up, any higher and you have a impassable wall.
+    // TODO: potentially have a step down height? more than which, we go into a fall or jump rather than a smooth step down
     for (int i = 0; i < g_scene.objectCount; ++i)
     {
-        if (g_scene.objects[i].objectType == OBJECT_HEIGHTFIELD)
+        const SceneObject &obj = g_scene.objects[i];
+
+        //todo (optimisation): generate AABB per object, skip raycasts if not within AABB
+        if (obj.objectType == OBJECT_HEIGHTFIELD)
+        {
+            float groundY = SampleHeightmapWorldY(obj, g_camera.position);
+            // g_camera.position.y = groundY + playerEyeHeight; // eye height
+            if (groundY > bestGroundY)
+                bestGroundY = groundY;
+        }
+        else if (obj.objectType == OBJECT_PRIMITIVE && obj.data.primitive.primitiveType == PRIMITIVE_CUBE)
         {            
-            float groundY = SampleHeightmapWorldY(g_scene.objects[i], g_camera.position);
-            g_camera.position.y = groundY + 1.7f; // eye height
-            break;
+            // Ray from just above feet, straight down
+            DirectX::XMFLOAT3 rayOrigin = {
+                g_camera.position.x,
+                playerFeetY + stepHeight,
+                g_camera.position.z};
+            DirectX::XMFLOAT3 rayDir = {0, -1, 0};
+
+            float tMin, tMax;
+            if (IntersectRayCube(rayOrigin, rayDir, obj, tMin, tMax))
+            {
+                // Get the first positive intersection (closest surface below)
+                float tHit = -1.0f;
+                if (tMin >= 0.0f)
+                    tHit = tMin;
+                else if (tMax >= 0.0f)
+                    tHit = tMax;
+
+                if (tHit >= 0.0f)
+                {
+                    float hitY = rayOrigin.y - tHit; // because direction is (0,-1,0)
+                    if (hitY > bestGroundY)
+                        bestGroundY = hitY;
+                }
+            }
         }
     }
+
+    g_camera.position.y = bestGroundY + playerEyeHeight;
 
     FillDrawList();
 }
@@ -843,6 +944,10 @@ void DrawEditorGUI()
             write_scene();
         }
     }
+
+    ImGui::Begin("Player Info");
+    ImGui::Text("Camera Pos: {%.3f, %.3f, %.3f}", g_camera.position.x, g_camera.position.y, g_camera.position.z);
+    ImGui::End();
 
     ImGui::Begin("Settings");
     ImGui::SliderFloat("fov_deg", &g_fov_deg, 60.0f, 120.0f);
@@ -1364,40 +1469,6 @@ int main(void)
 
     // todo: when we load everything, make a big table that keeps track of everything we have loaded, filenames, objecttypes, and where it is placed
     // todo: do not load same filename more than once
-
-    // new pattern?:
-    // m_albedoTextures[MAX_ALBEDO_TEXTURES]
-    // m_heightmapTextures[MAX_HEIGHTMAP_TEXTURES]
-    // m_skyTextures[MAX_SKY_TEXTURES]
-
-    // m_loadedModels[MAX_LOADED_MODELS]
-
-    // loaded resource:
-    // char* filename
-    // texture_type m_tt = albedo/sky/heightmap
-    // UINT index or LoadedTexture* m_pLocation
-    // if m_tt==albedo then index in     m_albedoTextures[index], if m_tt==sky then index in m_skyTextures[index] etc...
-
-    // assets/
-    // -> models
-    // -> sky
-    // -> heightmaps
-
-    // look in each folder and load all and track all locations
-
-    // maybe instead of adding to global albedo textures, maybe be linked to the model
-    // {
-    //      m_modelDataStuff[MAX_MODELS]
-    //      m_modelAlbedoTexture[MAX_MODELS]
-    //      m_modelOcclusionTexture[MAX_MODELS]
-    //      .. expandable slots here, be it normal, roughness etc... if it is determinted relevant
-    // }
-
-    // then custom shader only for models which has bindless for model textures?
-
-    SDL_Log("&pipeline_dx12      = %p", &pipeline_dx12);
-    SDL_Log("&graphics_resources = %p", &graphics_resources);
-    SDL_Log("&sync_state         = %p", &sync_state);
 
     LoadAllTextures();
 

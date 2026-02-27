@@ -3,6 +3,11 @@ This engine will NOT support exclusive fullscreen. To support users who want to 
 In windowed mode there will be a drop down list of common resolutions in the supported aspect ratios (4:3, 16:9, 21:9).
 Borderless will always display at the resolution of the desktop.
 
-### Heightmaps cannot be rotated
-Heightmaps cannot be rotated, always assumed to be axis aligned.
-Heightmaps always have the same X and Z scale
+### Heightmap and Heightfield rules
+Heightfields cannot be rotated, always assumed to be axis aligned.
+Heightfields always have the same X and Z scale.
+Defintion of Heightfield: the geometry that is displaced and rendered
+Defintion of Heightmap: the texture that provides the displacement information to the heightfield displacer
+
+# Potential Rules (review needed)
+- Collidable Cylinders and spheres may onnly be scaled non-uniformly (only cylinder height and radius) to make collision easier?
