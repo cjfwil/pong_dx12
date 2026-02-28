@@ -1,5 +1,5 @@
 {
-	"objectCount":	43,
+	"objectCount":	46,
 	"objects":	[{
 			"nametag":	"floor",
 			"pos":	[-6.1656446962537e-23, -1.0072767734527588, -10.478248596191406],
@@ -283,7 +283,7 @@
 			}
 		}, {
 			"nametag":	"ball in aur",
-			"pos":	[-63.159492492675781, 76.9239501953125, -1051.5634765625],
+			"pos":	[55.802940368652344, -17.2377872467041, -102.08544921875],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[64, 64, 64],
 			"objectType":	"Primitive",
@@ -430,6 +430,36 @@
 			"pipeline":	"Default",
 			"primitiveData":	{
 				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"sphere 1",
+			"pos":	[22.6096305847168, 0, 0],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 1, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Sphere"
+			}
+		}, {
+			"nametag":	"sphere 2",
+			"pos":	[13.0443172454834, -1.5161561965942383, -32.809421539306641],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[5.9151196479797363, 1, 4.7229118347167969],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Sphere"
+			}
+		}, {
+			"nametag":	"sphere 3",
+			"pos":	[0, 0.79220974445343018, -40.056800842285156],
+			"rot":	[0.27181655168533325, 0, 0, 0.96234911680221558],
+			"scale":	[10, 10, 16],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Sphere"
 			}
 		}]
 }

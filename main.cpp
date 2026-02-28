@@ -835,6 +835,66 @@ bool IntersectRayCylinder(const DirectX::XMFLOAT3 &rayOrigin, const DirectX::XMF
     return true;
 }
 
+bool IntersectRaySphere(const DirectX::XMFLOAT3 &rayOrigin, const DirectX::XMFLOAT3 &rayDir,
+                        const SceneObject &sphere, float &tMin, float &tMax)
+{
+    using namespace DirectX;
+
+    XMVECTOR O = XMLoadFloat3(&rayOrigin);
+    XMVECTOR D = XMLoadFloat3(&rayDir);
+    XMVECTOR P = XMLoadFloat3(&sphere.pos);
+    XMVECTOR Q = XMLoadFloat4(&sphere.rot);
+    XMVECTOR S = XMLoadFloat3(&sphere.scale);
+
+    // Reject degenerate scale
+    XMVECTOR zero = XMVectorZero();
+    if (XMVector3Equal(S, zero))
+        return false;
+
+    XMMATRIX R = XMMatrixRotationQuaternion(Q);
+    XMMATRIX R_T = XMMatrixTranspose(R); // inverse rotation
+
+    // Transform ray to local space (unit sphere radius 0.5)
+    XMVECTOR O_rel = XMVectorSubtract(O, P);
+    XMVECTOR O_local = XMVectorDivide(XMVector3Transform(O_rel, R_T), S);
+    XMVECTOR D_local = XMVectorDivide(XMVector3Transform(D, R_T), S);
+
+    float o[3], d[3];
+    XMStoreFloat3((XMFLOAT3 *)o, O_local);
+    XMStoreFloat3((XMFLOAT3 *)d, D_local);
+
+    const float r = 0.5f;
+    const float eps = 1e-6f;
+
+    // Quadratic coefficients: a t^2 + b t + c = 0
+    float a = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+    if (fabsf(a) < eps)
+        return false; // degenerate direction (shouldn't happen)
+
+    float b = 2.0f * (o[0] * d[0] + o[1] * d[1] + o[2] * d[2]);
+    float c = o[0] * o[0] + o[1] * o[1] + o[2] * o[2] - r * r;
+
+    float disc = b * b - 4.0f * a * c;
+    if (disc < 0.0f)
+        return false;
+
+    disc = sqrtf(disc);
+    float t1 = (-b - disc) / (2.0f * a);
+    float t2 = (-b + disc) / (2.0f * a);
+
+    // Sort so t1 ≤ t2
+    if (t1 > t2)
+    {
+        float tmp = t1;
+        t1 = t2;
+        t2 = tmp;
+    }
+
+    tMin = t1;
+    tMax = t2;
+    return true;
+}
+
 void Update()
 {
     // g_input.mouseCaptured = !g_view_editor;
@@ -898,21 +958,23 @@ void Update()
 
             float tMin, tMax = -FLT_MAX;
             bool intersection = false;
-            if (obj.data.primitive.primitiveType == PRIMITIVE_CUBE)            
-                intersection = IntersectRayCube(rayOrigin, rayDir, obj, tMin, tMax);            
-            else if (obj.data.primitive.primitiveType == PRIMITIVE_CYLINDER)            
-                intersection = IntersectRayCylinder(rayOrigin, rayDir, obj, tMin, tMax); 
-            
+            if (obj.data.primitive.primitiveType == PRIMITIVE_CUBE)
+                intersection = IntersectRayCube(rayOrigin, rayDir, obj, tMin, tMax);
+            else if (obj.data.primitive.primitiveType == PRIMITIVE_CYLINDER)
+                intersection = IntersectRayCylinder(rayOrigin, rayDir, obj, tMin, tMax);
+            else if (obj.data.primitive.primitiveType == PRIMITIVE_SPHERE)
+                intersection = IntersectRaySphere(rayOrigin, rayDir, obj, tMin, tMax);
+
             if (intersection)
             {
-                    float tHit = (tMin >= 0.0f) ? tMin : (tMax >= 0.0f ? tMax : -1.0f);
-                    if (tHit >= 0.0f)
-                    {
-                        float hitY = rayOrigin.y - tHit;
-                        if (hitY > bestGroundY)
-                            bestGroundY = hitY;
-                    }
+                float tHit = (tMin >= 0.0f) ? tMin : (tMax >= 0.0f ? tMax : -1.0f);
+                if (tHit >= 0.0f)
+                {
+                    float hitY = rayOrigin.y - tHit;
+                    if (hitY > bestGroundY)
+                        bestGroundY = hitY;
                 }
+            }
         }
     }
 
