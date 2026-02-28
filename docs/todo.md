@@ -140,3 +140,5 @@ start with just cubes
 define a line in 3d space - it is defined by the vertical line at y = f(x_0, z_0), where x_0 and z_0 is the camera position in x and z. now we have a vertical line we can intersect with each object. for each object we then do the maths to tranform the line? i guess? or a downward facing vector which is at position {x_0, 0, z_0} transform in reverse so it is mathematically identical, or inverse world matrix? then we can get the the intersection point in local space -> transform it back by the world which gets me, my actual y, which then we overwrite if the next y is greater than that y, skip if it is less
 
 ## change allow support of heightmaps of 16bits precision
+
+## controller movement

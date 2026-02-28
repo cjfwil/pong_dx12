@@ -680,8 +680,6 @@ inline DirectX::XMVECTOR EulerToQuaternion(float pitch, float yaw, float roll)
     return XMVectorSet(x, y, z, w);
 }
 
-#include <cfloat> // for FLT_MAX
-
 bool IntersectRayCube(const DirectX::XMFLOAT3 &rayOrigin, const DirectX::XMFLOAT3 &rayDir, const SceneObject &cube, float &tMin, float &tMax)
 {
     DirectX::XMVECTOR O = DirectX::XMLoadFloat3(&rayOrigin);
@@ -743,6 +741,100 @@ bool IntersectRayCube(const DirectX::XMFLOAT3 &rayOrigin, const DirectX::XMFLOAT
     return true;
 }
 
+bool IntersectRayCylinder(const DirectX::XMFLOAT3 &rayOrigin, const DirectX::XMFLOAT3 &rayDir,
+                          const SceneObject &cylinder, float &tMin, float &tMax)
+{
+    using namespace DirectX;
+
+    XMVECTOR O = XMLoadFloat3(&rayOrigin);
+    XMVECTOR D = XMLoadFloat3(&rayDir);
+    XMVECTOR P = XMLoadFloat3(&cylinder.pos);
+    XMVECTOR Q = XMLoadFloat4(&cylinder.rot);
+    XMVECTOR S = XMLoadFloat3(&cylinder.scale);
+
+    // Reject degenerate scale
+    XMVECTOR zero = XMVectorZero();
+    if (XMVector3Equal(S, zero))
+        return false;
+
+    XMMATRIX R = XMMatrixRotationQuaternion(Q);
+    XMMATRIX R_T = XMMatrixTranspose(R); // inverse rotation
+
+    // Transform ray to local space (unit cylinder: radius 0.5, height 1)
+    XMVECTOR O_rel = XMVectorSubtract(O, P);
+    XMVECTOR O_local = XMVectorDivide(XMVector3Transform(O_rel, R_T), S);
+    XMVECTOR D_local = XMVectorDivide(XMVector3Transform(D, R_T), S);
+
+    float o[3], d[3];
+    XMStoreFloat3((XMFLOAT3 *)o, O_local);
+    XMStoreFloat3((XMFLOAT3 *)d, D_local);
+
+    const float r = 0.5f;
+    const float halfH = 0.5f;
+    const float eps = 1e-6f;
+
+    // We'll collect up to 4 intersection t values (2 caps + up to 2 side)
+    float hits[4];
+    int hitCount = 0;
+
+    // ----- Caps (y = ±halfH) -----
+    for (int sign = -1; sign <= 1; sign += 2)
+    {
+        float y_plane = sign * halfH;
+        if (fabsf(d[1]) > eps)
+        {
+            float t = (y_plane - o[1]) / d[1];
+            float x = o[0] + t * d[0];
+            float z = o[2] + t * d[2];
+            if (x * x + z * z <= r * r + eps)
+                hits[hitCount++] = t;
+        }
+    }
+
+    // ----- Cylinder side -----
+    float a = d[0] * d[0] + d[2] * d[2];
+    if (fabsf(a) > eps)
+    {
+        float b = 2.0f * (o[0] * d[0] + o[2] * d[2]);
+        float c = o[0] * o[0] + o[2] * o[2] - r * r;
+        float disc = b * b - 4.0f * a * c;
+        if (disc >= 0.0f)
+        {
+            disc = sqrtf(disc);
+            float t1 = (-b - disc) / (2.0f * a);
+            float t2 = (-b + disc) / (2.0f * a);
+            for (float t : {t1, t2})
+            {
+                float y = o[1] + t * d[1];
+                if (y >= -halfH - eps && y <= halfH + eps)
+                    hits[hitCount++] = t;
+            }
+        }
+    }
+    else
+    {
+        // Ray is parallel to cylinder axis; if it's within radius, the side intersection is infinite.
+        // We already handled caps, so nothing more to add.
+    }
+
+    if (hitCount == 0)
+        return false;
+
+    // Sort hits (simple bubble sort, max 4 elements)
+    for (int i = 0; i < hitCount - 1; ++i)
+        for (int j = i + 1; j < hitCount; ++j)
+            if (hits[i] > hits[j])
+            {
+                float tmp = hits[i];
+                hits[i] = hits[j];
+                hits[j] = tmp;
+            }
+
+    tMin = hits[0];
+    tMax = hits[hitCount - 1];
+    return true;
+}
+
 void Update()
 {
     // g_input.mouseCaptured = !g_view_editor;
@@ -787,7 +879,7 @@ void Update()
     {
         const SceneObject &obj = g_scene.objects[i];
 
-        //todo (optimisation): generate AABB per object, skip raycasts if not within AABB
+        // todo (optimisation): generate AABB per object, skip raycasts if not within AABB (basic spatial partioning) - after that we can get more complicated
         if (obj.objectType == OBJECT_HEIGHTFIELD)
         {
             float groundY = SampleHeightmapWorldY(obj, g_camera.position);
@@ -795,8 +887,8 @@ void Update()
             if (groundY > bestGroundY)
                 bestGroundY = groundY;
         }
-        else if (obj.objectType == OBJECT_PRIMITIVE && obj.data.primitive.primitiveType == PRIMITIVE_CUBE)
-        {            
+        else if (obj.objectType == OBJECT_PRIMITIVE)
+        {
             // Ray from just above feet, straight down
             DirectX::XMFLOAT3 rayOrigin = {
                 g_camera.position.x,
@@ -804,23 +896,23 @@ void Update()
                 g_camera.position.z};
             DirectX::XMFLOAT3 rayDir = {0, -1, 0};
 
-            float tMin, tMax;
-            if (IntersectRayCube(rayOrigin, rayDir, obj, tMin, tMax))
+            float tMin, tMax = -FLT_MAX;
+            bool intersection = false;
+            if (obj.data.primitive.primitiveType == PRIMITIVE_CUBE)            
+                intersection = IntersectRayCube(rayOrigin, rayDir, obj, tMin, tMax);            
+            else if (obj.data.primitive.primitiveType == PRIMITIVE_CYLINDER)            
+                intersection = IntersectRayCylinder(rayOrigin, rayDir, obj, tMin, tMax); 
+            
+            if (intersection)
             {
-                // Get the first positive intersection (closest surface below)
-                float tHit = -1.0f;
-                if (tMin >= 0.0f)
-                    tHit = tMin;
-                else if (tMax >= 0.0f)
-                    tHit = tMax;
-
-                if (tHit >= 0.0f)
-                {
-                    float hitY = rayOrigin.y - tHit; // because direction is (0,-1,0)
-                    if (hitY > bestGroundY)
-                        bestGroundY = hitY;
+                    float tHit = (tMin >= 0.0f) ? tMin : (tMax >= 0.0f ? tMax : -1.0f);
+                    if (tHit >= 0.0f)
+                    {
+                        float hitY = rayOrigin.y - tHit;
+                        if (hitY > bestGroundY)
+                            bestGroundY = hitY;
+                    }
                 }
-            }
         }
     }
 
