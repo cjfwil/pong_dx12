@@ -142,3 +142,6 @@ define a line in 3d space - it is defined by the vertical line at y = f(x_0, z_0
 ## change allow support of heightmaps of 16bits precision
 
 ## controller movement
+
+## debug camera offset
+## debug player cylinder render
