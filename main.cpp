@@ -53,6 +53,13 @@
 static ConfigData g_liveConfigData = {};
 static Scene g_scene;
 
+static struct
+{
+    float height = 1.85f;
+    float eyeHeight = 1.7f;
+    float radius = 0.15f;
+} g_player_bounds;
+
 static bool g_debug_overlap_with_cube = false;
 
 struct HeightmapDataCPU
@@ -277,6 +284,59 @@ struct window_state
     }
 };
 
+static struct
+{
+    bool mouseCaptured = false;
+    bool keys[512] = {false};
+} g_input;
+
+struct FlyCamera
+{
+    DirectX::XMFLOAT3 position = {0.0f, 2.0f, -5.0f};
+    float yaw = 0.0f;
+    float pitch = 0.0f;
+    float moveSpeed = 5.0f;
+    float lookSpeed = 0.002f;
+    float padSpeed = 1.5f;
+
+    void UpdateFlyCamera(float deltaTime)
+    {
+        DirectX::XMVECTOR forward = DirectX::XMVectorSet(
+            sinf(g_camera.yaw) * cosf(g_camera.pitch),
+            sinf(g_camera.pitch),
+            cosf(g_camera.yaw) * cosf(g_camera.pitch),
+            0.0f);
+        DirectX::XMVECTOR right = DirectX::XMVector3Cross(DirectX::XMVectorSet(0, 1, 0, 0), forward); // cross(up, forward)
+        DirectX::XMVECTOR up = DirectX::XMVectorSet(0, 1, 0, 0);
+        forward = DirectX::XMVector3Normalize(forward);
+        right = DirectX::XMVector3Normalize(right);
+
+        DirectX::XMVECTOR moveDelta = DirectX::XMVectorZero();
+        if (g_input.keys[SDL_SCANCODE_W])
+            moveDelta = DirectX::XMVectorAdd(moveDelta, forward);
+        if (g_input.keys[SDL_SCANCODE_S])
+            moveDelta = DirectX::XMVectorSubtract(moveDelta, forward);
+        if (g_input.keys[SDL_SCANCODE_A])
+            moveDelta = DirectX::XMVectorSubtract(moveDelta, right);
+        if (g_input.keys[SDL_SCANCODE_D])
+            moveDelta = DirectX::XMVectorAdd(moveDelta, right);
+        if (g_input.keys[SDL_SCANCODE_Q])
+            moveDelta = DirectX::XMVectorSubtract(moveDelta, up); // down
+        if (g_input.keys[SDL_SCANCODE_E])
+            moveDelta = DirectX::XMVectorAdd(moveDelta, up); // up
+
+        // Apply movement scaled by deltaTime and speed
+        if (!DirectX::XMVector3Equal(moveDelta, DirectX::XMVectorZero()))
+        {
+            moveDelta = DirectX::XMVector3Normalize(moveDelta);
+            moveDelta = DirectX::XMVectorScale(moveDelta, deltaTime * moveSpeed);
+            DirectX::XMVECTOR pos = XMLoadFloat3(&position);
+            pos = DirectX::XMVectorAdd(pos, moveDelta);
+            XMStoreFloat3(&position, pos);
+        }
+    }
+} g_camera;
+
 // basically the game state
 static float g_fov_deg = 60.0f;
 
@@ -451,6 +511,43 @@ bool PopulateCommandList()
         }
     }
 
+    // Debug: draw player collision cylinder (wireframe)
+    {
+        UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
+        ID3D12PipelineState *wirePSO = pipeline_dx12.m_wireframePSO[psoIndex];
+        if (wirePSO)
+        {
+            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetPipelineState(wirePSO);
+
+            // Compute cylinder centre from current camera position
+            float yCentre = g_camera.position.y - g_player_bounds.eyeHeight + g_player_bounds.height * 0.5f;
+
+            // Unit cylinder (radius 0.5, height 1) → scale to match player
+            float scaleX = g_player_bounds.radius / 0.5f;
+            float scaleY = g_player_bounds.height / 1.0f;
+            float scaleZ = g_player_bounds.radius / 0.5f;
+
+            DirectX::XMMATRIX world = DirectX::XMMatrixScaling(scaleX, scaleY, scaleZ) *
+                                      DirectX::XMMatrixTranslation(g_camera.position.x, yCentre, g_camera.position.z);
+
+            PerDrawRootConstants cylConstants;
+            DirectX::XMStoreFloat4x4(&cylConstants.world, DirectX::XMMatrixTranspose(world));
+            cylConstants.heightmapIndex = 0; // unused
+
+            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(
+                0, sizeof(PerDrawRootConstants) / 4, &cylConstants, 0);
+
+            // Use the existing cylinder mesh
+            PrimitiveType cylType = PRIMITIVE_CYLINDER;
+            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(
+                0, 1, &graphics_resources.m_vertexBufferView[cylType]);
+            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(
+                &graphics_resources.m_indexBufferView[cylType]);
+            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(
+                graphics_resources.m_indexCount[cylType], 1, 0, 0, 0);
+        }
+    }
+
     // Post-draw operations
     if (msaa_state.m_enabled)
     {
@@ -551,59 +648,6 @@ void FillDrawList()
 
 static DirectX::XMMATRIX g_view;
 static DirectX::XMMATRIX g_projection;
-
-static struct
-{
-    bool mouseCaptured = false;
-    bool keys[512] = {false};
-} g_input;
-
-struct FlyCamera
-{
-    DirectX::XMFLOAT3 position = {0.0f, 2.0f, -5.0f};
-    float yaw = 0.0f;
-    float pitch = 0.0f;
-    float moveSpeed = 5.0f;
-    float lookSpeed = 0.002f;
-    float padSpeed = 1.5f;
-
-    void UpdateFlyCamera(float deltaTime)
-    {
-        DirectX::XMVECTOR forward = DirectX::XMVectorSet(
-            sinf(g_camera.yaw) * cosf(g_camera.pitch),
-            sinf(g_camera.pitch),
-            cosf(g_camera.yaw) * cosf(g_camera.pitch),
-            0.0f);
-        DirectX::XMVECTOR right = DirectX::XMVector3Cross(DirectX::XMVectorSet(0, 1, 0, 0), forward); // cross(up, forward)
-        DirectX::XMVECTOR up = DirectX::XMVectorSet(0, 1, 0, 0);
-        forward = DirectX::XMVector3Normalize(forward);
-        right = DirectX::XMVector3Normalize(right);
-
-        DirectX::XMVECTOR moveDelta = DirectX::XMVectorZero();
-        if (g_input.keys[SDL_SCANCODE_W])
-            moveDelta = DirectX::XMVectorAdd(moveDelta, forward);
-        if (g_input.keys[SDL_SCANCODE_S])
-            moveDelta = DirectX::XMVectorSubtract(moveDelta, forward);
-        if (g_input.keys[SDL_SCANCODE_A])
-            moveDelta = DirectX::XMVectorSubtract(moveDelta, right);
-        if (g_input.keys[SDL_SCANCODE_D])
-            moveDelta = DirectX::XMVectorAdd(moveDelta, right);
-        if (g_input.keys[SDL_SCANCODE_Q])
-            moveDelta = DirectX::XMVectorSubtract(moveDelta, up); // down
-        if (g_input.keys[SDL_SCANCODE_E])
-            moveDelta = DirectX::XMVectorAdd(moveDelta, up); // up
-
-        // Apply movement scaled by deltaTime and speed
-        if (!DirectX::XMVector3Equal(moveDelta, DirectX::XMVectorZero()))
-        {
-            moveDelta = DirectX::XMVector3Normalize(moveDelta);
-            moveDelta = DirectX::XMVectorScale(moveDelta, deltaTime * moveSpeed);
-            DirectX::XMVECTOR pos = XMLoadFloat3(&position);
-            pos = DirectX::XMVectorAdd(pos, moveDelta);
-            XMStoreFloat3(&position, pos);
-        }
-    }
-} g_camera;
 
 float SampleHeightmapWorldY(const SceneObject &obj, const DirectX::XMFLOAT3 &worldPos)
 {
@@ -718,10 +762,9 @@ void Update()
     // DirectX::XMStoreFloat4(&g_scene.objects[24].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.2f, program_state.timing.upTime * _t + 65, 0));
     // DirectX::XMStoreFloat4(&g_scene.objects[25].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.5f, 0, 0));
 
-    // walk ontop of object
-    float playerEyeHeight = 1.7f; // in metres
+    // walk ontop of object    
     float bestGroundY = -FLT_MAX;
-    float playerFeetY = g_camera.position.y - playerEyeHeight;
+    float playerFeetY = g_camera.position.y - g_player_bounds.eyeHeight;
     float stepHeight = 1.0f; // the most height you can step up, any higher and you have a impassable wall.
     // TODO: potentially have a step down height? more than which, we go into a fall or jump rather than a smooth step down
     for (int i = 0; i < g_scene.objectCount; ++i)
@@ -772,10 +815,8 @@ void Update()
         }
     }
     // TODO: switch this to make it so that we always travel X units in all dimension, so we dont speed up by going upwards
-    float desiredY = bestGroundY + playerEyeHeight;
-    float playerHeight = 1.85f;
-    float yCentrePlayer = bestGroundY + (playerHeight/2);
-    float playerRadius = 0.5f;
+    float desiredY = bestGroundY + g_player_bounds.eyeHeight;    
+    float yCentrePlayer = bestGroundY + (g_player_bounds.height / 2);    
     DirectX::XMFLOAT3 desiredPlayerPos = {g_camera.position.x, yCentrePlayer, g_camera.position.z};
     // ^^^^ here we have the desired next position
 
@@ -784,7 +825,7 @@ void Update()
     for (int i = 0; i < g_scene.objectCount; ++i)
     {
         const SceneObject &obj = g_scene.objects[i];
-        bool overlapResult = OverlapCylinderCube(desiredPlayerPos, playerRadius, playerHeight, obj);
+        bool overlapResult = OverlapCylinderCube(desiredPlayerPos, g_player_bounds.radius, g_player_bounds.height, obj);
         if (overlapResult)
             inAnyCubeThisFrame = true;
     }

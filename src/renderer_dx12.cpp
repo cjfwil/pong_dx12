@@ -166,6 +166,7 @@ static struct
     ID3D12Resource *m_depthStencil;
 
     ID3D12PipelineState *m_pipelineStates[RenderPipeline::RENDER_COUNT][BlendMode::BLEND_COUNT][4]; // 1x, 2x, 4x, 8x
+    ID3D12PipelineState *m_wireframePSO[4];                                                         // for debug visualisation of primitives
 
     // MSAA resources
     ID3D12DescriptorHeap *m_msaaRtvHeap;
@@ -271,8 +272,9 @@ struct TextureLoadResult
     ID3D12Resource *uploadHeap = nullptr;
     bool success = false;
 
-    struct {        
-        UINT8* data;
+    struct
+    {
+        UINT8 *data;
         UINT width;
         UINT height;
         bool exists;
@@ -307,11 +309,11 @@ TextureLoadResult LoadTextureFromFile(ID3D12Device *device, ID3D12GraphicsComman
             UINT h = (UINT)baseImage->height;
             UINT8 *cpuData = (UINT8 *)malloc(w * h); // assumes 8-bit TODO: CHANGE WHEN SWITCH TO 16-bit
             if (cpuData)
-            {                
+            {
                 memcpy(cpuData, baseImage->pixels, w * h);
                 result.cpu_copy.data = cpuData;
                 result.cpu_copy.width = w;
-                result.cpu_copy.height = h;                
+                result.cpu_copy.height = h;
             }
         }
     }
@@ -2267,6 +2269,55 @@ bool LoadAssets()
     }
     textureUploadHeap->Release();
     stagingHeap->Release();
+
+    
+    // Create wireframe PSO for debug visualisation    
+    {        
+        ID3DBlob *vsWire = nullptr, *psWire = nullptr;
+        if (!CompileShader(L"shader_source\\shaders.hlsl", "VSMain", "vs_5_1", &vsWire, nullptr) ||
+            !CompileShader(L"shader_source\\shaders.hlsl", "PSMain", "ps_5_1", &psWire, nullptr))
+        {
+            HRAssert(E_FAIL);
+            return false;
+        }
+
+        D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+        psoDesc.InputLayout = {inputElementDescs, _countof(inputElementDescs)};
+        psoDesc.pRootSignature = pipeline_dx12.m_rootSignature;
+        psoDesc.VS = CD3DX12_SHADER_BYTECODE(vsWire);
+        psoDesc.PS = CD3DX12_SHADER_BYTECODE(psWire);
+        psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+        psoDesc.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME; // <-- wireframe
+        psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;      // optional, see through
+        psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);       // opaque
+        psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+        psoDesc.DepthStencilState.DepthEnable = true;
+        psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+        psoDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_GREATER;
+        psoDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+        psoDesc.SampleMask = UINT_MAX;
+        psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+        psoDesc.NumRenderTargets = 1;
+        psoDesc.RTVFormats[0] = g_screenFormat;
+
+        // Create one PSO per supported MSAA level
+        for (UINT msaaIdx = 0; msaaIdx < 4; ++msaaIdx)
+        {
+            if (!msaa_state.m_supported[msaaIdx])
+                continue;
+            psoDesc.SampleDesc.Count = msaa_state.m_sampleCounts[msaaIdx];
+            psoDesc.SampleDesc.Quality = 0;
+
+            HRESULT hr = pipeline_dx12.m_device->CreateGraphicsPipelineState(
+                &psoDesc,
+                IID_PPV_ARGS(&pipeline_dx12.m_wireframePSO[msaaIdx]));
+            if (!HRAssert(hr))
+                return false;
+        }
+
+        vsWire->Release();
+        psWire->Release();
+    }
     return true;
 }
 
