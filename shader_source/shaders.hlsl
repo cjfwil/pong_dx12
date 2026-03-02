@@ -135,12 +135,10 @@ float4 PSMain(PSInput input) : SV_TARGET
 #endif
 
     float3 N = normalize(input.normal);
+    // return float4(N, 1);
     float3 L = normalize(light_direction.xyz);
     float NdotL = saturate(dot(N, L));
 
-    float3 final = texColor.rgb * ambient_colour.rgb + texColor.rgb * light_colour.rgb * NdotL;
-
-    // test colour
-    // return float4(1, 0, 0, 1);
+    float3 final = texColor.rgb * ambient_colour.rgb + texColor.rgb * light_colour.rgb * NdotL;    
     return float4(final, texColor.a);
 }

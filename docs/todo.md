@@ -145,3 +145,5 @@ define a line in 3d space - it is defined by the vertical line at y = f(x_0, z_0
 
 ## debug camera offset
 ## debug player cylinder render
+
+## what to do when we are on slight slope

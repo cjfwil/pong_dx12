@@ -1,5 +1,5 @@
 {
-	"objectCount":	49,
+	"objectCount":	53,
 	"objects":	[{
 			"nametag":	"floor",
 			"pos":	[-6.1656446962537e-23, -1.0072767734527588, -10.478248596191406],
@@ -490,6 +490,46 @@
 			"pipeline":	"Default",
 			"primitiveData":	{
 				"primitiveType":	"Prism"
+			}
+		}, {
+			"nametag":	"cube block",
+			"pos":	[9.66550064086914, 11.415528297424316, 30.936923980712891],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 6.900151252746582, 3.3455476760864258],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"block 1",
+			"pos":	[-46.491325378417969, 0, 10.01722240447998],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[14.244738578796387, 15.089234352111816, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"block 2",
+			"pos":	[-46.317554473876953, 2.6503391265869141, 18.405746459960938],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[12.102361679077148, 9.61023712158203, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"block 3",
+			"pos":	[-46.2703857421875, 7.8605570793151855, 14.267641067504883],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[13.338461875915527, 1, 9.84890365600586],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
 			}
 		}]
 }
