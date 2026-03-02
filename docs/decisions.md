@@ -9,5 +9,11 @@ Heightfields always have the same X and Z scale.
 Defintion of Heightfield: the geometry that is displaced and rendered
 Defintion of Heightmap: the texture that provides the displacement information to the heightfield displacer
 
+## Player collision
+Player in collision space is always represented by an upright cylinder. This cylinder cannot be rotated. The only permitted changes are: the radius and the top and bottom caps.
+
+## Sphere primtives
+Sphere collision primitves may only be scaled uniformly by one scalar radius.
+
 # Potential Rules (review needed)
-- Collidable Cylinders and spheres may onnly be scaled non-uniformly (only cylinder height and radius) to make collision easier?
+- Collidable Cylinders and spheres may only be scaled non-uniformly (only cylinder height and radius) to make collision easier?

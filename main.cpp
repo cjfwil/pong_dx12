@@ -899,7 +899,7 @@ void Update()
                 {
                     DirectX::XMFLOAT3 normal;
                     float penetration;
-                    if (OverlapCylinderSphereContactNonUniformScale(center, radius, playerHeight, obj, normal, penetration))
+                    if (OverlapCylinderSphereContact(center, radius, playerHeight, obj, normal, penetration))
                     {
                         contacts[contactCount].normal = normal;
                         contacts[contactCount].penetration = penetration;
@@ -1504,6 +1504,12 @@ void DrawEditorGUI()
             }
 
             ImGui::DragFloat3("Scale", &obj.scale.x, 0.01f, 0.01f, 10.0f);
+            // If sphere, enforce uniform scale
+            if (obj.objectType == OBJECT_PRIMITIVE && obj.data.primitive.primitiveType == PRIMITIVE_SPHERE)
+            {
+                float uniform = obj.scale.x;
+                obj.scale.y = obj.scale.z = uniform;
+            }
 
             // Persist changes
             write_scene();
