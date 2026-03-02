@@ -728,11 +728,263 @@ inline DirectX::XMVECTOR EulerToQuaternion(float pitch, float yaw, float roll)
     return XMVectorSet(x, y, z, w);
 }
 
-void Update()
+struct Contact
 {
-    // g_input.mouseCaptured = !g_view_editor;
-    g_camera.UpdateFlyCamera((float)program_state.timing.deltaTime);
+    DirectX::XMFLOAT3 normal;
+    float penetration;
+    bool isGround;
+};
 
+// void Update()
+// {
+//     // g_input.mouseCaptured = !g_view_editor;
+//     g_camera.UpdateFlyCamera((float)program_state.timing.deltaTime);
+
+//     DirectX::XMVECTOR eye = DirectX::XMLoadFloat3(&g_camera.position);
+//     DirectX::XMVECTOR forward = DirectX::XMVectorSet(
+//         sinf(g_camera.yaw) * cosf(g_camera.pitch),
+//         sinf(g_camera.pitch),
+//         cosf(g_camera.yaw) * cosf(g_camera.pitch),
+//         0.0f);
+//     DirectX::XMVECTOR at = DirectX::XMVectorAdd(eye, forward);
+//     DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+//     g_view = DirectX::XMMatrixLookAtLH(eye, at, up);
+//     g_projection = DirectX::XMMatrixPerspectiveFovLH(
+//         DirectX::XMConvertToRadians(g_fov_deg),
+//         viewport_state.m_aspectRatio,
+//         4192.0f,
+//         0.1f);
+
+//     // TRANSPOSE before storing (shader expects column‑major)
+//     DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].view,
+//                              DirectX::XMMatrixTranspose(g_view));
+//     DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].projection,
+//                              DirectX::XMMatrixTranspose(g_projection));
+
+//     memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex],
+//            &graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex],
+//            sizeof(PerFrameConstantBuffer));
+
+//     // float _t = 0.01f;
+//     // DirectX::XMStoreFloat4(&g_scene.objects[24].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.2f, program_state.timing.upTime * _t + 65, 0));
+//     // DirectX::XMStoreFloat4(&g_scene.objects[25].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.5f, 0, 0));
+
+//     // walk ontop of object    
+//     float bestGroundY = -FLT_MAX;
+//     float playerFeetY = g_camera.position.y - g_player_bounds.eyeHeight;
+//     float stepHeight = 1.0f; // the most height you can step up, any higher and you have a impassable wall.
+//     // TODO: potentially have a step down height? more than which, we go into a fall or jump rather than a smooth step down
+//     for (int i = 0; i < g_scene.objectCount; ++i)
+//     {
+//         const SceneObject &obj = g_scene.objects[i];
+
+//         // todo (optimisation): generate AABB per object, skip raycasts if not within AABB (basic spatial partioning) - after that we can get more complicated
+
+//         if (obj.objectType == OBJECT_HEIGHTFIELD)
+//         {
+//             // walking only
+//             float groundY = SampleHeightmapWorldY(obj, g_camera.position);
+//             if (groundY > bestGroundY)
+//                 bestGroundY = groundY;
+//         }
+//         else if (obj.objectType == OBJECT_PRIMITIVE)
+//         {
+//             // Ray from just above feet, straight down, for walking only
+//             {
+//                 DirectX::XMFLOAT3 rayOrigin = {
+//                     g_camera.position.x,
+//                     playerFeetY + stepHeight,
+//                     g_camera.position.z};
+//                 DirectX::XMFLOAT3 rayDir = {0, -1, 0};
+
+//                 float tMin, tMax = -FLT_MAX;
+//                 bool intersection = false;
+//                 if (obj.data.primitive.primitiveType == PRIMITIVE_CUBE)
+//                     intersection = IntersectRayCube(rayOrigin, rayDir, obj, tMin, tMax);
+//                 else if (obj.data.primitive.primitiveType == PRIMITIVE_CYLINDER)
+//                     intersection = IntersectRayCylinder(rayOrigin, rayDir, obj, tMin, tMax);
+//                 else if (obj.data.primitive.primitiveType == PRIMITIVE_SPHERE)
+//                     intersection = IntersectRaySphere(rayOrigin, rayDir, obj, tMin, tMax);
+//                 else if (obj.data.primitive.primitiveType == PRIMITIVE_PRISM)
+//                     intersection = IntersectRayPrism(rayOrigin, rayDir, obj, tMin, tMax);
+
+//                 if (intersection)
+//                 {
+//                     float tHit = (tMin >= 0.0f) ? tMin : (tMax >= 0.0f ? tMax : -1.0f);
+//                     if (tHit >= 0.0f)
+//                     {
+//                         float hitY = rayOrigin.y - tHit;
+//                         if (hitY > bestGroundY)
+//                             bestGroundY = hitY;
+//                     }
+//                 }
+//             }
+//         }
+//     }
+//     // TODO: switch this to make it so that we always travel X units in all dimension, so we dont speed up by going upwards
+//     float desiredY = bestGroundY + g_player_bounds.eyeHeight;    
+//     float yCentrePlayer = bestGroundY + (g_player_bounds.height / 2);    
+//     DirectX::XMFLOAT3 desiredPlayerPos = {g_camera.position.x, yCentrePlayer, g_camera.position.z};
+//     // ^^^^ here we have the desired next position
+
+//     // TODO: HERE WE DO STATIC PLAYER CYLINDER VERSUS SCENE OBJECT INTERSECTION
+//     bool inAnyCubeThisFrame = false;
+//     for (int i = 0; i < g_scene.objectCount; ++i)
+//     {
+//         const SceneObject &obj = g_scene.objects[i];
+//         bool overlapResult = OverlapCylinderCube(desiredPlayerPos, g_player_bounds.radius, g_player_bounds.height, obj);
+//         if (overlapResult)
+//             inAnyCubeThisFrame = true;
+//     }
+//     g_debug_overlap_with_cube = inAnyCubeThisFrame;
+
+//     g_camera.position.y = desiredY;
+//     FillDrawList();
+// }
+
+void Update()
+{    
+    DirectX::XMFLOAT3 oldEye = g_camera.position;
+
+    // Apply input to get tentative new eye
+    g_camera.UpdateFlyCamera((float)program_state.timing.deltaTime);
+    DirectX::XMFLOAT3 newEye = g_camera.position;
+
+    // Compute tentative cylinder centre
+    float eyeHeight = g_player_bounds.eyeHeight;
+    float playerHeight = g_player_bounds.height;
+    float radius = g_player_bounds.radius;
+
+    DirectX::XMFLOAT3 center;
+    center.x = newEye.x;
+    center.y = newEye.y - eyeHeight + playerHeight * 0.5f;
+    center.z = newEye.z;
+
+    // Iterative wall resolution (cubes only)
+    const float WALKABLE_THRESHOLD = 0.1f;
+    const int MAX_CONTACTS = 128;
+    const int MAX_ITER = 10;
+    int iter = 0;
+    bool anyWall = true;
+
+    while (anyWall && iter < MAX_ITER)
+    {
+        anyWall = false;
+        Contact contacts[MAX_CONTACTS];
+        int contactCount = 0;
+
+        // Collect contacts at current centre
+        for (int i = 0; i < g_scene.objectCount && contactCount < MAX_CONTACTS; ++i)
+        {
+            const SceneObject& obj = g_scene.objects[i];
+            if (obj.objectType != OBJECT_PRIMITIVE || obj.data.primitive.primitiveType != PRIMITIVE_CUBE)
+                continue;
+
+            DirectX::XMFLOAT3 normal;
+            float penetration;
+            if (OverlapCylinderCubeContact(center, radius, playerHeight, obj, normal, penetration))
+            {
+                contacts[contactCount].normal = normal;
+                contacts[contactCount].penetration = penetration;
+                contacts[contactCount].isGround = (normal.y > WALKABLE_THRESHOLD);
+                contactCount++;
+            }
+        }
+
+        // Compute total horizontal correction for walls
+        DirectX::XMFLOAT3 correction = {0, 0, 0};
+        for (int c = 0; c < contactCount; ++c)
+        {
+            if (contacts[c].isGround)
+                continue;   // ground contacts handled later
+
+            anyWall = true;
+
+            // Horizontal component of normal
+            DirectX::XMFLOAT3 horNormal = contacts[c].normal;
+            horNormal.y = 0;
+            float len = sqrtf(horNormal.x * horNormal.x + horNormal.z * horNormal.z);
+            if (len < 1e-6f)
+                continue;
+            horNormal.x /= len;
+            horNormal.z /= len;
+
+            correction.x += horNormal.x * contacts[c].penetration;
+            correction.z += horNormal.z * contacts[c].penetration;
+        }
+
+        if (correction.x == 0 && correction.z == 0)
+            break;
+
+        // Apply correction and continue iterating
+        center.x += correction.x;
+        center.z += correction.z;
+        iter++;
+    }
+    
+    g_camera.position.x = center.x;
+    g_camera.position.z = center.z;
+
+    // Ground detection (vertical ray)
+    float feetY = center.y - playerHeight * 0.5f;
+    float stepHeight = 1.0f;
+    float bestGroundY = -FLT_MAX;
+
+    for (int i = 0; i < g_scene.objectCount; ++i)
+    {
+        const SceneObject& obj = g_scene.objects[i];
+
+        if (obj.objectType == OBJECT_HEIGHTFIELD)
+        {
+            float groundY = SampleHeightmapWorldY(obj, {center.x, 0, center.z});
+            if (groundY > bestGroundY)
+                bestGroundY = groundY;
+        }
+        else if (obj.objectType == OBJECT_PRIMITIVE)
+        {
+            DirectX::XMFLOAT3 rayOrigin = { center.x, feetY + stepHeight, center.z };
+            DirectX::XMFLOAT3 rayDir = { 0, -1, 0 };
+
+            float tMin, tMax;
+            bool intersection = false;
+            switch (obj.data.primitive.primitiveType)
+            {
+            case PRIMITIVE_CUBE:
+                intersection = IntersectRayCube(rayOrigin, rayDir, obj, tMin, tMax);
+                break;
+            case PRIMITIVE_CYLINDER:
+                intersection = IntersectRayCylinder(rayOrigin, rayDir, obj, tMin, tMax);
+                break;
+            case PRIMITIVE_SPHERE:
+                intersection = IntersectRaySphere(rayOrigin, rayDir, obj, tMin, tMax);
+                break;
+            case PRIMITIVE_PRISM:
+                intersection = IntersectRayPrism(rayOrigin, rayDir, obj, tMin, tMax);
+                break;
+            default:
+                continue;
+            }
+
+            if (intersection)
+            {
+                float tHit = (tMin >= 0.0f) ? tMin : (tMax >= 0.0f ? tMax : -1.0f);
+                if (tHit >= 0.0f)
+                {
+                    float hitY = rayOrigin.y - tHit;
+                    if (hitY > bestGroundY)
+                        bestGroundY = hitY;
+                }
+            }
+        }
+    }
+
+    // If no ground found, keep current feet Y (fallback)
+    if (bestGroundY == -FLT_MAX)
+        bestGroundY = feetY;
+    
+    g_camera.position.y = bestGroundY + eyeHeight; // set final Y, TODO: this should probably be better, like player position rather than camera
+
+    // Update view/projection matrices (TODO: pull this out)
     DirectX::XMVECTOR eye = DirectX::XMLoadFloat3(&g_camera.position);
     DirectX::XMVECTOR forward = DirectX::XMVectorSet(
         sinf(g_camera.yaw) * cosf(g_camera.pitch),
@@ -748,7 +1000,7 @@ void Update()
         4192.0f,
         0.1f);
 
-    // TRANSPOSE before storing (shader expects column‑major)
+    // TRANSPOSE before storing
     DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].view,
                              DirectX::XMMatrixTranspose(g_view));
     DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].projection,
@@ -757,82 +1009,20 @@ void Update()
     memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex],
            &graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex],
            sizeof(PerFrameConstantBuffer));
+    
+    FillDrawList();
 
-    // float _t = 0.01f;
-    // DirectX::XMStoreFloat4(&g_scene.objects[24].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.2f, program_state.timing.upTime * _t + 65, 0));
-    // DirectX::XMStoreFloat4(&g_scene.objects[25].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.5f, 0, 0));
-
-    // walk ontop of object    
-    float bestGroundY = -FLT_MAX;
-    float playerFeetY = g_camera.position.y - g_player_bounds.eyeHeight;
-    float stepHeight = 1.0f; // the most height you can step up, any higher and you have a impassable wall.
-    // TODO: potentially have a step down height? more than which, we go into a fall or jump rather than a smooth step down
-    for (int i = 0; i < g_scene.objectCount; ++i)
-    {
-        const SceneObject &obj = g_scene.objects[i];
-
-        // todo (optimisation): generate AABB per object, skip raycasts if not within AABB (basic spatial partioning) - after that we can get more complicated
-
-        if (obj.objectType == OBJECT_HEIGHTFIELD)
-        {
-            // walking only
-            float groundY = SampleHeightmapWorldY(obj, g_camera.position);
-            if (groundY > bestGroundY)
-                bestGroundY = groundY;
-        }
-        else if (obj.objectType == OBJECT_PRIMITIVE)
-        {
-            // Ray from just above feet, straight down, for walking only
-            {
-                DirectX::XMFLOAT3 rayOrigin = {
-                    g_camera.position.x,
-                    playerFeetY + stepHeight,
-                    g_camera.position.z};
-                DirectX::XMFLOAT3 rayDir = {0, -1, 0};
-
-                float tMin, tMax = -FLT_MAX;
-                bool intersection = false;
-                if (obj.data.primitive.primitiveType == PRIMITIVE_CUBE)
-                    intersection = IntersectRayCube(rayOrigin, rayDir, obj, tMin, tMax);
-                else if (obj.data.primitive.primitiveType == PRIMITIVE_CYLINDER)
-                    intersection = IntersectRayCylinder(rayOrigin, rayDir, obj, tMin, tMax);
-                else if (obj.data.primitive.primitiveType == PRIMITIVE_SPHERE)
-                    intersection = IntersectRaySphere(rayOrigin, rayDir, obj, tMin, tMax);
-                else if (obj.data.primitive.primitiveType == PRIMITIVE_PRISM)
-                    intersection = IntersectRayPrism(rayOrigin, rayDir, obj, tMin, tMax);
-
-                if (intersection)
-                {
-                    float tHit = (tMin >= 0.0f) ? tMin : (tMax >= 0.0f ? tMax : -1.0f);
-                    if (tHit >= 0.0f)
-                    {
-                        float hitY = rayOrigin.y - tHit;
-                        if (hitY > bestGroundY)
-                            bestGroundY = hitY;
-                    }
-                }
-            }
-        }
-    }
-    // TODO: switch this to make it so that we always travel X units in all dimension, so we dont speed up by going upwards
-    float desiredY = bestGroundY + g_player_bounds.eyeHeight;    
-    float yCentrePlayer = bestGroundY + (g_player_bounds.height / 2);    
-    DirectX::XMFLOAT3 desiredPlayerPos = {g_camera.position.x, yCentrePlayer, g_camera.position.z};
-    // ^^^^ here we have the desired next position
-
-    // TODO: HERE WE DO STATIC PLAYER CYLINDER VERSUS SCENE OBJECT INTERSECTION
+    // Debug overlap flag (using final position)
     bool inAnyCubeThisFrame = false;
+    DirectX::XMFLOAT3 finalCentre = { g_camera.position.x, bestGroundY + playerHeight * 0.5f, g_camera.position.z };
     for (int i = 0; i < g_scene.objectCount; ++i)
     {
         const SceneObject &obj = g_scene.objects[i];
-        bool overlapResult = OverlapCylinderCube(desiredPlayerPos, g_player_bounds.radius, g_player_bounds.height, obj);
+        bool overlapResult = OverlapCylinderCube(finalCentre, radius, playerHeight, obj);
         if (overlapResult)
             inAnyCubeThisFrame = true;
     }
     g_debug_overlap_with_cube = inAnyCubeThisFrame;
-
-    g_camera.position.y = desiredY;
-    FillDrawList();
 }
 
 // Convert quaternion → pitch/yaw/roll (radians), order: pitch (X), yaw (Y), roll (Z)
