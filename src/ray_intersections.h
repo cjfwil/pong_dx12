@@ -162,7 +162,6 @@ bool IntersectRayCylinder(const DirectX::XMFLOAT3 &rayOrigin, const DirectX::XMF
     return true;
 }
 
-//TODO always return false origin is inside the sphere
 bool IntersectRaySphere(const DirectX::XMFLOAT3 &rayOrigin, const DirectX::XMFLOAT3 &rayDir, const SceneObject &sphere, float &tMin, float &tMax)
 {
     using namespace DirectX;
@@ -192,6 +191,11 @@ bool IntersectRaySphere(const DirectX::XMFLOAT3 &rayOrigin, const DirectX::XMFLO
 
     const float r = 0.5f;
     const float epsilon = 1e-6f;
+
+    // If ray origin is inside the sphere, ignore (we only want hits from outside)
+    float localDistSq = o[0] * o[0] + o[1] * o[1] + o[2] * o[2];
+    if (localDistSq < r * r - epsilon)
+        return false;
 
     // Quadratic coefficients: a t^2 + b t + c = 0
     float a = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];

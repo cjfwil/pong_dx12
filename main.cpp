@@ -769,7 +769,7 @@ struct Contact
 //     // DirectX::XMStoreFloat4(&g_scene.objects[24].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.2f, program_state.timing.upTime * _t + 65, 0));
 //     // DirectX::XMStoreFloat4(&g_scene.objects[25].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.5f, 0, 0));
 
-//     // walk ontop of object    
+//     // walk ontop of object
 //     float bestGroundY = -FLT_MAX;
 //     float playerFeetY = g_camera.position.y - g_player_bounds.eyeHeight;
 //     float stepHeight = 1.0f; // the most height you can step up, any higher and you have a impassable wall.
@@ -822,8 +822,8 @@ struct Contact
 //         }
 //     }
 //     // TODO: switch this to make it so that we always travel X units in all dimension, so we dont speed up by going upwards
-//     float desiredY = bestGroundY + g_player_bounds.eyeHeight;    
-//     float yCentrePlayer = bestGroundY + (g_player_bounds.height / 2);    
+//     float desiredY = bestGroundY + g_player_bounds.eyeHeight;
+//     float yCentrePlayer = bestGroundY + (g_player_bounds.height / 2);
 //     DirectX::XMFLOAT3 desiredPlayerPos = {g_camera.position.x, yCentrePlayer, g_camera.position.z};
 //     // ^^^^ here we have the desired next position
 
@@ -843,7 +843,7 @@ struct Contact
 // }
 
 void Update()
-{    
+{
     DirectX::XMFLOAT3 oldEye = g_camera.position;
 
     // Apply input to get tentative new eye
@@ -876,18 +876,38 @@ void Update()
         // Collect contacts at current centre
         for (int i = 0; i < g_scene.objectCount && contactCount < MAX_CONTACTS; ++i)
         {
-            const SceneObject& obj = g_scene.objects[i];
-            if (obj.objectType != OBJECT_PRIMITIVE || obj.data.primitive.primitiveType != PRIMITIVE_CUBE)
+            const SceneObject &obj = g_scene.objects[i];
+            if (obj.objectType != OBJECT_PRIMITIVE || (obj.data.primitive.primitiveType != PRIMITIVE_CUBE && obj.data.primitive.primitiveType != PRIMITIVE_SPHERE))
                 continue;
 
-            DirectX::XMFLOAT3 normal;
-            float penetration;
-            if (OverlapCylinderCubeContact(center, radius, playerHeight, obj, normal, penetration))
+            if (obj.objectType == OBJECT_PRIMITIVE)
             {
-                contacts[contactCount].normal = normal;
-                contacts[contactCount].penetration = penetration;
-                contacts[contactCount].isGround = (normal.y > WALKABLE_THRESHOLD);
-                contactCount++;
+                PrimitiveType pt = obj.data.primitive.primitiveType;
+                if (pt == PRIMITIVE_CUBE)
+                {
+                    DirectX::XMFLOAT3 normal;
+                    float penetration;
+                    if (OverlapCylinderCubeContact(center, radius, playerHeight, obj, normal, penetration))
+                    {
+                        contacts[contactCount].normal = normal;
+                        contacts[contactCount].penetration = penetration;
+                        contacts[contactCount].isGround = (normal.y > WALKABLE_THRESHOLD);
+                        contactCount++;
+                    }
+                }
+                else if (pt == PRIMITIVE_SPHERE)
+                {
+                    DirectX::XMFLOAT3 normal;
+                    float penetration;
+                    if (OverlapCylinderSphereContactNonUniformScale(center, radius, playerHeight, obj, normal, penetration))
+                    {
+                        contacts[contactCount].normal = normal;
+                        contacts[contactCount].penetration = penetration;
+                        contacts[contactCount].isGround = (normal.y > WALKABLE_THRESHOLD);
+                        contactCount++;
+                    }
+                }
+                // TODO: other primitives later here
             }
         }
 
@@ -896,7 +916,7 @@ void Update()
         for (int c = 0; c < contactCount; ++c)
         {
             if (contacts[c].isGround)
-                continue;   // ground contacts handled later
+                continue; // ground contacts handled later
 
             anyWall = true;
 
@@ -921,7 +941,7 @@ void Update()
         center.z += correction.z;
         iter++;
     }
-    
+
     g_camera.position.x = center.x;
     g_camera.position.z = center.z;
 
@@ -932,7 +952,7 @@ void Update()
 
     for (int i = 0; i < g_scene.objectCount; ++i)
     {
-        const SceneObject& obj = g_scene.objects[i];
+        const SceneObject &obj = g_scene.objects[i];
 
         if (obj.objectType == OBJECT_HEIGHTFIELD)
         {
@@ -942,8 +962,8 @@ void Update()
         }
         else if (obj.objectType == OBJECT_PRIMITIVE)
         {
-            DirectX::XMFLOAT3 rayOrigin = { center.x, feetY + stepHeight, center.z };
-            DirectX::XMFLOAT3 rayDir = { 0, -1, 0 };
+            DirectX::XMFLOAT3 rayOrigin = {center.x, feetY + stepHeight, center.z};
+            DirectX::XMFLOAT3 rayDir = {0, -1, 0};
 
             float tMin, tMax;
             bool intersection = false;
@@ -981,7 +1001,7 @@ void Update()
     // If no ground found, keep current feet Y (fallback)
     if (bestGroundY == -FLT_MAX)
         bestGroundY = feetY;
-    
+
     g_camera.position.y = bestGroundY + eyeHeight; // set final Y, TODO: this should probably be better, like player position rather than camera
 
     // Update view/projection matrices (TODO: pull this out)
@@ -1009,12 +1029,12 @@ void Update()
     memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex],
            &graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex],
            sizeof(PerFrameConstantBuffer));
-    
+
     FillDrawList();
 
     // Debug overlap flag (using final position)
     bool inAnyCubeThisFrame = false;
-    DirectX::XMFLOAT3 finalCentre = { g_camera.position.x, bestGroundY + playerHeight * 0.5f, g_camera.position.z };
+    DirectX::XMFLOAT3 finalCentre = {g_camera.position.x, bestGroundY + playerHeight * 0.5f, g_camera.position.z};
     for (int i = 0; i < g_scene.objectCount; ++i)
     {
         const SceneObject &obj = g_scene.objects[i];
