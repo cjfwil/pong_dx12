@@ -1395,6 +1395,15 @@ void DrawEditorGUI()
                     obj.scale.y = obj.scale.z = uniform;
                 if (obj.data.primitive.primitiveType == PRIMITIVE_CYLINDER)
                     obj.scale.z = uniform;
+            }            
+            ImGui::SameLine();
+            if (ImGui::Button("Duplicate"))
+            {
+                if (g_scene.objectCount < MAX_SCENE_OBJECTS)
+                {                    
+                    g_scene.objects[g_scene.objectCount] = obj;
+                    g_scene.objectCount++;                    
+                }
             }
 
             // Persist changes

@@ -1,0 +1,565 @@
+{
+	"objectCount":	56,
+	"objects":	[{
+			"nametag":	"floor",
+			"pos":	[-6.1582817841087276e-23, -0.95761537551879883, -10.478248596191406],
+			"rot":	[-1.8306637488138993e-24, 0, -7.4134968644420016e-25, 1],
+			"scale":	[10.000003814697266, 0.99999964237213135, 29.8231029510498],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"Centre box",
+			"pos":	[0, 1.5, 0],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[3, 4, 3],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"entablature",
+			"pos":	[0, 3.7000000476837158, 0],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[9.5, 0.5, 9.5],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"Column A",
+			"pos":	[4.5, 1.5000005960464478, 2.25],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"Column B",
+			"pos":	[-4.5, 1.5, 4.5],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"Column C",
+			"pos":	[4.5, 1.5, 4.5],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"Column D",
+			"pos":	[4.5, 1.5, 0],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"Column E",
+			"pos":	[-4.5, 1.5, 0],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"Column E",
+			"pos":	[0, 1.5, -4.5],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"pediment",
+			"pos":	[0, 4.1999998092651367, 0.010818870738148689],
+			"rot":	[-0.70710676908493042, 0, 0, 0.70710670948028564],
+			"scale":	[11, 9.9999427795410156, 0.99999350309371948],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Prism"
+			}
+		}, {
+			"nametag":	"Col",
+			"pos":	[4.5, 1.5, -4.5],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"Col",
+			"pos":	[-4.5, 1.5, -4.5],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"col",
+			"pos":	[2.25, 1.5, 4.5],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"col",
+			"pos":	[-2.5, 1.5, 4.5],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"col",
+			"pos":	[-2.25, 1.5, -4.5],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"col",
+			"pos":	[2.25, 1.5, -4.5],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 4, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"random pillar",
+			"pos":	[5.75324296951294, 2.4826507568359375, -12.122722625732422],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 9, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"HF walking",
+			"pos":	[0, -5, 0],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[256, 24, 256],
+			"objectType":	"Heightfield",
+			"pipeline":	"Heightfield",
+			"heightfieldData":	{
+				"pathToHeightmap":	"assets/heightmaps/clouds.dds",
+				"width":	256
+			}
+		}, {
+			"nametag":	"distant tower",
+			"pos":	[-45.406356811523438, -41.847412109375, -389.03411865234375],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[256, 50, 256],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"diustant building 1",
+			"pos":	[49.248554229736328, -13.934816360473633, -331.9979248046875],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[16, 10, 8],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"distant building 2",
+			"pos":	[29.508659362792969, -13.24067211151123, -333],
+			"rot":	[0, 0.39073112607002258, 0, 0.920504868030548],
+			"scale":	[10, 35, 10],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"sky",
+			"pos":	[0, 0, 0],
+			"rot":	[-5.9844209587822661e-09, -6.6194369985339563e-09, -3.9613494246707283e-17, 1],
+			"scale":	[3500, 3500, 3500],
+			"objectType":	"Sky",
+			"pipeline":	"Sky",
+			"sky_sphereData":	{
+				"pathToTexture":	"assets/sky/gen_clouds.dds"
+			}
+		}, {
+			"nametag":	"clouds2",
+			"pos":	[0, 0, 0],
+			"rot":	[0.70710676908493042, -0.00011634911061264575, 0.00011634911788860336, 0.70710670948028564],
+			"scale":	[3200, 3200, 320],
+			"objectType":	"Sky",
+			"pipeline":	"Sky",
+			"sky_sphereData":	{
+				"pathToTexture":	"assets/sky/gen_clouds.dds"
+			}
+		}, {
+			"nametag":	"helmet",
+			"pos":	[1.812592625617981, 1.9228713512420654, -10.405879020690918],
+			"rot":	[0.80464351177215576, 0, 0, 0.593758225440979],
+			"scale":	[0.999999463558197, 1.000070333480835, 1.000070333480835],
+			"objectType":	"Loaded Model",
+			"pipeline":	"Loaded Model",
+			"loaded_modelData":	{
+				"pathTo":	"assets/models/DamagedHelmet.glb"
+			}
+		}, {
+			"nametag":	"model2",
+			"pos":	[-3.7449431419372559, -0.31249153614044189, -14.831935882568359],
+			"rot":	[0.70710676908493042, 0, 0, 0.70710676908493042],
+			"scale":	[0.99999964237213135, 0.9999842643737793, 0.999983787536621],
+			"objectType":	"Loaded Model",
+			"pipeline":	"Loaded Model",
+			"loaded_modelData":	{
+				"pathTo":	"assets/models/CesiumMilkTruck.glb"
+			}
+		}, {
+			"nametag":	"model3",
+			"pos":	[3.1074378490448, 1.1799414157867432, -12.105313301086426],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 1, 1],
+			"objectType":	"Loaded Model",
+			"pipeline":	"Loaded Model",
+			"loaded_modelData":	{
+				"pathTo":	"assets/models/CesiumMilkTruck.glb"
+			}
+		}, {
+			"nametag":	"distant thing",
+			"pos":	[-294.48052978515625, -2.2458958625793457, -832.08721923828125],
+			"rot":	[0.042781006544828415, -0.045906350016593933, 0.72306376695632935, 0.68792527914047241],
+			"scale":	[242.96903991699219, 170.34494018554688, 110.23487091064453],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"temple greek",
+			"pos":	[33.366748809814453, 10.5086669921875, 66.6543655395508],
+			"rot":	[0.683717906475067, -0.18035788834095, 0.18035809695720673, 0.68371909856796265],
+			"scale":	[1.0000042915344238, 0.99998044967651367, 0.99998581409454346],
+			"objectType":	"Loaded Model",
+			"pipeline":	"Loaded Model",
+			"loaded_modelData":	{
+				"pathTo":	"assets/models/greek_thing.glb"
+			}
+		}, {
+			"nametag":	"ball in aur",
+			"pos":	[55.802940368652344, -0.30932211875915527, -102.08544921875],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[64, 64, 64],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Sphere"
+			}
+		}, {
+			"nametag":	"test floor 1",
+			"pos":	[36.5708999633789, -3.9262468814849854, -44.342479705810547],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 1, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"test floor 2",
+			"pos":	[33.3167381286621, -3.6920967102050781, -49.564037322998047],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[2, 1, 2],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"test floor 3",
+			"pos":	[25.907398223876953, -4.8413825035095215, -59.048042297363281],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[4, 4, 6],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"test floor 4",
+			"pos":	[14.898993492126465, -2.08108377456665, -49.873367309570312],
+			"rot":	[0.27534547448158264, 0.055661078542470932, -0.19016340374946594, 0.940704345703125],
+			"scale":	[7.0000004768371582, 7, 7.00000238418579],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"test floor 5",
+			"pos":	[9.1677150726318359, 0.55232638120651245, -69.4446487426758],
+			"rot":	[0.217687115073204, -0.04625222459435463, 0.20261979103088379, 0.953634262084961],
+			"scale":	[3.4000000953674316, 4.7800030708313, 22.3119945526123],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"test floor 6",
+			"pos":	[43.619327545166016, -0.3593517541885376, -56.468219757080078],
+			"rot":	[0, -0.2057807445526123, 0, 0.978598117828369],
+			"scale":	[4.68195629119873, 7.4872555732727051, 5.25670337677002],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"test floor 7",
+			"pos":	[125.68550109863281, 8.32122802734375, -108.67134094238281],
+			"rot":	[-0.13754101097583771, -0.063275836408138275, 0.41312739253044128, 0.89800024032592773],
+			"scale":	[48, 31.999992370605469, 24],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"jacobs ladder",
+			"pos":	[348.44796752929688, 639.47021484375, 0],
+			"rot":	[0, 0, -0.17364822328090668, 0.98480772972106934],
+			"scale":	[15.562249183654785, 2047.9998779296875, 13.120937347412109],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"bridge",
+			"pos":	[-8.6633920669555664, 1.5326874256134033, 0],
+			"rot":	[0, 0, 0.22948013246059418, 0.973313331604004],
+			"scale":	[9.3006343841552734, 1, 2.6547670364379883],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"parthenon floor",
+			"pos":	[33.691257476806641, -1.6474137306213379, 65.621688842773438],
+			"rot":	[0, -0.25668653845787048, 0, 0.96649473905563354],
+			"scale":	[30.000007629394531, 1.1799999475479126, 60.000015258789062],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"test cylinder 1",
+			"pos":	[-9.2033710479736328, 2.7302453517913818, -35.2977523803711],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 1, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"test cyl 2",
+			"pos":	[-12.438626289367676, 2.1613349914550781, -33.351802825927734],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[0.99999988079071045, 0.99999988079071045, 0.99999988079071045],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"test cyl 3",
+			"pos":	[-19.388862609863281, 1.9353851079940796, -28.281322479248047],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[2.3299999237060547, 11.162172317504883, 2.3299999237060547],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"test cyl 4",
+			"pos":	[-25.927803039550781, 3.5531983375549316, -19.258056640625],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[4.4000000953674316, 0.93000000715255737, 4.4000000953674316],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"sphere 1",
+			"pos":	[22.6096305847168, 1.4010128974914551, 0],
+			"rot":	[0, 0.22974450886249542, 0, 0.973250985145569],
+			"scale":	[14.9225435256958, 14.9225435256958, 14.9225435256958],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Sphere"
+			}
+		}, {
+			"nametag":	"sphere 2",
+			"pos":	[13.0443172454834, -2.047032356262207, -33.139553070068359],
+			"rot":	[0.18797536194324493, 0, 0, 0.98217380046844482],
+			"scale":	[5.9151196479797363, 5.9151196479797363, 5.9151196479797363],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Sphere"
+			}
+		}, {
+			"nametag":	"sphere 3",
+			"pos":	[0, 0.79220974445343018, -40.056800842285156],
+			"rot":	[0.27181655168533325, 0, 0, 0.96234911680221558],
+			"scale":	[10, 10, 10],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Sphere"
+			}
+		}, {
+			"nametag":	"prism 1",
+			"pos":	[-14.092880249023438, 2.1845388412475586, 14.879709243774414],
+			"rot":	[0.72157585620880127, 0.053127255290746689, 0.05068686231970787, -0.6884305477142334],
+			"scale":	[1, 4.42392873764038, 0.99999821186065674],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Prism"
+			}
+		}, {
+			"nametag":	"prism 2",
+			"pos":	[-16.746646881103516, 2.7375025749206543, 8.97207832336426],
+			"rot":	[0, 0.26933181285858154, 0, 0.963047444820404],
+			"scale":	[0.99999982118606567, 1, 0.99999982118606567],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Prism"
+			}
+		}, {
+			"nametag":	"prism 3",
+			"pos":	[-3.1184518337249756, 3.2621657848358154, 26.170093536376953],
+			"rot":	[0.36538559198379517, 0.68799179792404175, 0.45506042242050171, -0.43137070536613464],
+			"scale":	[9.9999217987060547, 31.999937057495117, 3.3799817562103271],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Prism"
+			}
+		}, {
+			"nametag":	"cube block",
+			"pos":	[9.66550064086914, 11.415528297424316, 30.936923980712891],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1, 6.900151252746582, 3.3455476760864258],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"block 1",
+			"pos":	[-46.491325378417969, 0, 10.01722240447998],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[14.244738578796387, 15.089234352111816, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"block 2",
+			"pos":	[-46.317554473876953, 2.6503391265869141, 18.405746459960938],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[12.102361679077148, 9.61023712158203, 1],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"block 3",
+			"pos":	[-46.2703857421875, 7.8605570793151855, 14.267641067504883],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[13.338461875915527, 1, 9.84890365600586],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"sphere wee",
+			"pos":	[2.60749340057373, 0.41326659917831421, 0],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[1.7517224550247192, 1.7517224550247192, 1.7517224550247192],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Sphere"
+			}
+		}, {
+			"nametag":	"big ramp 2",
+			"pos":	[2.615368127822876, 1.7990239858627319, -107.85171508789062],
+			"rot":	[0, 0, 0.1192806139588356, 0.99286061525344849],
+			"scale":	[74.83575439453125, 3.0315160751342773, 11.789340972900391],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"ramp down",
+			"pos":	[-5.635979175567627, -0.67289572954177856, -25.626640319824219],
+			"rot":	[0.0320754088461399, -0.38518986105918884, -0.076534539461135864, 0.919098734855652],
+			"scale":	[5.180274486541748, 1, 2.391258716583252],
+			"objectType":	"Primitive",
+			"pipeline":	"Default",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}]
+}

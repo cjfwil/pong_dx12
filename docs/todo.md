@@ -113,8 +113,8 @@ massive repeating even if input while switching mode on/off, enough to crash pro
 ## audio and music
 
 ## actually playable thing/"game"
-- walk around in first person
-- collide with objects in the world and heightmap
+- walk around in first person (done)
+- collide with objects in the world and heightmap (done)
 - dynamic npc/enemies type things who walk around and respond in a basic way, can be talked to
 - some kind of in game ui system for player interaction
 - different modes of transport????
@@ -125,19 +125,6 @@ heightmaps can have two types of collisions shapes: heightmap shape (collide dir
 Heightmaps also can ony be scaled in Y and the X/Z together. The Y scale determines the height of the peaks, and the X/Z must be one number which specifies the horizontal scale, so it is always a square.
 
 ## collision with multiple heightmaps
-
-## collision with primitives
-for each scene object that is a cube, cylinder or sphere, we will collide with.
-
-we want to have the "just work" option - we plop down a primitive of cylinder, sphere, cube, and it will just work based on any non-uniform scale that is thrown at it. if it is slow or unoptimised - it doesnt matter. i just want a perfect 1:1 correspondence for what i see rendered and what i can walk on. there is also the triangle prism primtive but i dont know how to calculate collision against that, so we will leave that for later. if it is too slow we can add limitations back in, like uniform scaling only or whatever. because i do want to walk around on top of rotated cubes and such. and have smooth slopes, that is crucial to our gameplay.
-
-when the player is standing on top of the primitive, they will not slide or anything.
-
-perhaps there is a difference between running into a collision box from the side, like going up against a wall and standing on top? perhaps we should split them? we will start with calculate where my Y position should for each primitive(non prism) and heightmap on the scene and the highest Y value would be set as the position of the camera.y+1.7f. maybe we can worry about head on collision later?
-
-#### implementation
-start with just cubes
-define a line in 3d space - it is defined by the vertical line at y = f(x_0, z_0), where x_0 and z_0 is the camera position in x and z. now we have a vertical line we can intersect with each object. for each object we then do the maths to tranform the line? i guess? or a downward facing vector which is at position {x_0, 0, z_0} transform in reverse so it is mathematically identical, or inverse world matrix? then we can get the the intersection point in local space -> transform it back by the world which gets me, my actual y, which then we overwrite if the next y is greater than that y, skip if it is less
 
 ## change allow support of heightmaps of 16bits precision
 
@@ -157,3 +144,5 @@ define a line in 3d space - it is defined by the vertical line at y = f(x_0, z_0
 
 ## make basic level
 need doors that can be open/shut + locked/unlocked + locked/unlocked from one side (latched)?
+
+## replace iterative position solver with a continuous method for colliding with world objects
