@@ -147,3 +147,13 @@ define a line in 3d space - it is defined by the vertical line at y = f(x_0, z_0
 ## debug player cylinder render
 
 ## what to do when we are on slight slope
+
+## enforce uniform scaling only on spheres and cylinders in json files and everwhere else it needs to be
+
+## allow switch of cylinder collided to a box, which means we can rotate
+
+## be able to set models with a sphere collider or box collider, or none
+
+
+## make basic level
+need doors that can be open/shut + locked/unlocked + locked/unlocked from one side (latched)?

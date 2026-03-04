@@ -50,6 +50,8 @@
 #include "ray_intersections.h"
 #include "cylinder_overlap.h"
 
+static bool g_show_player_wireframe = false;
+
 static ConfigData g_liveConfigData = {};
 static Scene g_scene;
 
@@ -59,8 +61,6 @@ static struct
     float eyeHeight = 1.7f;
     float radius = 0.15f;
 } g_player_bounds;
-
-static bool g_debug_overlap_with_cube = false;
 
 struct HeightmapDataCPU
 {
@@ -512,6 +512,7 @@ bool PopulateCommandList()
     }
 
     // Debug: draw player collision cylinder (wireframe)
+    if (g_show_player_wireframe)
     {
         UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
         ID3D12PipelineState *wirePSO = pipeline_dx12.m_wireframePSO[psoIndex];
@@ -735,113 +736,6 @@ struct Contact
     bool isGround;
 };
 
-// void Update()
-// {
-//     // g_input.mouseCaptured = !g_view_editor;
-//     g_camera.UpdateFlyCamera((float)program_state.timing.deltaTime);
-
-//     DirectX::XMVECTOR eye = DirectX::XMLoadFloat3(&g_camera.position);
-//     DirectX::XMVECTOR forward = DirectX::XMVectorSet(
-//         sinf(g_camera.yaw) * cosf(g_camera.pitch),
-//         sinf(g_camera.pitch),
-//         cosf(g_camera.yaw) * cosf(g_camera.pitch),
-//         0.0f);
-//     DirectX::XMVECTOR at = DirectX::XMVectorAdd(eye, forward);
-//     DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-//     g_view = DirectX::XMMatrixLookAtLH(eye, at, up);
-//     g_projection = DirectX::XMMatrixPerspectiveFovLH(
-//         DirectX::XMConvertToRadians(g_fov_deg),
-//         viewport_state.m_aspectRatio,
-//         4192.0f,
-//         0.1f);
-
-//     // TRANSPOSE before storing (shader expects column‑major)
-//     DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].view,
-//                              DirectX::XMMatrixTranspose(g_view));
-//     DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].projection,
-//                              DirectX::XMMatrixTranspose(g_projection));
-
-//     memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex],
-//            &graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex],
-//            sizeof(PerFrameConstantBuffer));
-
-//     // float _t = 0.01f;
-//     // DirectX::XMStoreFloat4(&g_scene.objects[24].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.2f, program_state.timing.upTime * _t + 65, 0));
-//     // DirectX::XMStoreFloat4(&g_scene.objects[25].rot, EulerToQuaternion(program_state.timing.upTime * _t * 0.5f, 0, 0));
-
-//     // walk ontop of object
-//     float bestGroundY = -FLT_MAX;
-//     float playerFeetY = g_camera.position.y - g_player_bounds.eyeHeight;
-//     float stepHeight = 1.0f; // the most height you can step up, any higher and you have a impassable wall.
-//     // TODO: potentially have a step down height? more than which, we go into a fall or jump rather than a smooth step down
-//     for (int i = 0; i < g_scene.objectCount; ++i)
-//     {
-//         const SceneObject &obj = g_scene.objects[i];
-
-//         // todo (optimisation): generate AABB per object, skip raycasts if not within AABB (basic spatial partioning) - after that we can get more complicated
-
-//         if (obj.objectType == OBJECT_HEIGHTFIELD)
-//         {
-//             // walking only
-//             float groundY = SampleHeightmapWorldY(obj, g_camera.position);
-//             if (groundY > bestGroundY)
-//                 bestGroundY = groundY;
-//         }
-//         else if (obj.objectType == OBJECT_PRIMITIVE)
-//         {
-//             // Ray from just above feet, straight down, for walking only
-//             {
-//                 DirectX::XMFLOAT3 rayOrigin = {
-//                     g_camera.position.x,
-//                     playerFeetY + stepHeight,
-//                     g_camera.position.z};
-//                 DirectX::XMFLOAT3 rayDir = {0, -1, 0};
-
-//                 float tMin, tMax = -FLT_MAX;
-//                 bool intersection = false;
-//                 if (obj.data.primitive.primitiveType == PRIMITIVE_CUBE)
-//                     intersection = IntersectRayCube(rayOrigin, rayDir, obj, tMin, tMax);
-//                 else if (obj.data.primitive.primitiveType == PRIMITIVE_CYLINDER)
-//                     intersection = IntersectRayCylinder(rayOrigin, rayDir, obj, tMin, tMax);
-//                 else if (obj.data.primitive.primitiveType == PRIMITIVE_SPHERE)
-//                     intersection = IntersectRaySphere(rayOrigin, rayDir, obj, tMin, tMax);
-//                 else if (obj.data.primitive.primitiveType == PRIMITIVE_PRISM)
-//                     intersection = IntersectRayPrism(rayOrigin, rayDir, obj, tMin, tMax);
-
-//                 if (intersection)
-//                 {
-//                     float tHit = (tMin >= 0.0f) ? tMin : (tMax >= 0.0f ? tMax : -1.0f);
-//                     if (tHit >= 0.0f)
-//                     {
-//                         float hitY = rayOrigin.y - tHit;
-//                         if (hitY > bestGroundY)
-//                             bestGroundY = hitY;
-//                     }
-//                 }
-//             }
-//         }
-//     }
-//     // TODO: switch this to make it so that we always travel X units in all dimension, so we dont speed up by going upwards
-//     float desiredY = bestGroundY + g_player_bounds.eyeHeight;
-//     float yCentrePlayer = bestGroundY + (g_player_bounds.height / 2);
-//     DirectX::XMFLOAT3 desiredPlayerPos = {g_camera.position.x, yCentrePlayer, g_camera.position.z};
-//     // ^^^^ here we have the desired next position
-
-//     // TODO: HERE WE DO STATIC PLAYER CYLINDER VERSUS SCENE OBJECT INTERSECTION
-//     bool inAnyCubeThisFrame = false;
-//     for (int i = 0; i < g_scene.objectCount; ++i)
-//     {
-//         const SceneObject &obj = g_scene.objects[i];
-//         bool overlapResult = OverlapCylinderCube(desiredPlayerPos, g_player_bounds.radius, g_player_bounds.height, obj);
-//         if (overlapResult)
-//             inAnyCubeThisFrame = true;
-//     }
-//     g_debug_overlap_with_cube = inAnyCubeThisFrame;
-
-//     g_camera.position.y = desiredY;
-//     FillDrawList();
-// }
-
 void Update()
 {
     DirectX::XMFLOAT3 oldEye = g_camera.position;
@@ -877,37 +771,31 @@ void Update()
         for (int i = 0; i < g_scene.objectCount && contactCount < MAX_CONTACTS; ++i)
         {
             const SceneObject &obj = g_scene.objects[i];
-            if (obj.objectType != OBJECT_PRIMITIVE || (obj.data.primitive.primitiveType != PRIMITIVE_CUBE && obj.data.primitive.primitiveType != PRIMITIVE_SPHERE))
+            if (obj.objectType != OBJECT_PRIMITIVE || (obj.data.primitive.primitiveType != PRIMITIVE_CUBE && obj.data.primitive.primitiveType != PRIMITIVE_SPHERE && obj.data.primitive.primitiveType != PRIMITIVE_CYLINDER))
                 continue;
 
             if (obj.objectType == OBJECT_PRIMITIVE)
             {
+                DirectX::XMFLOAT3 normal;
+                float penetration;
+                bool overlap = false;
                 PrimitiveType pt = obj.data.primitive.primitiveType;
                 if (pt == PRIMITIVE_CUBE)
-                {
-                    DirectX::XMFLOAT3 normal;
-                    float penetration;
-                    if (OverlapCylinderCubeContact(center, radius, playerHeight, obj, normal, penetration))
-                    {
-                        contacts[contactCount].normal = normal;
-                        contacts[contactCount].penetration = penetration;
-                        contacts[contactCount].isGround = (normal.y > WALKABLE_THRESHOLD);
-                        contactCount++;
-                    }
-                }
+                    overlap = OverlapCylinderCubeContact(center, radius, playerHeight, obj, normal, penetration);
                 else if (pt == PRIMITIVE_SPHERE)
+                    overlap = OverlapCylinderSphereContact(center, radius, playerHeight, obj, normal, penetration);
+                else if (pt == PRIMITIVE_CYLINDER)
+                    overlap = OverlapCylinderCylinderUpright(center, radius, playerHeight, obj.pos, obj.scale.x * 0.5f, obj.scale.y, normal, penetration);
+                else
+                    overlap = false; // no collision for unimplemented shapes
+
+                if (overlap)
                 {
-                    DirectX::XMFLOAT3 normal;
-                    float penetration;
-                    if (OverlapCylinderSphereContact(center, radius, playerHeight, obj, normal, penetration))
-                    {
-                        contacts[contactCount].normal = normal;
-                        contacts[contactCount].penetration = penetration;
-                        contacts[contactCount].isGround = (normal.y > WALKABLE_THRESHOLD);
-                        contactCount++;
-                    }
+                    contacts[contactCount].normal = normal;
+                    contacts[contactCount].penetration = penetration;
+                    contacts[contactCount].isGround = (normal.y > WALKABLE_THRESHOLD);
+                    contactCount++;
                 }
-                // TODO: other primitives later here
             }
         }
 
@@ -1031,18 +919,6 @@ void Update()
            sizeof(PerFrameConstantBuffer));
 
     FillDrawList();
-
-    // Debug overlap flag (using final position)
-    bool inAnyCubeThisFrame = false;
-    DirectX::XMFLOAT3 finalCentre = {g_camera.position.x, bestGroundY + playerHeight * 0.5f, g_camera.position.z};
-    for (int i = 0; i < g_scene.objectCount; ++i)
-    {
-        const SceneObject &obj = g_scene.objects[i];
-        bool overlapResult = OverlapCylinderCube(finalCentre, radius, playerHeight, obj);
-        if (overlapResult)
-            inAnyCubeThisFrame = true;
-    }
-    g_debug_overlap_with_cube = inAnyCubeThisFrame;
 }
 
 // Convert quaternion → pitch/yaw/roll (radians), order: pitch (X), yaw (Y), roll (Z)
@@ -1161,9 +1037,9 @@ void DrawEditorGUI()
         }
     }
 
-    ImGui::Begin("Player Info");
+    ImGui::Begin("Debug Controls");
     ImGui::Text("Camera Pos: {%.3f, %.3f, %.3f}", g_camera.position.x, g_camera.position.y, g_camera.position.z);
-    ImGui::Text("Colliding with Cube: %d", (int)g_debug_overlap_with_cube);
+    ImGui::Checkbox("Show Player Cylinder", &g_show_player_wireframe);
     ImGui::End();
 
     ImGui::Begin("Settings");
@@ -1486,8 +1362,14 @@ void DrawEditorGUI()
             float yawDeg = DirectX::XMConvertToDegrees(yaw);
             float rollDeg = DirectX::XMConvertToDegrees(roll);
 
+            bool canRotate = true;
+            if (obj.objectType == OBJECT_HEIGHTFIELD)
+                canRotate = false;
+            if (obj.objectType == OBJECT_PRIMITIVE && obj.data.primitive.primitiveType == PRIMITIVE_CYLINDER)
+                canRotate = false;
+
             bool rotationChanged = false;
-            if (obj.objectType != ObjectType::OBJECT_HEIGHTFIELD)
+            if (canRotate)
             {
                 rotationChanged |= ImGui::DragFloat("Pitch", &pitchDeg, 0.5f, -180.0f, 180.0f, "%.1f°");
                 rotationChanged |= ImGui::DragFloat("Yaw", &yawDeg, 0.5f, -180.0f, 180.0f, "%.1f°");
@@ -1504,11 +1386,15 @@ void DrawEditorGUI()
             }
 
             ImGui::DragFloat3("Scale", &obj.scale.x, 0.01f, 0.01f, 10.0f);
-            // If sphere, enforce uniform scale
-            if (obj.objectType == OBJECT_PRIMITIVE && obj.data.primitive.primitiveType == PRIMITIVE_SPHERE)
+            // If sphere or cylinder, enforce uniform scale
+            if (obj.objectType == OBJECT_PRIMITIVE)
             {
                 float uniform = obj.scale.x;
-                obj.scale.y = obj.scale.z = uniform;
+
+                if (obj.data.primitive.primitiveType == PRIMITIVE_SPHERE)
+                    obj.scale.y = obj.scale.z = uniform;
+                if (obj.data.primitive.primitiveType == PRIMITIVE_CYLINDER)
+                    obj.scale.z = uniform;
             }
 
             // Persist changes

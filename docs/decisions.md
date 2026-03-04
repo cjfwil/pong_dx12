@@ -15,5 +15,8 @@ Player in collision space is always represented by an upright cylinder. This cyl
 ## Sphere primtives
 Sphere collision primitves may only be scaled uniformly by one scalar radius.
 
+## Cylinder primtives
+Cylinder collision primitves may only be scaled uniformly by one scalar radius.
+
 # Potential Rules (review needed)
-- Collidable Cylinders and spheres may only be scaled non-uniformly (only cylinder height and radius) to make collision easier?
+- Collidable cylinders may be rotated and scaled, but only if they are for walking ontop of only, and they will not be collided with horizontally. Potentially same with spheres. However, do not see the application of this at the moment, and adding this will add complexity to UI (we could potentially have a "allow rotation, walkway only" switch).

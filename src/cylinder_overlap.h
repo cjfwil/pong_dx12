@@ -329,3 +329,40 @@ bool OverlapCylinderSphereContact(
 
     return true;
 }
+
+bool OverlapCylinderCylinderUpright(
+    const DirectX::XMFLOAT3& centerA, float radiusA, float heightA,
+    const DirectX::XMFLOAT3& centerB, float radiusB, float heightB,
+    DirectX::XMFLOAT3& outNormal, float& outPenetration)
+{
+    // Horizontal distance
+    float dx = centerA.x - centerB.x;
+    float dz = centerA.z - centerB.z;
+    float distSq = dx*dx + dz*dz;
+    float radSum = radiusA + radiusB;
+    if (distSq > radSum*radSum)
+        return false;
+
+    // Vertical overlap
+    float yMinA = centerA.y - heightA*0.5f;
+    float yMaxA = centerA.y + heightA*0.5f;
+    float yMinB = centerB.y - heightB*0.5f;
+    float yMaxB = centerB.y + heightB*0.5f;
+    if (yMaxA <= yMinB || yMaxB <= yMinA)
+        return false;
+
+    // Normal
+    float dist = sqrtf(distSq);
+    if (dist > 1e-6f)
+    {
+        outNormal.x = dx / dist;
+        outNormal.y = 0;
+        outNormal.z = dz / dist;
+    }
+    else
+    {
+        outNormal = DirectX::XMFLOAT3(1, 0, 0); // arbitrary
+    }
+    outPenetration = radSum - dist;
+    return true;
+}
