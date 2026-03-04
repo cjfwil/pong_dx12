@@ -50,11 +50,14 @@
 #include "ray_intersections.h"
 #include "cylinder_overlap.h"
 
+
 static bool g_show_player_wireframe = false;
 
 static ConfigData g_liveConfigData = {};
 static Scene g_scene;
 
+
+static float g_stepHeight = 1.0f; // put in g_player_bounds????/
 static struct
 {
     float height = 1.85f;
@@ -749,10 +752,10 @@ void Update()
     float playerHeight = g_player_bounds.height;
     float radius = g_player_bounds.radius;
 
-    DirectX::XMFLOAT3 center;
-    center.x = newEye.x;
-    center.y = newEye.y - eyeHeight + playerHeight * 0.5f;
-    center.z = newEye.z;
+    DirectX::XMFLOAT3 centre;
+    centre.x = newEye.x;
+    centre.y = newEye.y - eyeHeight + playerHeight * 0.5f;
+    centre.z = newEye.z;
 
     // Iterative wall resolution (cubes only)
     const float WALKABLE_THRESHOLD = 0.1f;
@@ -775,17 +778,21 @@ void Update()
                 continue;
 
             if (obj.objectType == OBJECT_PRIMITIVE)
-            {
+            {                                
+                // TODO: Separate out this into a struct which could be the "environment specific player bounds" or something like that
+                DirectX::XMFLOAT3 fakeCentre = centre;
+                fakeCentre.y += g_stepHeight * 0.5f;
+                float fakePlayerHeight = playerHeight - g_stepHeight;
                 DirectX::XMFLOAT3 normal;
                 float penetration;
                 bool overlap = false;
                 PrimitiveType pt = obj.data.primitive.primitiveType;
                 if (pt == PRIMITIVE_CUBE)
-                    overlap = OverlapCylinderCubeContact(center, radius, playerHeight, obj, normal, penetration);
+                    overlap = OverlapCylinderCubeContact(fakeCentre, radius, fakePlayerHeight, obj, normal, penetration);
                 else if (pt == PRIMITIVE_SPHERE)
-                    overlap = OverlapCylinderSphereContact(center, radius, playerHeight, obj, normal, penetration);
+                    overlap = OverlapCylinderSphereContact(fakeCentre, radius, fakePlayerHeight, obj, normal, penetration);
                 else if (pt == PRIMITIVE_CYLINDER)
-                    overlap = OverlapCylinderCylinderUpright(center, radius, playerHeight, obj.pos, obj.scale.x * 0.5f, obj.scale.y, normal, penetration);
+                    overlap = OverlapCylinderCylinderUpright(fakeCentre, radius, fakePlayerHeight, obj.pos, obj.scale.x * 0.5f, obj.scale.y, normal, penetration);
                 else
                     overlap = false; // no collision for unimplemented shapes
 
@@ -825,17 +832,16 @@ void Update()
             break;
 
         // Apply correction and continue iterating
-        center.x += correction.x;
-        center.z += correction.z;
+        centre.x += correction.x;
+        centre.z += correction.z;
         iter++;
     }
 
-    g_camera.position.x = center.x;
-    g_camera.position.z = center.z;
+    g_camera.position.x = centre.x;
+    g_camera.position.z = centre.z;
 
     // Ground detection (vertical ray)
-    float feetY = center.y - playerHeight * 0.5f;
-    float stepHeight = 1.0f;
+    float feetY = centre.y - playerHeight * 0.5f;    
     float bestGroundY = -FLT_MAX;
 
     for (int i = 0; i < g_scene.objectCount; ++i)
@@ -844,13 +850,13 @@ void Update()
 
         if (obj.objectType == OBJECT_HEIGHTFIELD)
         {
-            float groundY = SampleHeightmapWorldY(obj, {center.x, 0, center.z});
+            float groundY = SampleHeightmapWorldY(obj, {centre.x, 0, centre.z});
             if (groundY > bestGroundY)
                 bestGroundY = groundY;
         }
         else if (obj.objectType == OBJECT_PRIMITIVE)
         {
-            DirectX::XMFLOAT3 rayOrigin = {center.x, feetY + stepHeight, center.z};
+            DirectX::XMFLOAT3 rayOrigin = {centre.x, feetY + g_stepHeight, centre.z};
             DirectX::XMFLOAT3 rayDir = {0, -1, 0};
 
             float tMin, tMax;
@@ -1395,14 +1401,14 @@ void DrawEditorGUI()
                     obj.scale.y = obj.scale.z = uniform;
                 if (obj.data.primitive.primitiveType == PRIMITIVE_CYLINDER)
                     obj.scale.z = uniform;
-            }            
+            }
             ImGui::SameLine();
             if (ImGui::Button("Duplicate"))
             {
                 if (g_scene.objectCount < MAX_SCENE_OBJECTS)
-                {                    
+                {
                     g_scene.objects[g_scene.objectCount] = obj;
-                    g_scene.objectCount++;                    
+                    g_scene.objectCount++;
                 }
             }
 
