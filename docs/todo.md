@@ -146,3 +146,5 @@ Heightmaps also can ony be scaled in Y and the X/Z together. The Y scale determi
 need doors that can be open/shut + locked/unlocked + locked/unlocked from one side (latched)?
 
 ## replace iterative position solver with a continuous method for colliding with world objects
+
+## decouple list of visible objects compared with colliders? is this a good idea?

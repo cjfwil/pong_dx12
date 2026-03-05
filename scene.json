@@ -1,5 +1,5 @@
 {
-	"objectCount":	16,
+	"objectCount":	33,
 	"objects":	[{
 			"nametag":	"hf base",
 			"pos":	[77.3419418334961, 0, 98.671600341796875],
@@ -17,17 +17,17 @@
 			"rot":	[0, 0, 0, 1],
 			"scale":	[12, 32, 12],
 			"objectType":	"Primitive",
-			"pipeline":	"Default",
+			"pipeline":	"Triplanar",
 			"primitiveData":	{
 				"primitiveType":	"Cylinder"
 			}
 		}, {
-			"nametag":	"bridge",
-			"pos":	[84.450325012207031, 10.186640739440918, 31.962961196899414],
-			"rot":	[0, 0.23690134286880493, 0, 0.971533715724945],
-			"scale":	[8.3526782989501953, 1, 37.426109313964844],
+			"nametag":	"waterfront",
+			"pos":	[13.61381721496582, 11.09544849395752, 24.637601852416992],
+			"rot":	[0.035744890570640564, 0.75371885299682617, -0.062990076839923859, 0.65319406986236572],
+			"scale":	[8.35267925262451, 12.027482986450195, 37.426139831542969],
 			"objectType":	"Primitive",
-			"pipeline":	"Default",
+			"pipeline":	"Triplanar",
 			"primitiveData":	{
 				"primitiveType":	"Cube"
 			}
@@ -37,7 +37,7 @@
 			"rot":	[0, -0.643200933933258, 0, 0.765697419643402],
 			"scale":	[2.9999988079071045, 0.10000000149011612, 10.000000953674316],
 			"objectType":	"Primitive",
-			"pipeline":	"Default",
+			"pipeline":	"Triplanar",
 			"primitiveData":	{
 				"primitiveType":	"Cube"
 			}
@@ -47,17 +47,17 @@
 			"rot":	[0, 0, 0, 1],
 			"scale":	[3, 3.5, 0.33000001311302185],
 			"objectType":	"Primitive",
-			"pipeline":	"Default",
+			"pipeline":	"Triplanar",
 			"primitiveData":	{
 				"primitiveType":	"Cube"
 			}
 		}, {
-			"nametag":	"wall bottom of window",
+			"nametag":	"wall top of window",
 			"pos":	[2.4677901268005371, 25.5545539855957, 7],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[2, 1, 0.33000001311302185],
 			"objectType":	"Primitive",
-			"pipeline":	"Default",
+			"pipeline":	"Triplanar",
 			"primitiveData":	{
 				"primitiveType":	"Cube"
 			}
@@ -67,17 +67,17 @@
 			"rot":	[0, 0.70686262845993042, 0, 0.70735085010528564],
 			"scale":	[4.8386588096618652, 3.4999997615814209, 0.33000123500823975],
 			"objectType":	"Primitive",
-			"pipeline":	"Default",
+			"pipeline":	"Triplanar",
 			"primitiveData":	{
 				"primitiveType":	"Cube"
 			}
 		}, {
-			"nametag":	"(copy)",
-			"pos":	[2.4677901268005371, 23.065645217895508, 7],
+			"nametag":	"wall bottom of window",
+			"pos":	[2.4677901268005371, 23.157016754150391, 7],
 			"rot":	[0, 0, 0, 1],
-			"scale":	[2, 1, 0.33000001311302185],
+			"scale":	[2, 1.2000000476837158, 0.33000001311302185],
 			"objectType":	"Primitive",
-			"pipeline":	"Default",
+			"pipeline":	"Triplanar",
 			"primitiveData":	{
 				"primitiveType":	"Cube"
 			}
@@ -87,7 +87,7 @@
 			"rot":	[0, 0, 0, 1],
 			"scale":	[8, 0.20000000298023224, 5],
 			"objectType":	"Primitive",
-			"pipeline":	"Default",
+			"pipeline":	"Triplanar",
 			"primitiveData":	{
 				"primitiveType":	"Cube"
 			}
@@ -97,7 +97,7 @@
 			"rot":	[0, 0, 0, 1],
 			"scale":	[7.6292014122009277, 3.5, 0.33000001311302185],
 			"objectType":	"Primitive",
-			"pipeline":	"Default",
+			"pipeline":	"Triplanar",
 			"primitiveData":	{
 				"primitiveType":	"Cube"
 			}
@@ -107,7 +107,7 @@
 			"rot":	[0, 0, 0, 1],
 			"scale":	[3, 3.5, 0.33000001311302185],
 			"objectType":	"Primitive",
-			"pipeline":	"Default",
+			"pipeline":	"Triplanar",
 			"primitiveData":	{
 				"primitiveType":	"Cube"
 			}
@@ -117,7 +117,7 @@
 			"rot":	[0, 0, -0.27480900287628174, 0.96149879693985],
 			"scale":	[2.54563045501709, 1, 5.1175422668457031],
 			"objectType":	"Primitive",
-			"pipeline":	"Default",
+			"pipeline":	"Triplanar",
 			"primitiveData":	{
 				"primitiveType":	"Cube"
 			}
@@ -127,17 +127,17 @@
 			"rot":	[0, 0, 0, 1],
 			"scale":	[8, 1, 5],
 			"objectType":	"Primitive",
-			"pipeline":	"Default",
+			"pipeline":	"Triplanar",
 			"primitiveData":	{
 				"primitiveType":	"Cube"
 			}
 		}, {
-			"nametag":	"(copy)",
+			"nametag":	"floor",
 			"pos":	[-3.1580913066864014, 22.095653533935547, 2.3264524936676025],
 			"rot":	[0, 0, 0, 1],
 			"scale":	[3.3257861137390137, 1, 5.1175422668457031],
 			"objectType":	"Primitive",
-			"pipeline":	"Default",
+			"pipeline":	"Triplanar",
 			"primitiveData":	{
 				"primitiveType":	"Cube"
 			}
@@ -147,17 +147,187 @@
 			"rot":	[0, 0, 0, 1],
 			"scale":	[2.54563045501709, 3.5413668155670166, 0.20000000298023224],
 			"objectType":	"Primitive",
-			"pipeline":	"Default",
+			"pipeline":	"Triplanar",
 			"primitiveData":	{
 				"primitiveType":	"Cube"
 			}
 		}, {
 			"nametag":	"blah",
-			"pos":	[-3.2331006526947021, 23.744104385375977, 4.8754105567932129],
+			"pos":	[-1.3789019584655762, 23.966745376586914, 5.8803796768188477],
 			"rot":	[0, 0, 0, 1],
-			"scale":	[3.5259807109832764, 3.5413668155670166, 0.20000000298023224],
+			"scale":	[0.33000001311302185, 4.14890718460083, 2.0907104015350342],
 			"objectType":	"Primitive",
-			"pipeline":	"Default",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"blah",
+			"pos":	[-3.2331006526947021, 23.964921951293945, 4.8754105567932129],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[3.5259807109832764, 3.8777685165405273, 0.20000000298023224],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"blah",
+			"pos":	[-4.69396209716797, 24.013715744018555, 2.3307864665985107],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[0.33000001311302185, 4.14890718460083, 5.2871804237365723],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"blah",
+			"pos":	[-3.0924432277679443, 24.013715744018555, -0.097234174609184265],
+			"rot":	[0, 0.707106649875641, 0, 0.70710694789886475],
+			"scale":	[0.32999992370605469, 4.14890718460083, 3.2684226036071777],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"floor",
+			"pos":	[-3.1580913066864014, 26.457418441772461, 2.3264524936676025],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[3.3257861137390137, 1, 5.1175422668457031],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"wd",
+			"pos":	[-1.6432546377182007, 25.555185317993164, 2.3497185707092285],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[0.20000000298023224, 0.83154308795928955, 5.2329187393188477],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"wd",
+			"pos":	[-1.6217769384384155, 23.956018447875977, 4.83754014968872],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[0.20000000298023224, 2.8346049785614014, 0.683901011943817],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"wd",
+			"pos":	[-1.6217769384384155, 23.956018447875977, 2.3497185707092285],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[0.20000000298023224, 2.8346049785614014, 0.683901011943817],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"wd",
+			"pos":	[-1.6217769384384155, 23.956018447875977, 0.10606412589550018],
+			"rot":	[0, 0, 0, 1],
+			"scale":	[0.20000000298023224, 2.8346049785614014, 0.683901011943817],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"wat",
+			"pos":	[57.180538177490234, 6.8089642524719238, 4.2323651313781738],
+			"rot":	[-0.010876140557229519, 0.19356265664100647, -0.089332520961761475, 0.976951837539673],
+			"scale":	[13.460208892822266, 12.005203247070312, 21.822763442993164],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"waterfront",
+			"pos":	[36.836284637451172, 6.6249241828918457, 17.70722770690918],
+			"rot":	[0.007866627536714077, 0.81663316488266, -0.011133838444948196, 0.57699602842330933],
+			"scale":	[13.631434440612793, 15.62153148651123, 37.426074981689453],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"bridge",
+			"pos":	[90.388999938964844, 10.186640739440918, 43.416286468505859],
+			"rot":	[0, 0.23690153658390045, 0, 0.971533715724945],
+			"scale":	[8.3526782989501953, 1, 62.956092834472656],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"stair",
+			"pos":	[67.7943878173828, 10.198171615600586, 5.6350321769714355],
+			"rot":	[0, 0.23690174520015717, 0, 0.97153365612030029],
+			"scale":	[4, 1, 4],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"pillar",
+			"pos":	[93.7018280029297, 3.9506850242614746, 50.097476959228516],
+			"rot":	[0, 0.23690174520015717, 0, 0.97153359651565552],
+			"scale":	[6.1977262496948242, 12.308064460754395, 6.1977262496948242],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cylinder"
+			}
+		}, {
+			"nametag":	"stair",
+			"pos":	[66.23822021484375, 10.580865859985352, 6.4419417381286621],
+			"rot":	[0, 0.23690174520015717, 0, 0.97153359651565552],
+			"scale":	[4, 1, 4],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"pre bridge",
+			"pos":	[68.664924621582031, 3.9678983688354492, 8.21368980407715],
+			"rot":	[0, 0.23690174520015717, 0, 0.97153365612030029],
+			"scale":	[19.5120735168457, 12.005208015441895, 21.822786331176758],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"stair",
+			"pos":	[114.45607757568359, 2.7866456508636475, 74.609893798828125],
+			"rot":	[0.072461195290088654, 0.2362416535615921, -0.017669118940830231, 0.96882766485214233],
+			"scale":	[1.9999994039535522, 12.005205154418945, 16.048755645751953],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
+			"primitiveData":	{
+				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"pre bridge",
+			"pos":	[106.79376983642578, 3.9678983688354492, 81.7481460571289],
+			"rot":	[0, 0.23690174520015717, 0, 0.97153359651565552],
+			"scale":	[19.5120735168457, 12.005208015441895, 21.822786331176758],
+			"objectType":	"Primitive",
+			"pipeline":	"Triplanar",
 			"primitiveData":	{
 				"primitiveType":	"Cube"
 			}
