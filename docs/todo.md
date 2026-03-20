@@ -148,3 +148,27 @@ need doors that can be open/shut + locked/unlocked + locked/unlocked from one si
 ## replace iterative position solver with a continuous method for colliding with world objects
 
 ## decouple list of visible objects compared with colliders? is this a good idea?
+
+
+## add a universal "player start" position per scene
+
+## add "object group" (editor only) so i can move all objects in the current group by a common origin (ie move the house) to somewhere else
+
+## add a collision shape field per model object? plus enable/disable collision switch?
+- cylinders can be rotated again, but auto switch to a box collider which is always flat facing up for walking up
+- add special internal cylinder which acts as the inside of a circular room????
+
+## api boundaries per object
+- sky object only can use sky shader
+- heightmap object only can use heightmap shader
+
+
+## separate object lists
+- sky list (base object 0 is used for lighting for all objects, no alpha. plus up to 8 or so alpha cloud layers on top of that), always render last for minimal overdraw potentially turn off depth test, and potentially turn off world matrix, unless we want a fake sky dome to be part of the enviroment like (Ie. The Truman Show)
+- enemy list (draw after environment)
+- static object list -> can later go by static spatial partition
+- semi-dynamic objects (dynamic objects but roughly stay in one place like a door which rotates) maybe that can go in the static object list, but then i dont want to bog down that list since i just want to blast it out
+- fully dynamic object list -> cant make any assumptions about its spatial partition 
+
+## doors
+- somehow do a door, need to be able to hinge rotate, also requires moving collision boxes

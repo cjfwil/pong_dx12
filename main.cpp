@@ -50,11 +50,24 @@
 #include "ray_intersections.h"
 #include "cylinder_overlap.h"
 
-
 static bool g_show_player_wireframe = false;
 
 static ConfigData g_liveConfigData = {};
-static Scene g_scene;
+static Scene g_scene; //TODO: this is called scene but in practice it is only the static geometry, perhaps we should extend when we add enemies, or we should rename to static environment geometry only? TODO decide
+
+// definition: a "bot object" is any object that is autonomously and dynamically controlled by the computer to make decisions about movement and actions and can be interacted with by player,
+// positive examples: enemies, NPCs, animals that flee in reactio to player movement/attacks
+// negative examples: very distant birds (visual only), doors (different type, environment interactable)
+struct BotObjects
+{
+    DirectX::XMFLOAT3 pos;
+    DirectX::XMFLOAT4 rot;
+    DirectX::XMFLOAT3 scale;
+    // TODO: add shape/model (for now every bot is a sphere)
+};
+
+#define MAX_BOT_OBJECTS 64
+static BotObjects g_bot_objects[MAX_BOT_OBJECTS] = {}; //TODO: This structure is runtime only, this data is store on file, perhaps the scene.json
 
 
 static float g_stepHeight = 1.0f; // put in g_player_bounds????/
@@ -345,8 +358,11 @@ static float g_fov_deg = 60.0f;
 
 static bool g_view_editor = true;
 
-// example for next
-const int g_draw_list_element_total = MAX_SCENE_OBJECTS;
+// example for next pattern
+
+#define MAX_SKY_LAYER_OBJECTS 8
+const int g_draw_list_element_total = MAX_SCENE_OBJECTS + MAX_BOT_OBJECTS + MAX_SKY_LAYER_OBJECTS;
+
 static struct
 {
     int drawAmount = g_draw_list_element_total; // this should not be greater than g_draw_list_element_total
@@ -612,6 +628,7 @@ void Render(bool vsync = true)
 // TODO: update this function to group objects by rendering pipeline, and make sky objects be rendered last
 void FillDrawList()
 {
+    // TODO (optimisation): this part is the static objects so make spatial structure and only fill when needed, not every frame
     int drawCount = 0;
     for (int i = 0; i < g_scene.objectCount && drawCount < g_draw_list_element_total; ++i)
     {
@@ -645,6 +662,27 @@ void FillDrawList()
         }
 
         g_draw_list.pipelines[drawCount] = obj.pipeline;
+        drawCount++;
+    }
+
+    // TODO (optimisation): fill this part of the list every frame when enemies are active
+    //  this part will be a flat array and all objects will be drawn regardless of position or overdraw because they are likely to be updated pretty much every frame (unless no bots are being simulated)
+    for (int i = 0; i < MAX_BOT_OBJECTS; ++i)
+    {
+        const BotObjects &bot = g_bot_objects[i];
+        DirectX::XMFLOAT3 scaleOverride = {};
+        scaleOverride.x = 1;
+        scaleOverride.y = 1;
+        scaleOverride.z = 1;
+
+        g_draw_list.transforms.pos[drawCount] = bot.pos;
+        g_draw_list.transforms.rot[drawCount] = bot.rot;
+        // g_draw_list.transforms.scale[drawCount] = bot.scale;        //TODO: have this setup on load
+        g_draw_list.transforms.scale[drawCount] = scaleOverride;
+        
+        g_draw_list.objectTypes[drawCount] = ObjectType::OBJECT_PRIMITIVE;
+        g_draw_list.primitiveTypes[drawCount] = PrimitiveType::PRIMITIVE_SPHERE;
+
         drawCount++;
     }
     g_draw_list.drawAmount = drawCount;
@@ -778,7 +816,7 @@ void Update()
                 continue;
 
             if (obj.objectType == OBJECT_PRIMITIVE)
-            {                                
+            {
                 // TODO: Separate out this into a struct which could be the "environment specific player bounds" or something like that
                 DirectX::XMFLOAT3 fakeCentre = centre;
                 fakeCentre.y += g_stepHeight * 0.5f;
@@ -841,7 +879,7 @@ void Update()
     g_camera.position.z = centre.z;
 
     // Ground detection (vertical ray)
-    float feetY = centre.y - playerHeight * 0.5f;    
+    float feetY = centre.y - playerHeight * 0.5f;
     float bestGroundY = -FLT_MAX;
 
     for (int i = 0; i < g_scene.objectCount; ++i)

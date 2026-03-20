@@ -22,6 +22,13 @@ static const char* g_objectTypeNames[OBJECT_COUNT] = {
     "Water"
 };
 
+enum CollisionShapeBounds {
+    COLLISION_SHAPE_BOX,
+    COLLISION_SHAPE_SPHERE,
+    COLLISION_SHAPE_UPRIGHT_CYLINDER,
+};
+
+// maybe rejig this to allow for enemies?
 struct SceneObject {
     char nametag[128];
     DirectX::XMFLOAT3 pos;
@@ -35,12 +42,18 @@ struct SceneObject {
         } primitive;
         struct {
             char pathToHeightmap[256];
-            uint32_t width; //example only, placeholder             
+            uint32_t width;
             // todo: index to cpu copy?
         } heightfield;
         struct {
-            char pathTo[256]; //example only, placeholder 
+            char pathTo[256];
+            // below API experimenting: not implemented yet
             uint32_t model_index;
+            struct {
+                bool enabled;
+                CollisionShapeBounds shape;
+                DirectX::XMFLOAT3 offset;
+            } collision;
         } loaded_model;
         struct {            
             char pathToTexture[256]; //example only, placeholder             
