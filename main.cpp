@@ -60,13 +60,14 @@ static Scene g_scene; //TODO: this is called scene but in practice it is only th
 // negative examples: very distant birds (visual only), doors (different type, environment interactable)
 struct BotObjects
 {
+    bool visible;
     DirectX::XMFLOAT3 pos;
     DirectX::XMFLOAT4 rot;
     DirectX::XMFLOAT3 scale;
     // TODO: add shape/model (for now every bot is a sphere)
 };
 
-#define MAX_BOT_OBJECTS 64
+#define MAX_BOT_OBJECTS 4
 static BotObjects g_bot_objects[MAX_BOT_OBJECTS] = {}; //TODO: This structure is runtime only, this data is store on file, perhaps the scene.json
 
 
@@ -308,7 +309,7 @@ static struct
 
 struct FlyCamera
 {
-    DirectX::XMFLOAT3 position = {0.0f, 2.0f, -5.0f};
+    DirectX::XMFLOAT3 position = {0.2f, 24.3f, 5.071f};
     float yaw = 0.0f;
     float pitch = 0.0f;
     float moveSpeed = 5.0f;
@@ -1633,6 +1634,30 @@ int main(void)
     // todo: do not load same filename more than once
 
     LoadAllTextures();
+
+    // set up bot objects
+    for (int i = 0; i < MAX_BOT_OBJECTS; ++i)
+    {
+        BotObjects &bot = g_bot_objects[i];
+
+        bot.pos.x = i*2;
+        bot.pos.y = 30;
+        bot.pos.z = i*2;
+        
+        bot.scale.x = 1;
+        bot.scale.y = 1;
+        bot.scale.z = 1;
+
+        // g_draw_list.transforms.pos[drawCount] = bot.pos;
+        // g_draw_list.transforms.rot[drawCount] = bot.rot;
+        // g_draw_list.transforms.scale[drawCount] = bot.scale;        //TODO: have this setup on load
+        // g_draw_list.transforms.scale[drawCount] = scaleOverride;
+        
+        // g_draw_list.objectTypes[drawCount] = ObjectType::OBJECT_PRIMITIVE;
+        // g_draw_list.primitiveTypes[drawCount] = PrimitiveType::PRIMITIVE_SPHERE;
+        
+    }
+
 
     for (int i = 0; i < g_scene.objectCount; ++i)
     {
