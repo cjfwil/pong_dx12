@@ -86,67 +86,71 @@ struct BotObjects
     float waitTimeSeconds = 2.0f;
 };
 
-#define MAX_BOT_OBJECTS 1
+#define MAX_BOT_OBJECTS 64
 static BotObjects g_bot_objects[MAX_BOT_OBJECTS] = {}; // TODO: This structure is runtime only, this data is store on file, perhaps the scene.json
 
 void UpdateBots(float deltaTime)
 {
     const float EPSILON = 0.1f;
-    BotObjects &bot = g_bot_objects[0];
 
-    if (bot.isWaiting)
+    for (int i = 0; i < MAX_BOT_OBJECTS; ++i)
     {
-        bot.waitTimeRemaining -= deltaTime;
-        if (bot.waitTimeRemaining <= 0.0f)
+        BotObjects &bot = g_bot_objects[i];
+
+        if (bot.isWaiting)
         {
-            bot.isWaiting = false;
+            bot.waitTimeRemaining -= deltaTime;
+            if (bot.waitTimeRemaining <= 0.0f)
+            {
+                bot.isWaiting = false;
 
-            if (bot.patrolMode == PATROL_WRAP)
-            {
-                // simple wrap
-                bot.currentPatrolPointTargetIndex = (bot.currentPatrolPointTargetIndex + 1) % bot.patrolPointCount;
-            }
-            else if (bot.patrolMode == PATROL_REVERSE_DIRECTION)
-            {
-                int next = bot.currentPatrolPointTargetIndex + bot.patrolDirection;
-                if (next < 0 || next >= bot.patrolPointCount)
+                if (bot.patrolMode == PATROL_WRAP)
                 {
-                    // reverse direction
-                    bot.patrolDirection = -bot.patrolDirection;
-                    next = bot.currentPatrolPointTargetIndex + bot.patrolDirection;
+                    // simple wrap
+                    bot.currentPatrolPointTargetIndex = (bot.currentPatrolPointTargetIndex + 1) % bot.patrolPointCount;
                 }
-                bot.currentPatrolPointTargetIndex = next;
+                else if (bot.patrolMode == PATROL_REVERSE_DIRECTION)
+                {
+                    int next = bot.currentPatrolPointTargetIndex + bot.patrolDirection;
+                    if (next < 0 || next >= bot.patrolPointCount)
+                    {
+                        // reverse direction
+                        bot.patrolDirection = -bot.patrolDirection;
+                        next = bot.currentPatrolPointTargetIndex + bot.patrolDirection;
+                    }
+                    bot.currentPatrolPointTargetIndex = next;
+                }
             }
+            continue;
         }
-        return;
-    }
 
-    // Moving toward the current target
-    DirectX::XMFLOAT3 target = bot.patrolPoints[bot.currentPatrolPointTargetIndex];
+        // Moving toward the current target
+        DirectX::XMFLOAT3 target = bot.patrolPoints[bot.currentPatrolPointTargetIndex];
 
-    float dx = target.x - bot.pos.x;
-    float dy = target.y - bot.pos.y;
-    float dz = target.z - bot.pos.z;
-    float distance = sqrtf(dx * dx + dy * dy + dz * dz);
+        float dx = target.x - bot.pos.x;
+        float dy = target.y - bot.pos.y;
+        float dz = target.z - bot.pos.z;
+        float distance = sqrtf(dx * dx + dy * dy + dz * dz);
 
-    if (distance > EPSILON)
-    {
-        dx /= distance;
-        dy /= distance;
-        dz /= distance;
-        float move = bot.speed * deltaTime;
-        if (move > distance)
-            move = distance;
-        bot.pos.x += dx * move;
-        bot.pos.y += dy * move;
-        bot.pos.z += dz * move;
-    }
-    else
-    {
-        // Reached target - start waiting
-        bot.pos = target;
-        bot.isWaiting = true;
-        bot.waitTimeRemaining = bot.waitTimeSeconds;
+        if (distance > EPSILON)
+        {
+            dx /= distance;
+            dy /= distance;
+            dz /= distance;
+            float move = bot.speed * deltaTime;
+            if (move > distance)
+                move = distance;
+            bot.pos.x += dx * move;
+            bot.pos.y += dy * move;
+            bot.pos.z += dz * move;
+        }
+        else
+        {
+            // Reached target - start waiting
+            bot.pos = target;
+            bot.isWaiting = true;
+            bot.waitTimeRemaining = bot.waitTimeSeconds;
+        }
     }
 }
 
@@ -1719,30 +1723,25 @@ int main(void)
     {
         BotObjects &bot = g_bot_objects[i];
 
-        bot.pos.x = i * 2;
-        bot.pos.y = 30;
-        bot.pos.z = i * 2;
+        bot.pos.x = i * 5.0f; // spread them out
+        bot.pos.y = 30.0f;
+        bot.pos.z = i * 5.0f;
 
-        bot.scale.x = 1;
-        bot.scale.y = 1;
-        bot.scale.z = 1;
+        bot.scale = {1, 1, 1};
 
         bot.patrolPointCount = 3;
-        bot.patrolPoints[0] = {0, 30, 0};
-        bot.patrolPoints[1] = {10, 35, 10};
-        bot.patrolPoints[2] = {-5, 32, -8};
+        // Offset each bot's patrol points by its index
+        float offset = (float)i * 8.0f;
+        bot.patrolPoints[0] = {0 + offset, 30, 0 + offset};
+        bot.patrolPoints[1] = {10 + offset, 35, 10 + offset};
+        bot.patrolPoints[2] = {-5 + offset, 32, -8 + offset};
         bot.currentPatrolPointTargetIndex = 0;
-        g_bot_objects[0].patrolMode = PATROL_REVERSE_DIRECTION;
+
+        // Set mode per bot (example: alternate modes)
+        bot.patrolMode = (i % 2 == 0) ? PATROL_WRAP : PATROL_REVERSE_DIRECTION;
+
         bot.speed = 5.0f;
         bot.waitTimeSeconds = 2.0f;
-
-        // g_draw_list.transforms.pos[drawCount] = bot.pos;
-        // g_draw_list.transforms.rot[drawCount] = bot.rot;
-        // g_draw_list.transforms.scale[drawCount] = bot.scale;        //TODO: have this setup on load
-        // g_draw_list.transforms.scale[drawCount] = scaleOverride;
-
-        // g_draw_list.objectTypes[drawCount] = ObjectType::OBJECT_PRIMITIVE;
-        // g_draw_list.primitiveTypes[drawCount] = PrimitiveType::PRIMITIVE_SPHERE;
     }
 
     for (int i = 0; i < g_scene.objectCount; ++i)
