@@ -86,7 +86,7 @@ struct BotObjects
     float waitTimeSeconds = 2.0f;
 };
 
-#define MAX_BOT_OBJECTS 64
+#define MAX_BOT_OBJECTS 1024
 static BotObjects g_bot_objects[MAX_BOT_OBJECTS] = {}; // TODO: This structure is runtime only, this data is store on file, perhaps the scene.json
 
 void UpdateBots(float deltaTime)
@@ -1723,27 +1723,34 @@ int main(void)
     {
         BotObjects &bot = g_bot_objects[i];
 
-        bot.pos.x = i * 5.0f; // spread them out
-        bot.pos.y = 30.0f;
-        bot.pos.z = i * 5.0f;
+        // Random position within heightfield bounds (approx -100 to 100 in X and Z)
+        float x = (float)(rand() % 256) - 0;
+        float z = (float)(rand() % 256) - 0;
+        float y = 25.0f + (float)(rand() % 20); // between 25 and 45
 
+        bot.pos = {x, y, z};
         bot.scale = {1, 1, 1};
 
-        bot.patrolPointCount = 3;
-        // Offset each bot's patrol points by its index
-        float offset = (float)i * 8.0f;
-        bot.patrolPoints[0] = {0 + offset, 30, 0 + offset};
-        bot.patrolPoints[1] = {10 + offset, 35, 10 + offset};
-        bot.patrolPoints[2] = {-5 + offset, 32, -8 + offset};
+        // Random number of patrol points (2 to 6)
+        bot.patrolPointCount = 2 + (rand() % 5);
+        for (int p = 0; p < bot.patrolPointCount; ++p)
+        {
+            // Each patrol point is a random offset from bot's position
+            float offX = (float)(rand() % 60) - 30.0f;
+            float offZ = (float)(rand() % 60) - 30.0f;
+            float offY = (float)(rand() % 15) - 5.0f; // -5 to +10 from start height
+            bot.patrolPoints[p] = {x + offX, y + offY, z + offZ};
+        }
         bot.currentPatrolPointTargetIndex = 0;
 
-        // Set mode per bot (example: alternate modes)
-        bot.patrolMode = (i % 2 == 0) ? PATROL_WRAP : PATROL_REVERSE_DIRECTION;
+        // Random mode
+        bot.patrolMode = (rand() % 2 == 0) ? PATROL_WRAP : PATROL_REVERSE_DIRECTION;
 
-        bot.speed = 5.0f;
-        bot.waitTimeSeconds = 2.0f;
+        // Random speed between 3 and 10
+        bot.speed = 3.0f + (float)(rand() % 70) / 10.0f;
+        // Random wait time between 1 and 4 seconds
+        bot.waitTimeSeconds = 1.0f + (float)(rand() % 30) / 10.0f;
     }
-
     for (int i = 0; i < g_scene.objectCount; ++i)
     {
         SceneObject so = g_scene.objects[i];
