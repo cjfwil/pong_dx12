@@ -64,6 +64,7 @@ enum PatrolMode
 // definition: a "bot object" is any object that is autonomously and dynamically controlled by the computer to make decisions about movement and actions and can be interacted with by player,
 // positive examples: enemies, NPCs, animals that flee in reactio to player movement/attacks
 // negative examples: very distant birds (visual only), doors (different type, environment interactable)
+static const int maxPatrolPoints = 16;
 struct BotObjects
 {
     bool visible;
@@ -73,7 +74,7 @@ struct BotObjects
     // TODO: add shape/model (for now every bot is a sphere)
 
     // patrol data (TODO: abstract this when we have different behaviours (maybe union with other behaviour data))
-    DirectX::XMFLOAT3 patrolPoints[16];
+    DirectX::XMFLOAT3 patrolPoints[maxPatrolPoints];
     int patrolPointCount;
     PatrolMode patrolMode = PATROL_WRAP;
     int patrolDirection = 1; // only for PATROL_REVERSE_DIRECTION
@@ -86,7 +87,7 @@ struct BotObjects
     float waitTimeSeconds = 2.0f;
 };
 
-#define MAX_BOT_OBJECTS 1024
+#define MAX_BOT_OBJECTS 32
 static BotObjects g_bot_objects[MAX_BOT_OBJECTS] = {}; // TODO: This structure is runtime only, this data is store on file, perhaps the scene.json
 
 void UpdateBots(float deltaTime)
@@ -96,6 +97,16 @@ void UpdateBots(float deltaTime)
     for (int i = 0; i < MAX_BOT_OBJECTS; ++i)
     {
         BotObjects &bot = g_bot_objects[i];
+
+        // Guard: ensure patrolPointCount is valid
+        if (bot.patrolPointCount <= 0)
+            continue; // no patrol points – bot does nothing
+        if (bot.patrolPointCount > maxPatrolPoints)
+            bot.patrolPointCount = maxPatrolPoints; // clamp to array size
+
+        // Guard: ensure current target index is within bounds
+        if (bot.currentPatrolPointTargetIndex < 0 || bot.currentPatrolPointTargetIndex >= bot.patrolPointCount)
+            bot.currentPatrolPointTargetIndex = 0;
 
         if (bot.isWaiting)
         {
@@ -1110,6 +1121,103 @@ inline void QuaternionToEuler(DirectX::FXMVECTOR Q, float &pitch, float &yaw, fl
 // editor state
 static int g_selectedObjectIndex = 0;
 
+void DrawBotsEditorGUI()
+{
+    ImGui::Begin("Bots");
+    ImGui::Text("Total bots: %d", MAX_BOT_OBJECTS);
+    ImGui::Separator();
+
+    // Use a child region to make the list scrollable
+    ImGui::BeginChild("BotList", ImVec2(0, 400), true);
+
+    for (int i = 0; i < MAX_BOT_OBJECTS; ++i)
+    {
+        BotObjects &bot = g_bot_objects[i];
+        ImGui::PushID(i);
+
+        // Collapsible header with bot index and current position
+        bool open = ImGui::CollapsingHeader(("Bot " + std::to_string(i)).c_str());
+
+        // Show minimal info even when collapsed
+        ImGui::SameLine();
+        ImGui::TextDisabled("(%.1f, %.1f, %.1f)", bot.pos.x, bot.pos.y, bot.pos.z);
+
+        if (open)
+        {
+            // ---- Read-only runtime state ----
+            ImGui::Text("Current target index: %d", bot.currentPatrolPointTargetIndex);
+            ImGui::Text("Waiting: %s", bot.isWaiting ? "yes" : "no");
+            ImGui::Text("Wait remaining: %.2f s", bot.waitTimeRemaining);
+
+            ImGui::Separator();
+
+            // ---- Editable fields ----
+            // Position
+            if (ImGui::DragFloat3("Position", &bot.pos.x, 0.1f))
+            {
+                // Optionally clamp or adjust
+            }
+
+            // Patrol point count
+            int newCount = bot.patrolPointCount;
+            if (ImGui::SliderInt("Patrol point count", &newCount, 1, maxPatrolPoints))
+            {
+                if (newCount != bot.patrolPointCount)
+                {
+                    // When increasing, initialize new points to current position + offset
+                    for (int p = bot.patrolPointCount; p < newCount; ++p)
+                    {
+                        bot.patrolPoints[p] = bot.pos;
+                        // add a small random offset so they're not all on top of each other
+                        bot.patrolPoints[p].x += (float)(rand() % 20) - 10.0f;
+                        bot.patrolPoints[p].z += (float)(rand() % 20) - 10.0f;
+                        bot.patrolPoints[p].y += (float)(rand() % 10) - 5.0f;
+                    }
+                    bot.patrolPointCount = newCount;
+                    // Clamp current target index
+                    if (bot.currentPatrolPointTargetIndex >= newCount)
+                        bot.currentPatrolPointTargetIndex = 0;
+                }
+            }
+
+            // Patrol points list
+            for (int p = 0; p < bot.patrolPointCount; ++p)
+            {
+                ImGui::PushID(p);
+                if (ImGui::DragFloat3(("Point " + std::to_string(p)).c_str(), &bot.patrolPoints[p].x, 0.1f))
+                {
+                    // Optional: clamp or do nothing
+                }
+                ImGui::PopID();
+            }
+
+            // Patrol mode combo
+            const char *modeNames[] = {"Wrap", "Reverse Direction"};
+            int currentMode = (bot.patrolMode == PATROL_WRAP) ? 0 : 1;
+            if (ImGui::Combo("Patrol mode", &currentMode, modeNames, 2))
+            {
+                bot.patrolMode = (currentMode == 0) ? PATROL_WRAP : PATROL_REVERSE_DIRECTION;
+                // Reset direction for reverse mode if needed
+                if (bot.patrolMode == PATROL_REVERSE_DIRECTION)
+                    bot.patrolDirection = 1;
+            }
+
+            // Speed
+            ImGui::DragFloat("Speed", &bot.speed, 0.1f, 0.1f, 50.0f);
+
+            // Wait time at each point
+            ImGui::DragFloat("Wait seconds", &bot.waitTimeSeconds, 0.1f, 0.0f, 10.0f);
+
+            ImGui::Separator();
+        }
+
+        ImGui::PopID();
+    }
+
+    ImGui::EndChild();
+    ImGui::End();
+}
+
 void DrawEditorGUI()
 {
     ImGui::NewFrame();
@@ -1544,6 +1652,8 @@ void DrawEditorGUI()
         ImGui::PopID();
     }
     ImGui::End();
+
+    DrawBotsEditorGUI();
 }
 
 void LoadAllTextures()
@@ -1731,10 +1841,10 @@ int main(void)
         bot.pos = {x, y, z};
         bot.scale = {1, 1, 1};
 
-        // Random number of patrol points (2 to 6)
-        bot.patrolPointCount = 2 + (rand() % 5);
-        for (int p = 0; p < bot.patrolPointCount; ++p)
-        {
+        // Random number of patrol points
+        bot.patrolPointCount = 2 + (rand() % (maxPatrolPoints-2));
+        for (int p = 0; p < bot.patrolPointCount && p < maxPatrolPoints; ++p)
+        {            
             // Each patrol point is a random offset from bot's position
             float offX = (float)(rand() % 60) - 30.0f;
             float offZ = (float)(rand() % 60) - 30.0f;
