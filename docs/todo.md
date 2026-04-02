@@ -155,12 +155,14 @@ need doors that can be open/shut + locked/unlocked + locked/unlocked from one si
 ## add "object group" (editor only) so i can move all objects in the current group by a common origin (ie move the house) to somewhere else
 
 ## add a collision shape field per model object? plus enable/disable collision switch?
-- cylinders can be rotated again, but auto switch to a box collider which is always flat facing up for walking up
-- add special internal cylinder which acts as the inside of a circular room????
+- make it so that cylinders can be rotated again, but auto switch to a box collider which is always flat facing up for walking up
+- add special internal cylinder which acts as the inside of a circular room or pipe or something????
+- maybe make a cascading collision based on rotation (if AABB then fast collision -> then if rotated but still upright then like an upright one -> then arbitrary rotation then most sophisticated collision) (this would be an optimisation)
 
 ## api boundaries per object
 - sky object only can use sky shader
 - heightmap object only can use heightmap shader
+perhaps this is only in the selector, or maybe it is a guard in the actual code?
 
 
 ## separate object lists

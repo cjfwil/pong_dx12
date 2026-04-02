@@ -53,7 +53,7 @@
 static bool g_show_player_wireframe = false;
 
 static ConfigData g_liveConfigData = {};
-static Scene g_scene; //TODO: this is called scene but in practice it is only the static geometry, perhaps we should extend when we add enemies, or we should rename to static environment geometry only? TODO decide
+static Scene g_scene; // TODO: this is called scene but in practice it is only the static geometry, perhaps we should extend when we add enemies, or we should rename to static environment geometry only? TODO decide
 
 // definition: a "bot object" is any object that is autonomously and dynamically controlled by the computer to make decisions about movement and actions and can be interacted with by player,
 // positive examples: enemies, NPCs, animals that flee in reactio to player movement/attacks
@@ -65,11 +65,64 @@ struct BotObjects
     DirectX::XMFLOAT4 rot;
     DirectX::XMFLOAT3 scale;
     // TODO: add shape/model (for now every bot is a sphere)
+
+    // patrol data (TODO: abstract this when we have different behaviours (maybe union with other behaviour data))
+    DirectX::XMFLOAT3 patrolPoints[2];
+    float speed = 4.0f;
+    int currentPatrolPointTarget = 0;
+
+    bool isWaiting = false;
+    float waitTimeRemaining = 0.0f;
+    float waitTimeSeconds = 2.0f;
 };
 
-#define MAX_BOT_OBJECTS 4
-static BotObjects g_bot_objects[MAX_BOT_OBJECTS] = {}; //TODO: This structure is runtime only, this data is store on file, perhaps the scene.json
+#define MAX_BOT_OBJECTS 1
+static BotObjects g_bot_objects[MAX_BOT_OBJECTS] = {}; // TODO: This structure is runtime only, this data is store on file, perhaps the scene.json
 
+void UpdateBots(float deltaTime)
+{
+    const float EPSILON = 0.1f;
+    BotObjects &bot = g_bot_objects[0];
+
+    if (bot.isWaiting)
+    {        
+        bot.waitTimeRemaining -= deltaTime;
+        if (bot.waitTimeRemaining <= 0.0f)
+        {     
+            bot.isWaiting = false;
+            bot.currentPatrolPointTarget = (bot.currentPatrolPointTarget == 0) ? 1 : 0;
+        }
+        return; // no movement while waiting
+    }
+
+    // Moving toward the current target
+    DirectX::XMFLOAT3 target = bot.patrolPoints[bot.currentPatrolPointTarget];
+
+    float dx = target.x - bot.pos.x;
+    float dy = target.y - bot.pos.y;
+    float dz = target.z - bot.pos.z;
+    float distance = sqrtf(dx * dx + dy * dy + dz * dz);
+
+    if (distance > EPSILON)
+    {
+        dx /= distance;
+        dy /= distance;
+        dz /= distance;
+        float move = bot.speed * deltaTime;
+        if (move > distance)
+            move = distance;
+        bot.pos.x += dx * move;
+        bot.pos.y += dy * move;
+        bot.pos.z += dz * move;
+    }
+    else
+    {
+        // Reached target - start waiting
+        bot.pos = target;
+        bot.isWaiting = true;
+        bot.waitTimeRemaining = bot.waitTimeSeconds;
+    }
+}
 
 static float g_stepHeight = 1.0f; // put in g_player_bounds????/
 static struct
@@ -254,13 +307,11 @@ struct window_state
         }
     }
 
-    // Window mode management functions
     bool ApplyWindowMode()
     {
         WindowMode newMode = window_request.requestedMode;
         SDL_Log("Applying window mode: %d", newMode);
 
-        // Get current display bounds
         SDL_DisplayID display = SDL_GetDisplayForWindow(window);
         SDL_Rect displayBounds;
         SDL_GetDisplayBounds(display, &displayBounds);
@@ -680,7 +731,7 @@ void FillDrawList()
         g_draw_list.transforms.rot[drawCount] = bot.rot;
         // g_draw_list.transforms.scale[drawCount] = bot.scale;        //TODO: have this setup on load
         g_draw_list.transforms.scale[drawCount] = scaleOverride;
-        
+
         g_draw_list.objectTypes[drawCount] = ObjectType::OBJECT_PRIMITIVE;
         g_draw_list.primitiveTypes[drawCount] = PrimitiveType::PRIMITIVE_SPHERE;
 
@@ -780,6 +831,8 @@ struct Contact
 
 void Update()
 {
+    UpdateBots((float)program_state.timing.deltaTime);
+
     DirectX::XMFLOAT3 oldEye = g_camera.position;
 
     // Apply input to get tentative new eye
@@ -1640,24 +1693,27 @@ int main(void)
     {
         BotObjects &bot = g_bot_objects[i];
 
-        bot.pos.x = i*2;
+        bot.pos.x = i * 2;
         bot.pos.y = 30;
-        bot.pos.z = i*2;
-        
+        bot.pos.z = i * 2;
+
         bot.scale.x = 1;
         bot.scale.y = 1;
         bot.scale.z = 1;
+
+        bot.patrolPoints[0] = bot.pos;
+        bot.patrolPoints[1] = bot.patrolPoints[0];
+        bot.patrolPoints[1].x += 20;
+        bot.patrolPoints[1].z += 20;
 
         // g_draw_list.transforms.pos[drawCount] = bot.pos;
         // g_draw_list.transforms.rot[drawCount] = bot.rot;
         // g_draw_list.transforms.scale[drawCount] = bot.scale;        //TODO: have this setup on load
         // g_draw_list.transforms.scale[drawCount] = scaleOverride;
-        
+
         // g_draw_list.objectTypes[drawCount] = ObjectType::OBJECT_PRIMITIVE;
         // g_draw_list.primitiveTypes[drawCount] = PrimitiveType::PRIMITIVE_SPHERE;
-        
     }
-
 
     for (int i = 0; i < g_scene.objectCount; ++i)
     {
