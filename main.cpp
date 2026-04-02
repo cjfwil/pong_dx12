@@ -55,6 +55,12 @@ static bool g_show_player_wireframe = false;
 static ConfigData g_liveConfigData = {};
 static Scene g_scene; // TODO: this is called scene but in practice it is only the static geometry, perhaps we should extend when we add enemies, or we should rename to static environment geometry only? TODO decide
 
+enum PatrolMode
+{
+    PATROL_WRAP,              // wraps around to index 0, so a bot with 3 patrol points will travel in a triangle pattern
+    PATROL_REVERSE_DIRECTION, // goes in backwards order once reaches the end of the patrol points, so bot will travel in a curve always
+};
+
 // definition: a "bot object" is any object that is autonomously and dynamically controlled by the computer to make decisions about movement and actions and can be interacted with by player,
 // positive examples: enemies, NPCs, animals that flee in reactio to player movement/attacks
 // negative examples: very distant birds (visual only), doors (different type, environment interactable)
@@ -67,9 +73,13 @@ struct BotObjects
     // TODO: add shape/model (for now every bot is a sphere)
 
     // patrol data (TODO: abstract this when we have different behaviours (maybe union with other behaviour data))
-    DirectX::XMFLOAT3 patrolPoints[2];
+    DirectX::XMFLOAT3 patrolPoints[16];
+    int patrolPointCount;
+    PatrolMode patrolMode = PATROL_WRAP;
+    int patrolDirection = 1; // only for PATROL_REVERSE_DIRECTION
+
     float speed = 4.0f;
-    int currentPatrolPointTarget = 0;
+    int currentPatrolPointTargetIndex = 0;
 
     bool isWaiting = false;
     float waitTimeRemaining = 0.0f;
@@ -85,18 +95,34 @@ void UpdateBots(float deltaTime)
     BotObjects &bot = g_bot_objects[0];
 
     if (bot.isWaiting)
-    {        
+    {
         bot.waitTimeRemaining -= deltaTime;
         if (bot.waitTimeRemaining <= 0.0f)
-        {     
+        {
             bot.isWaiting = false;
-            bot.currentPatrolPointTarget = (bot.currentPatrolPointTarget == 0) ? 1 : 0;
+
+            if (bot.patrolMode == PATROL_WRAP)
+            {
+                // simple wrap
+                bot.currentPatrolPointTargetIndex = (bot.currentPatrolPointTargetIndex + 1) % bot.patrolPointCount;
+            }
+            else if (bot.patrolMode == PATROL_REVERSE_DIRECTION)
+            {
+                int next = bot.currentPatrolPointTargetIndex + bot.patrolDirection;
+                if (next < 0 || next >= bot.patrolPointCount)
+                {
+                    // reverse direction
+                    bot.patrolDirection = -bot.patrolDirection;
+                    next = bot.currentPatrolPointTargetIndex + bot.patrolDirection;
+                }
+                bot.currentPatrolPointTargetIndex = next;
+            }
         }
-        return; // no movement while waiting
+        return;
     }
 
     // Moving toward the current target
-    DirectX::XMFLOAT3 target = bot.patrolPoints[bot.currentPatrolPointTarget];
+    DirectX::XMFLOAT3 target = bot.patrolPoints[bot.currentPatrolPointTargetIndex];
 
     float dx = target.x - bot.pos.x;
     float dy = target.y - bot.pos.y;
@@ -1701,10 +1727,14 @@ int main(void)
         bot.scale.y = 1;
         bot.scale.z = 1;
 
-        bot.patrolPoints[0] = bot.pos;
-        bot.patrolPoints[1] = bot.patrolPoints[0];
-        bot.patrolPoints[1].x += 20;
-        bot.patrolPoints[1].z += 20;
+        bot.patrolPointCount = 3;
+        bot.patrolPoints[0] = {0, 30, 0};
+        bot.patrolPoints[1] = {10, 35, 10};
+        bot.patrolPoints[2] = {-5, 32, -8};
+        bot.currentPatrolPointTargetIndex = 0;
+        g_bot_objects[0].patrolMode = PATROL_REVERSE_DIRECTION;
+        bot.speed = 5.0f;
+        bot.waitTimeSeconds = 2.0f;
 
         // g_draw_list.transforms.pos[drawCount] = bot.pos;
         // g_draw_list.transforms.rot[drawCount] = bot.rot;
