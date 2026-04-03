@@ -428,7 +428,7 @@ TextureLoadResult LoadTextureFromFile(ID3D12Device *device, ID3D12GraphicsComman
     // Create SRV in the main heap at DescriptorIndices::HEIGHTMAP_SRV + index
     CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(
         g_engine.pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart(),
-        DescriptorIndices::HEIGHTMAP_SRV + index,
+        (int)(DescriptorIndices::HEIGHTMAP_SRV + index),
         g_cbvSrvDescriptorSize);
     device->CreateShaderResourceView(*outResource, nullptr, cpuHandle);
 
@@ -529,7 +529,7 @@ TextureLoadResult LoadSkyTextureFromFile(ID3D12Device *device, ID3D12GraphicsCom
     // Create SRV in the main heap at DescriptorIndices::SKY_SRV + index
     CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(
         g_engine.pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart(),
-        DescriptorIndices::SKY_SRV + index,
+        (int)(DescriptorIndices::SKY_SRV + index),
         g_cbvSrvDescriptorSize);
     device->CreateShaderResourceView(*outResource, nullptr, cpuHandle);
 
@@ -787,7 +787,7 @@ ModelTextureLoadResult LoadTextureFromCgltfImage(
     // Create SRV at MODEL_ALBEDO_SRV + index
     CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(
         g_engine.pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart(),
-        DescriptorIndices::MODEL_ALBEDO_SRV + index,
+        (int)(DescriptorIndices::MODEL_ALBEDO_SRV + index),
         g_cbvSrvDescriptorSize);
     device->CreateShaderResourceView(result.textureResource, nullptr, cpuHandle);
 
@@ -1837,7 +1837,7 @@ bool LoadAssets()
         UINT errorIndex = 0;
         CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(
             g_engine.pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart(),
-            DescriptorIndices::HEIGHTMAP_SRV + errorIndex,
+            (int)(DescriptorIndices::HEIGHTMAP_SRV + errorIndex),
             cbvSrvDescriptorSize);
         g_engine.pipeline_dx12.m_device->CreateShaderResourceView(g_engine.graphics_resources.m_heightmapResources[0], nullptr, cpuHandle);
 
