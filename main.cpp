@@ -73,6 +73,14 @@ enum PatrolMode
 // positive examples: enemies, NPCs, animals that flee in reactio to player movement/attacks
 // negative examples: very distant birds (visual only), doors (different type, environment interactable)
 static const int maxPatrolPoints = 16;
+
+enum BotState
+{
+    BOT_ALIVE,
+    BOT_DYING,
+    BOT_DEAD
+};
+
 struct BotObjects
 {
     bool visible;
@@ -80,6 +88,9 @@ struct BotObjects
     DirectX::XMFLOAT4 rot;
     DirectX::XMFLOAT3 scale;
     // TODO: add shape/model (for now every bot is a sphere)
+
+    // game data
+    BotState state = BOT_ALIVE;
 
     // patrol data (TODO: abstract this when we have different behaviours (maybe union with other behaviour data))
     DirectX::XMFLOAT3 patrolPoints[maxPatrolPoints];
@@ -110,6 +121,25 @@ void UpdateBots(float deltaTime)
     for (int i = 0; i < MAX_BOT_OBJECTS; ++i)
     {
         BotObjects &bot = g_bot_objects[i];
+
+        // ---- STATE HANDLING ----
+        const float FALL_SPEED = 5.0f; // units per second
+        const float GROUND_Y = 10.0f;  // constant landing height
+        if (bot.state == BOT_DYING)
+        {
+            bot.pos.y -= FALL_SPEED * deltaTime;
+            if (bot.pos.y <= GROUND_Y)
+            {
+                bot.pos.y = GROUND_Y;
+                bot.state = BOT_DEAD;
+                bot.velocity = {0, 0, 0}; // stop any leftover velocity
+            }
+            continue; // skip ALIVE logic
+        }
+        else if (bot.state == BOT_DEAD)
+        {
+            continue; // do nothing
+        }
 
         // Guard: ensure patrolPointCount is valid
         if (bot.patrolPointCount <= 0)
@@ -1018,6 +1048,9 @@ void DebugFireShot()
     {
         SDL_Log("HIT BOT %d at distance %.2f", hitIndex, closestDist);
         rayEnd = hitPoint;
+        BotObjects &bot = g_bot_objects[hitIndex];
+        bot.state = BOT_DYING;
+        // bot.velocity = {0, 0, 0}; // stop any residual movement (optional)
     }
     else
         SDL_Log("MISS");
