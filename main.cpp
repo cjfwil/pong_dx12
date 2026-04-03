@@ -111,7 +111,7 @@ struct BotObjects
     float acceleration = 8.0f;
 };
 
-#define MAX_BOT_OBJECTS 1024
+#define MAX_BOT_OBJECTS 64
 static BotObjects g_bot_objects[MAX_BOT_OBJECTS] = {}; // TODO: This structure is runtime only, this data is store on file, perhaps the scene.json
 
 void UpdateBots(float deltaTime)
@@ -423,9 +423,9 @@ struct window_state
 
             int w = 0, h = 0;
             SDL_GetWindowSize(window, &w, &h);
-            viewport_state.m_width = (UINT)w;
-            viewport_state.m_height = (UINT)h;
-            viewport_state.m_aspectRatio = (float)w / (float)h;
+            g_engine.viewport_state.m_width = (UINT)w;
+            g_engine.viewport_state.m_height = (UINT)h;
+            g_engine.viewport_state.m_aspectRatio = (float)w / (float)h;
         }
         else
         {
@@ -460,9 +460,9 @@ struct window_state
         // Update viewport state
         int w, h;
         SDL_GetWindowSize(window, &w, &h);
-        viewport_state.m_width = (UINT)w;
-        viewport_state.m_height = (UINT)h;
-        viewport_state.m_aspectRatio = (float)w / (float)h;
+        g_engine.viewport_state.m_width = (UINT)w;
+        g_engine.viewport_state.m_height = (UINT)h;
+        g_engine.viewport_state.m_aspectRatio = (float)w / (float)h;
 
         m_currentMode = newMode;
 
@@ -488,22 +488,31 @@ static struct
 
 struct FlyCamera
 {
+    DirectX::XMMATRIX viewMatrix;
+    DirectX::XMMATRIX projectionMatrix;
+    
+    DirectX::XMVECTOR forward;
+    DirectX::XMVECTOR right;
+    DirectX::XMVECTOR up;
+    DirectX::XMVECTOR eye;
+    
     DirectX::XMFLOAT3 position = {0.2f, 24.3f, 5.071f};
     float yaw = 0.0f;
     float pitch = 0.0f;
     float moveSpeed = 5.0f;
     float lookSpeed = 0.002f;
-    float padSpeed = 1.5f;
+    float padSpeed = 1.5f;    
+    float fov_deg = 60.0f;
 
     void UpdateFlyCamera(float deltaTime)
     {
-        DirectX::XMVECTOR forward = DirectX::XMVectorSet(
-            sinf(g_camera.yaw) * cosf(g_camera.pitch),
-            sinf(g_camera.pitch),
-            cosf(g_camera.yaw) * cosf(g_camera.pitch),
+        forward = DirectX::XMVectorSet(
+            sinf(yaw) * cosf(pitch),
+            sinf(pitch),
+            cosf(yaw) * cosf(pitch),
             0.0f);
-        DirectX::XMVECTOR right = DirectX::XMVector3Cross(DirectX::XMVectorSet(0, 1, 0, 0), forward); // cross(up, forward)
-        DirectX::XMVECTOR up = DirectX::XMVectorSet(0, 1, 0, 0);
+        right = DirectX::XMVector3Cross(DirectX::XMVectorSet(0, 1, 0, 0), forward); // cross(up, forward)
+        up = DirectX::XMVectorSet(0, 1, 0, 0);
         forward = DirectX::XMVector3Normalize(forward);
         right = DirectX::XMVector3Normalize(right);
 
@@ -530,11 +539,21 @@ struct FlyCamera
             pos = DirectX::XMVectorAdd(pos, moveDelta);
             XMStoreFloat3(&position, pos);
         }
+
+        eye = XMLoadFloat3(&g_camera.position);
+    }
+
+    void UpdateViewProjMatrices(float nearPlane, float farPlane)
+    {
+        DirectX::XMVECTOR at = DirectX::XMVectorAdd(g_camera.eye, g_camera.forward);
+        viewMatrix = DirectX::XMMatrixLookAtLH(g_camera.eye, at, g_camera.up);
+        projectionMatrix = DirectX::XMMatrixPerspectiveFovLH(
+            DirectX::XMConvertToRadians(fov_deg),
+            g_engine.viewport_state.m_aspectRatio,
+            farPlane,
+            nearPlane);
     }
 } g_camera;
-
-// basically the game state
-static float g_fov_deg = 60.0f;
 
 static bool g_view_editor = true;
 
@@ -569,85 +588,85 @@ static struct
 
 bool PopulateCommandList()
 {
-    pipeline_dx12.ResetCommandObjects();
+    g_engine.pipeline_dx12.ResetCommandObjects(g_engine.sync_state, g_engine.msaa_state);
 
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRootSignature(pipeline_dx12.m_rootSignature);
+    g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRootSignature(g_engine.pipeline_dx12.m_rootSignature);
 
-    ID3D12DescriptorHeap *ppHeaps[] = {pipeline_dx12.m_mainHeap};
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
+    ID3D12DescriptorHeap *ppHeaps[] = {g_engine.pipeline_dx12.m_mainHeap};
+    g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
-    D3D12_GPU_VIRTUAL_ADDRESS cbvAddress = graphics_resources.m_PerFrameConstantBuffer[sync_state.m_frameIndex]->GetGPUVirtualAddress();
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRootConstantBufferView(1, cbvAddress);
+    D3D12_GPU_VIRTUAL_ADDRESS cbvAddress = g_engine.graphics_resources.m_PerFrameConstantBuffer[g_engine.sync_state.m_frameIndex]->GetGPUVirtualAddress();
+    g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRootConstantBufferView(1, cbvAddress);
 
     // Set per - scene CBV(root parameter 2 - descriptor table)
-    UINT descriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    UINT descriptorSize = g_engine.pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
     CD3DX12_GPU_DESCRIPTOR_HANDLE perSceneCbvHandle(
-        pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
+        g_engine.pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
         DescriptorIndices::PER_SCENE_CBV, // Per-scene CBV is after all per-frame CBVs
         descriptorSize);
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRootDescriptorTable(2, perSceneCbvHandle);
+    g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRootDescriptorTable(2, perSceneCbvHandle);
 
     // texture handle
     CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(
-        pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
+        g_engine.pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
         DescriptorIndices::TEXTURE_SRV, // SRV is after all CBVs
         descriptorSize);
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRootDescriptorTable(3, srvHandle);
+    g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRootDescriptorTable(3, srvHandle);
 
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->RSSetViewports(1, &pipeline_dx12.m_viewport);
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->RSSetScissorRects(1, &pipeline_dx12.m_scissorRect);
+    g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->RSSetViewports(1, &g_engine.pipeline_dx12.m_viewport);
+    g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->RSSetScissorRects(1, &g_engine.pipeline_dx12.m_scissorRect);
 
     // Choose RTV and DSV based on MSAA state
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle;
     CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle;
     ID3D12Resource *renderTarget = nullptr;
 
-    if (msaa_state.m_enabled)
+    if (g_engine.msaa_state.m_enabled)
     {
         // MSAA path
         rtvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
-            pipeline_dx12.m_msaaRtvHeap->GetCPUDescriptorHandleForHeapStart(),
-            (INT)sync_state.m_frameIndex,
-            pipeline_dx12.m_rtvDescriptorSize);
+            g_engine.pipeline_dx12.m_msaaRtvHeap->GetCPUDescriptorHandleForHeapStart(),
+            (INT)g_engine.sync_state.m_frameIndex,
+            g_engine.pipeline_dx12.m_rtvDescriptorSize);
         dsvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
-            pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
-        dsvHandle.Offset(1, pipeline_dx12.m_dsvDescriptorSize); // MSAA depth at index 1
-        renderTarget = pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex];
+            g_engine.pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
+        dsvHandle.Offset(1, g_engine.pipeline_dx12.m_dsvDescriptorSize); // MSAA depth at index 1
+        renderTarget = g_engine.pipeline_dx12.m_msaaRenderTargets[g_engine.sync_state.m_frameIndex];
 
         // Back buffer starts in PRESENT state for MSAA
         auto barrier1 = CD3DX12_RESOURCE_BARRIER::Transition(
-            pipeline_dx12.m_renderTargets[sync_state.m_frameIndex],
+            g_engine.pipeline_dx12.m_renderTargets[g_engine.sync_state.m_frameIndex],
             D3D12_RESOURCE_STATE_PRESENT,
             D3D12_RESOURCE_STATE_RESOLVE_DEST);
-        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ResourceBarrier(1, &barrier1);
+        g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->ResourceBarrier(1, &barrier1);
     }
     else
     {
         // Non-MSAA path
         rtvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
-            pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(),
-            (INT)sync_state.m_frameIndex,
-            pipeline_dx12.m_rtvDescriptorSize);
+            g_engine.pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(),
+            (INT)g_engine.sync_state.m_frameIndex,
+            g_engine.pipeline_dx12.m_rtvDescriptorSize);
         dsvHandle = CD3DX12_CPU_DESCRIPTOR_HANDLE(
-            pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart()); // Non-MSAA depth at index 0
-        renderTarget = pipeline_dx12.m_renderTargets[sync_state.m_frameIndex];
+            g_engine.pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart()); // Non-MSAA depth at index 0
+        renderTarget = g_engine.pipeline_dx12.m_renderTargets[g_engine.sync_state.m_frameIndex];
 
         // Transition back buffer to RENDER_TARGET
         auto barrier1 = CD3DX12_RESOURCE_BARRIER::Transition(
             renderTarget,
             D3D12_RESOURCE_STATE_PRESENT,
             D3D12_RESOURCE_STATE_RENDER_TARGET);
-        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ResourceBarrier(1, &barrier1);
+        g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->ResourceBarrier(1, &barrier1);
     }
 
     // Common rendering operations
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ClearRenderTargetView(rtvHandle, g_rtClearValue.Color, 0, nullptr);
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 0, nullptr);
+    g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
+    g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->ClearRenderTargetView(rtvHandle, g_rtClearValue.Color, 0, nullptr);
+    g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 0.0f, 0, 0, nullptr);
 
     // Draw geometry (same for both MSAA)
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+    g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
     PerDrawRootConstants currentDrawConstants = {};
     for (int i = 0; i < g_draw_list.drawAmount; ++i)
@@ -657,14 +676,14 @@ bool PopulateCommandList()
         UINT loadedModelIndex = g_draw_list.loadedModelIndex[i];
         RenderPipeline pl = g_draw_list.pipelines[i];
 
-        UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
+        UINT psoIndex = g_engine.msaa_state.m_enabled ? g_engine.msaa_state.m_currentSampleIndex : 0;
         bool enableAlphaForSky = true; // TODO: make this per object
         UINT activeBlendMode = (objectType == ObjectType::OBJECT_SKY_SPHERE && enableAlphaForSky) ? BLEND_ALPHA : BLEND_OPAQUE;
-        ID3D12PipelineState *currentPSO = pipeline_dx12.m_pipelineStates[pl][activeBlendMode][psoIndex];
+        ID3D12PipelineState *currentPSO = g_engine.pipeline_dx12.m_pipelineStates[pl][activeBlendMode][psoIndex];
         if (!currentPSO)
             SDL_Log("ERROR: PSO null for pipeline %d, msaa %d", pl, psoIndex);
 
-        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetPipelineState(currentPSO);
+        g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetPipelineState(currentPSO);
 
         // Translation parameters
         DirectX::XMVECTOR position = DirectX::XMLoadFloat3(&g_draw_list.transforms.pos[i]);
@@ -683,41 +702,41 @@ bool PopulateCommandList()
 
         currentDrawConstants.heightmapIndex = g_draw_list.heightmapIndices[i];
 
-        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
+        g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
 
         if (objectType == OBJECT_PRIMITIVE || objectType == OBJECT_SKY_SPHERE)
         {
-            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_vertexBufferView[currentPrimitiveToDraw]);
-            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_indexBufferView[currentPrimitiveToDraw]);
-            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_indexCount[currentPrimitiveToDraw], 1, 0, 0, 0);
+            g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &g_engine.graphics_resources.m_vertexBufferView[currentPrimitiveToDraw]);
+            g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->IASetIndexBuffer(&g_engine.graphics_resources.m_indexBufferView[currentPrimitiveToDraw]);
+            g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->DrawIndexedInstanced(g_engine.graphics_resources.m_indexCount[currentPrimitiveToDraw], 1, 0, 0, 0);
         }
         else if (objectType == OBJECT_HEIGHTFIELD)
         {
             // Use shared heightfield mesh
-            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_heightfieldVertexView);
-            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_heightfieldIndexView);
-            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_heightfieldIndexCount, 1, 0, 0, 0);
+            g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &g_engine.graphics_resources.m_heightfieldVertexView);
+            g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->IASetIndexBuffer(&g_engine.graphics_resources.m_heightfieldIndexView);
+            g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->DrawIndexedInstanced(g_engine.graphics_resources.m_heightfieldIndexCount, 1, 0, 0, 0);
         }
         else if (objectType == OBJECT_LOADED_MODEL)
         {
             // todo unify outside this if statement
-            currentDrawConstants.heightmapIndex = graphics_resources.m_models[loadedModelIndex].textureIndex;
-            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
+            currentDrawConstants.heightmapIndex = g_engine.graphics_resources.m_models[loadedModelIndex].textureIndex;
+            g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
 
-            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &graphics_resources.m_models[loadedModelIndex].vertexView);
-            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(&graphics_resources.m_models[loadedModelIndex].indexView);
-            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(graphics_resources.m_models[loadedModelIndex].indexCount, 1, 0, 0, 0);
+            g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &g_engine.graphics_resources.m_models[loadedModelIndex].vertexView);
+            g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->IASetIndexBuffer(&g_engine.graphics_resources.m_models[loadedModelIndex].indexView);
+            g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->DrawIndexedInstanced(g_engine.graphics_resources.m_models[loadedModelIndex].indexCount, 1, 0, 0, 0);
         }
     }
 
     // Debug: draw player collision cylinder (wireframe)
     if (g_show_player_wireframe)
     {
-        UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
-        ID3D12PipelineState *wirePSO = pipeline_dx12.m_wireframePSO[psoIndex];
+        UINT psoIndex = g_engine.msaa_state.m_enabled ? g_engine.msaa_state.m_currentSampleIndex : 0;
+        ID3D12PipelineState *wirePSO = g_engine.pipeline_dx12.m_wireframePSO[psoIndex];
         if (wirePSO)
         {
-            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetPipelineState(wirePSO);
+            g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetPipelineState(wirePSO);
 
             // Compute cylinder centre from current camera position
             float yCentre = g_camera.position.y - g_player_bounds.eyeHeight + g_player_bounds.height * 0.5f;
@@ -734,59 +753,59 @@ bool PopulateCommandList()
             DirectX::XMStoreFloat4x4(&cylConstants.world, DirectX::XMMatrixTranspose(world));
             cylConstants.heightmapIndex = 0; // unused
 
-            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(
+            g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(
                 0, sizeof(PerDrawRootConstants) / 4, &cylConstants, 0);
 
             // Use the existing cylinder mesh
             PrimitiveType cylType = PRIMITIVE_CYLINDER;
-            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetVertexBuffers(
-                0, 1, &graphics_resources.m_vertexBufferView[cylType]);
-            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->IASetIndexBuffer(
-                &graphics_resources.m_indexBufferView[cylType]);
-            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->DrawIndexedInstanced(
-                graphics_resources.m_indexCount[cylType], 1, 0, 0, 0);
+            g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->IASetVertexBuffers(
+                0, 1, &g_engine.graphics_resources.m_vertexBufferView[cylType]);
+            g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->IASetIndexBuffer(
+                &g_engine.graphics_resources.m_indexBufferView[cylType]);
+            g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->DrawIndexedInstanced(
+                g_engine.graphics_resources.m_indexCount[cylType], 1, 0, 0, 0);
         }
     }
 
     // Post-draw operations
-    if (msaa_state.m_enabled)
+    if (g_engine.msaa_state.m_enabled)
     {
         // MSAA: Resolve to back buffer
-        auto barrier2 = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
-        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ResourceBarrier(1, &barrier2);
+        auto barrier2 = CD3DX12_RESOURCE_BARRIER::Transition(g_engine.pipeline_dx12.m_msaaRenderTargets[g_engine.sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_RESOLVE_SOURCE);
+        g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->ResourceBarrier(1, &barrier2);
 
-        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ResolveSubresource(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], 0, pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], 0, DXGI_FORMAT_R8G8B8A8_UNORM);
+        g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->ResolveSubresource(g_engine.pipeline_dx12.m_renderTargets[g_engine.sync_state.m_frameIndex], 0, g_engine.pipeline_dx12.m_msaaRenderTargets[g_engine.sync_state.m_frameIndex], 0, DXGI_FORMAT_R8G8B8A8_UNORM);
 
-        auto barrier3 = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_renderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RESOLVE_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
-        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ResourceBarrier(1, &barrier3);
+        auto barrier3 = CD3DX12_RESOURCE_BARRIER::Transition(g_engine.pipeline_dx12.m_renderTargets[g_engine.sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RESOLVE_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->ResourceBarrier(1, &barrier3);
 
-        auto barrier4 = CD3DX12_RESOURCE_BARRIER::Transition(pipeline_dx12.m_msaaRenderTargets[sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RESOLVE_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
-        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ResourceBarrier(1, &barrier4);
+        auto barrier4 = CD3DX12_RESOURCE_BARRIER::Transition(g_engine.pipeline_dx12.m_msaaRenderTargets[g_engine.sync_state.m_frameIndex], D3D12_RESOURCE_STATE_RESOLVE_SOURCE, D3D12_RESOURCE_STATE_RENDER_TARGET);
+        g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->ResourceBarrier(1, &barrier4);
     }
 
     if (g_view_editor)
     {
         // ImGui rendering (always to back buffer)
         CD3DX12_CPU_DESCRIPTOR_HANDLE backBufferRtvHandle(
-            pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(),
-            (INT)sync_state.m_frameIndex,
-            pipeline_dx12.m_rtvDescriptorSize);
-        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->OMSetRenderTargets(1, &backBufferRtvHandle, FALSE, nullptr);
+            g_engine.pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(),
+            (INT)g_engine.sync_state.m_frameIndex,
+            g_engine.pipeline_dx12.m_rtvDescriptorSize);
+        g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->OMSetRenderTargets(1, &backBufferRtvHandle, FALSE, nullptr);
 
         ImGui::Render();
         ID3D12DescriptorHeap *imguiHeaps[] = {g_imguiHeap.Heap};
-        pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetDescriptorHeaps(_countof(imguiHeaps), imguiHeaps);
-        ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), pipeline_dx12.m_commandList[sync_state.m_frameIndex]);
+        g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetDescriptorHeaps(_countof(imguiHeaps), imguiHeaps);
+        ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]);
     }
 
     // Final transition to PRESENT
     auto finalBarrier = CD3DX12_RESOURCE_BARRIER::Transition(
-        pipeline_dx12.m_renderTargets[sync_state.m_frameIndex],
+        g_engine.pipeline_dx12.m_renderTargets[g_engine.sync_state.m_frameIndex],
         D3D12_RESOURCE_STATE_RENDER_TARGET,
         D3D12_RESOURCE_STATE_PRESENT);
-    pipeline_dx12.m_commandList[sync_state.m_frameIndex]->ResourceBarrier(1, &finalBarrier);
+    g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->ResourceBarrier(1, &finalBarrier);
 
-    if (!HRAssert(pipeline_dx12.m_commandList[sync_state.m_frameIndex]->Close()))
+    if (!HRAssert(g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->Close()))
         return false;
     return true;
 }
@@ -796,12 +815,12 @@ void Render(bool vsync = true)
     if (!PopulateCommandList())
         log_error("A command failed to be populated");
 
-    ID3D12CommandList *ppCommandLists[] = {pipeline_dx12.m_commandList[sync_state.m_frameIndex]};
-    pipeline_dx12.m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+    ID3D12CommandList *ppCommandLists[] = {g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]};
+    g_engine.pipeline_dx12.m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
     UINT syncInterval = (vsync) ? 1 : 0;
     UINT syncFlags = (vsync) ? 0 : DXGI_PRESENT_ALLOW_TEARING;
-    HRAssert(pipeline_dx12.m_swapChain->Present(syncInterval, syncFlags));
+    HRAssert(g_engine.pipeline_dx12.m_swapChain->Present(syncInterval, syncFlags));
 }
 
 // this functions exists for a future where we will do more than just render the whole scene, this will include culling here
@@ -828,12 +847,12 @@ void FillDrawList()
         }
         else if (obj.objectType == OBJECT_HEIGHTFIELD)
         {
-            g_draw_list.heightmapIndices[drawCount] = graphics_resources.m_sceneObjectIndices[i];
+            g_draw_list.heightmapIndices[drawCount] = g_engine.graphics_resources.m_sceneObjectIndices[i];
         }
         else if (obj.objectType == OBJECT_SKY_SPHERE)
         {
             g_draw_list.primitiveTypes[drawCount] = PRIMITIVE_INVERTED_SPHERE;
-            g_draw_list.heightmapIndices[drawCount] = graphics_resources.m_sceneObjectIndices[i];
+            g_draw_list.heightmapIndices[drawCount] = g_engine.graphics_resources.m_sceneObjectIndices[i];
         }
         else if (obj.objectType == OBJECT_LOADED_MODEL)
         {
@@ -867,9 +886,6 @@ void FillDrawList()
     }
     g_draw_list.drawAmount = drawCount;
 }
-
-static DirectX::XMMATRIX g_view;
-static DirectX::XMMATRIX g_projection;
 
 float SampleHeightmapWorldY(const SceneObject &obj, const DirectX::XMFLOAT3 &worldPos)
 {
@@ -967,13 +983,13 @@ void DrawDebugRay(const DirectX::XMFLOAT3 &start, const DirectX::XMFLOAT3 &end, 
     auto worldToScreen = [](const DirectX::XMFLOAT3 &world) -> ImVec2
     {
         DirectX::XMVECTOR v = DirectX::XMVectorSet(world.x, world.y, world.z, 1.0f);
-        DirectX::XMVECTOR clip = XMVector4Transform(v, g_view);
-        clip = XMVector4Transform(clip, g_projection);
+        DirectX::XMVECTOR clip = XMVector4Transform(v, g_camera.viewMatrix);
+        clip = XMVector4Transform(clip, g_camera.projectionMatrix);
         float w = DirectX::XMVectorGetW(clip);
         if (w <= 0.0f)
             return ImVec2(-1, -1);
-        float x = (DirectX::XMVectorGetX(clip) / w + 1.0f) * 0.5f * viewport_state.m_width;
-        float y = (1.0f - (DirectX::XMVectorGetY(clip) / w + 1.0f) * 0.5f) * viewport_state.m_height;
+        float x = (DirectX::XMVectorGetX(clip) / w + 1.0f) * 0.5f * g_engine.viewport_state.m_width;
+        float y = (1.0f - (DirectX::XMVectorGetY(clip) / w + 1.0f) * 0.5f) * g_engine.viewport_state.m_height;
         return ImVec2(x, y);
     };
 
@@ -997,17 +1013,10 @@ void DrawDebugRay(const DirectX::XMFLOAT3 &start, const DirectX::XMFLOAT3 &end, 
 void DebugFireShot()
 {
     // Camera eye and forward
-    DirectX::XMVECTOR eye = XMLoadFloat3(&g_camera.position);
-    DirectX::XMVECTOR forward = DirectX::XMVectorSet(
-        sinf(g_camera.yaw) * cosf(g_camera.pitch),
-        sinf(g_camera.pitch),
-        cosf(g_camera.yaw) * cosf(g_camera.pitch),
-        0.0f);
-    forward = DirectX::XMVector3Normalize(forward);
 
     DirectX::XMFLOAT3 origin, dir;
-    XMStoreFloat3(&origin, eye);
-    XMStoreFloat3(&dir, forward);
+    XMStoreFloat3(&origin, g_camera.eye);
+    XMStoreFloat3(&dir, g_camera.forward);
 
     float maxDist = 500.0f;
     DirectX::XMFLOAT3 rayEnd = {
@@ -1239,30 +1248,17 @@ void Update()
 
     g_camera.position.y = bestGroundY + eyeHeight; // set final Y, TODO: this should probably be better, like player position rather than camera
 
-    // Update view/projection matrices (TODO: pull this out)
-    DirectX::XMVECTOR eye = DirectX::XMLoadFloat3(&g_camera.position);
-    DirectX::XMVECTOR forward = DirectX::XMVectorSet(
-        sinf(g_camera.yaw) * cosf(g_camera.pitch),
-        sinf(g_camera.pitch),
-        cosf(g_camera.yaw) * cosf(g_camera.pitch),
-        0.0f);
-    DirectX::XMVECTOR at = DirectX::XMVectorAdd(eye, forward);
-    DirectX::XMVECTOR up = DirectX::XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-    g_view = DirectX::XMMatrixLookAtLH(eye, at, up);
-    g_projection = DirectX::XMMatrixPerspectiveFovLH(
-        DirectX::XMConvertToRadians(g_fov_deg),
-        viewport_state.m_aspectRatio,
-        4192.0f,
-        0.1f);
+    // Update view/projection matrices
+    g_camera.UpdateViewProjMatrices(0.1f, 4192.0f);
 
     // TRANSPOSE before storing
-    DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].view,
-                             DirectX::XMMatrixTranspose(g_view));
-    DirectX::XMStoreFloat4x4(&graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex].projection,
-                             DirectX::XMMatrixTranspose(g_projection));
+    DirectX::XMStoreFloat4x4(&g_engine.graphics_resources.m_PerFrameConstantBufferData[g_engine.sync_state.m_frameIndex].view,
+                             DirectX::XMMatrixTranspose(g_camera.viewMatrix));
+    DirectX::XMStoreFloat4x4(&g_engine.graphics_resources.m_PerFrameConstantBufferData[g_engine.sync_state.m_frameIndex].projection,
+                             DirectX::XMMatrixTranspose(g_camera.projectionMatrix));
 
-    memcpy(graphics_resources.m_pCbvDataBegin[sync_state.m_frameIndex],
-           &graphics_resources.m_PerFrameConstantBufferData[sync_state.m_frameIndex],
+    memcpy(g_engine.graphics_resources.m_pCbvDataBegin[g_engine.sync_state.m_frameIndex],
+           &g_engine.graphics_resources.m_PerFrameConstantBufferData[g_engine.sync_state.m_frameIndex],
            sizeof(PerFrameConstantBuffer));
 
     FillDrawList();
@@ -1442,7 +1438,7 @@ void DrawEditorGUI()
     // ============================================
     ImGuizmo::BeginFrame();
     ImGuizmo::Enable(true);
-    ImGuizmo::SetRect(0, 0, (float)viewport_state.m_width, (float)viewport_state.m_height);
+    ImGuizmo::SetRect(0, 0, (float)g_engine.viewport_state.m_width, (float)g_engine.viewport_state.m_height);
 
     if (g_selectedObjectIndex >= 0 && g_selectedObjectIndex < g_scene.objectCount)
     {
@@ -1456,8 +1452,8 @@ void DrawEditorGUI()
         DirectX::XMMATRIX world = scale * rotation * translation; // row‑major
 
         // ---- ImGuizmo expects row‑major float[4][4] – pass directly ----
-        float *viewPtr = (float *)&g_view;
-        float *projPtr = (float *)&g_projection;
+        float *viewPtr = (float *)&g_camera.viewMatrix;
+        float *projPtr = (float *)&g_camera.projectionMatrix;
         float *worldPtr = (float *)&world;
 
         // ---- Draw gizmo ----
@@ -1493,7 +1489,7 @@ void DrawEditorGUI()
     ImGui::End();
 
     ImGui::Begin("Settings");
-    ImGui::SliderFloat("fov_deg", &g_fov_deg, 60.0f, 120.0f);
+    ImGui::SliderFloat("fov_deg", &g_camera.fov_deg, 60.0f, 120.0f);
     ImGui::Text("Frametime %.3f ms (%.2f FPS)",
                 1000.0f / ImGui::GetIO().Framerate,
                 ImGui::GetIO().Framerate);
@@ -1507,29 +1503,29 @@ void DrawEditorGUI()
     ImGui::Separator();
     ImGui::Text("MSAA");
 
-    UINT oldIndex = msaa_state.m_currentSampleIndex;
+    UINT oldIndex = g_engine.msaa_state.m_currentSampleIndex;
 
     // Build the current selection string
     char currentSelection[32];
-    if (msaa_state.m_currentSampleIndex == 0)
+    if (g_engine.msaa_state.m_currentSampleIndex == 0)
     {
         snprintf(currentSelection, sizeof(currentSelection), "Disabled (1x)");
     }
     else
     {
         snprintf(currentSelection, sizeof(currentSelection), "%dx MSAA",
-                 msaa_state.m_sampleCounts[msaa_state.m_currentSampleIndex]);
+                 g_engine.msaa_state.m_sampleCounts[g_engine.msaa_state.m_currentSampleIndex]);
     }
 
     if (ImGui::BeginCombo("Anti-aliasing", currentSelection))
     {
         {
-            bool isSelected = (msaa_state.m_currentSampleIndex == 0);
+            bool isSelected = (g_engine.msaa_state.m_currentSampleIndex == 0);
             if (ImGui::Selectable("Disabled (1x)", isSelected))
             {
-                msaa_state.m_currentSampleIndex = 0;
-                msaa_state.m_currentSampleCount = 1;
-                msaa_state.m_enabled = false;
+                g_engine.msaa_state.m_currentSampleIndex = 0;
+                g_engine.msaa_state.m_currentSampleCount = 1;
+                g_engine.msaa_state.m_enabled = false;
             }
             if (isSelected)
             {
@@ -1540,25 +1536,25 @@ void DrawEditorGUI()
         // Show MSAA options
         for (UINT i = 1; i < 4; i++)
         {
-            bool isSelected = (msaa_state.m_currentSampleIndex == i);
-            bool isSupported = msaa_state.m_supported[i];
+            bool isSelected = (g_engine.msaa_state.m_currentSampleIndex == i);
+            bool isSupported = g_engine.msaa_state.m_supported[i];
 
             char itemLabel[32];
             if (isSupported)
             {
-                snprintf(itemLabel, sizeof(itemLabel), "%dx MSAA", msaa_state.m_sampleCounts[i]);
+                snprintf(itemLabel, sizeof(itemLabel), "%dx MSAA", g_engine.msaa_state.m_sampleCounts[i]);
             }
             else
             {
-                snprintf(itemLabel, sizeof(itemLabel), "%dx MSAA (unsupported)", msaa_state.m_sampleCounts[i]);
+                snprintf(itemLabel, sizeof(itemLabel), "%dx MSAA (unsupported)", g_engine.msaa_state.m_sampleCounts[i]);
                 ImGui::BeginDisabled();
             }
 
             if (ImGui::Selectable(itemLabel, isSelected) && isSupported)
             {
-                msaa_state.m_currentSampleIndex = i;
-                msaa_state.m_currentSampleCount = msaa_state.m_sampleCounts[i];
-                msaa_state.m_enabled = true;
+                g_engine.msaa_state.m_currentSampleIndex = i;
+                g_engine.msaa_state.m_currentSampleCount = g_engine.msaa_state.m_sampleCounts[i];
+                g_engine.msaa_state.m_enabled = true;
             }
 
             if (!isSupported)
@@ -1575,15 +1571,15 @@ void DrawEditorGUI()
     }
 
     // Handle MSAA changes
-    if (oldIndex != msaa_state.m_currentSampleIndex)
+    if (oldIndex != g_engine.msaa_state.m_currentSampleIndex)
     {
         SDL_Log("MSAA settings changed: %s, %dx",
-                msaa_state.m_enabled ? "enabled" : "disabled",
-                msaa_state.m_currentSampleCount);
+                g_engine.msaa_state.m_enabled ? "enabled" : "disabled",
+                g_engine.msaa_state.m_currentSampleCount);
         RecreateMSAAResources();
-        if (msaa_state.m_enabled)
+        if (g_engine.msaa_state.m_enabled)
         {
-            g_liveConfigData.GraphicsSettings.msaa_level = (int)msaa_state.m_currentSampleCount;
+            g_liveConfigData.GraphicsSettings.msaa_level = (int)g_engine.msaa_state.m_currentSampleCount;
         }
         else
         {
@@ -1663,13 +1659,13 @@ void DrawEditorGUI()
     if (ImGui::ColorEdit3("Ambient", g_ambient_color))
     {
         // Update the per-scene constant buffer when color changes
-        graphics_resources.m_PerSceneConstantBufferData.ambient_colour =
+        g_engine.graphics_resources.m_PerSceneConstantBufferData.ambient_colour =
             DirectX::XMFLOAT4(g_ambient_color[0], g_ambient_color[1], g_ambient_color[2], 1.0f);
 
         // Copy to GPU memory
-        memcpy(graphics_resources.m_pPerSceneCbvDataBegin,
-               &graphics_resources.m_PerSceneConstantBufferData,
-               sizeof(graphics_resources.m_PerSceneConstantBufferData));
+        memcpy(g_engine.graphics_resources.m_pPerSceneCbvDataBegin,
+               &g_engine.graphics_resources.m_PerSceneConstantBufferData,
+               sizeof(g_engine.graphics_resources.m_PerSceneConstantBufferData));
     }
 
     ImGui::End();
@@ -1874,8 +1870,8 @@ void LoadAllTextures()
 {
     std::vector<ID3D12Resource *> localUploadHeaps;
 
-    pipeline_dx12.m_commandAllocators[0]->Reset();
-    pipeline_dx12.m_commandList[0]->Reset(pipeline_dx12.m_commandAllocators[0], nullptr);
+    g_engine.pipeline_dx12.m_commandAllocators[0]->Reset();
+    g_engine.pipeline_dx12.m_commandList[0]->Reset(g_engine.pipeline_dx12.m_commandAllocators[0], nullptr);
 
     for (int i = 0; i < g_scene.objectCount; ++i)
     {
@@ -1884,7 +1880,7 @@ void LoadAllTextures()
         if (obj.objectType == OBJECT_HEIGHTFIELD)
         {
             const char *path = obj.data.heightfield.pathToHeightmap;
-            UINT &outIndex = graphics_resources.m_sceneObjectIndices[i];
+            UINT &outIndex = g_engine.graphics_resources.m_sceneObjectIndices[i];
             UINT errorIndex = g_errorHeightmapIndex;
 
             // set rotation of heightmap to zero as given in decisiona
@@ -1892,7 +1888,7 @@ void LoadAllTextures()
             if (path[0] != '\0')
             {
                 ID3D12Resource *tex = nullptr; // not used directly
-                TextureLoadResult tl = LoadTextureFromFile(pipeline_dx12.m_device, pipeline_dx12.m_commandList[0], path, &tex, true);
+                TextureLoadResult tl = LoadTextureFromFile(g_engine.pipeline_dx12.m_device, g_engine.pipeline_dx12.m_commandList[0], path, &tex, true);
                 if (tl.success)
                 {
                     SDL_Log("Loaded heightmap: %s, index %u", path, tl.outIndex);
@@ -1918,14 +1914,14 @@ void LoadAllTextures()
         else if (obj.objectType == OBJECT_SKY_SPHERE)
         {
             const char *path = obj.data.sky_sphere.pathToTexture;
-            UINT &outIndex = graphics_resources.m_sceneObjectIndices[i];
+            UINT &outIndex = g_engine.graphics_resources.m_sceneObjectIndices[i];
             UINT errorIndex = 0; // assuming index 0 is the error texture
 
             if (path[0] != '\0')
             {
                 ID3D12Resource *tex = nullptr;
-                TextureLoadResult tl = LoadSkyTextureFromFile(pipeline_dx12.m_device,
-                                                              pipeline_dx12.m_commandList[0],
+                TextureLoadResult tl = LoadSkyTextureFromFile(g_engine.pipeline_dx12.m_device,
+                                                              g_engine.pipeline_dx12.m_commandList[0],
                                                               path, &tex);
                 if (tl.success)
                 {
@@ -1948,9 +1944,9 @@ void LoadAllTextures()
         // TODO: Add further object types here (e.g., OBJECT_TERRAIN, OBJECT_DECAL) as needed
     }
 
-    pipeline_dx12.m_commandList[0]->Close();
-    ID3D12CommandList *ppLists[] = {pipeline_dx12.m_commandList[0]};
-    pipeline_dx12.m_commandQueue->ExecuteCommandLists(1, ppLists);
+    g_engine.pipeline_dx12.m_commandList[0]->Close();
+    ID3D12CommandList *ppLists[] = {g_engine.pipeline_dx12.m_commandList[0]};
+    g_engine.pipeline_dx12.m_commandQueue->ExecuteCommandLists(1, ppLists);
 
     WaitForAllFrames();
 
@@ -1978,14 +1974,14 @@ int main(void)
 
     if (g_liveConfigData.GraphicsSettings.msaa_level > 1)
     {
-        msaa_state.m_enabled = true;
-        msaa_state.m_currentSampleCount = (UINT)g_liveConfigData.GraphicsSettings.msaa_level;
-        if (msaa_state.m_currentSampleCount == 2)
-            msaa_state.m_currentSampleIndex = 1;
-        else if (msaa_state.m_currentSampleCount == 4)
-            msaa_state.m_currentSampleIndex = 2;
-        else if (msaa_state.m_currentSampleCount == 8)
-            msaa_state.m_currentSampleIndex = 3;
+        g_engine.msaa_state.m_enabled = true;
+        g_engine.msaa_state.m_currentSampleCount = (UINT)g_liveConfigData.GraphicsSettings.msaa_level;
+        if (g_engine.msaa_state.m_currentSampleCount == 2)
+            g_engine.msaa_state.m_currentSampleIndex = 1;
+        else if (g_engine.msaa_state.m_currentSampleCount == 4)
+            g_engine.msaa_state.m_currentSampleIndex = 2;
+        else if (g_engine.msaa_state.m_currentSampleCount == 8)
+            g_engine.msaa_state.m_currentSampleIndex = 3;
     }
 
     if (!LoadPipeline(program_state.window.hwnd))
@@ -2020,10 +2016,10 @@ int main(void)
 
         ImGui_ImplSDL3_InitForD3D(program_state.window.window);
 
-        g_imguiHeap.Create(pipeline_dx12.m_device, pipeline_dx12.m_imguiHeap);
+        g_imguiHeap.Create(g_engine.pipeline_dx12.m_device, g_engine.pipeline_dx12.m_imguiHeap);
         ImGui_ImplDX12_InitInfo init_info = {};
-        init_info.Device = pipeline_dx12.m_device;
-        init_info.CommandQueue = pipeline_dx12.m_commandQueue;
+        init_info.Device = g_engine.pipeline_dx12.m_device;
+        init_info.CommandQueue = g_engine.pipeline_dx12.m_commandQueue;
         init_info.NumFramesInFlight = g_FrameCount;
         init_info.RTVFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
         init_info.DSVFormat = DXGI_FORMAT_UNKNOWN;
@@ -2086,7 +2082,7 @@ int main(void)
         if (so.objectType == ObjectType::OBJECT_LOADED_MODEL)
         {
             bool modelAlreadyLoaded = false;
-            for (int j = 0; j < graphics_resources.m_numModelsLoaded; ++j)
+            for (int j = 0; j < g_engine.graphics_resources.m_numModelsLoaded; ++j)
             {
                 if (strcmp(g_modelPaths[j], so.data.loaded_model.pathTo) == 0)
                 {

@@ -38,7 +38,7 @@ def parse_dx12_resources(content: str) -> list:
         struct_body = struct_match.group(1)
         struct_name = struct_match.group(2)
         
-        if struct_name not in ['pipeline_dx12', 'graphics_resources', 'sync_state']:
+        if struct_name not in ['g_engine.pipeline_dx12', 'g_engine.graphics_resources', 'g_engine.sync_state']:
             continue
         
         # --- First, find and process nested struct arrays ---
@@ -208,8 +208,8 @@ def generate_cleanup_code(resources: list) -> str:
                 lines.append(f"            {res['struct']}.{res['name']}[i]->Unmap(0, nullptr);")
                 lines.append(f"            {res['struct']}.{res['name']}[i]->Release();")
                 lines.append(f"            {res['struct']}.{res['name']}[i] = nullptr;")
-                if res['struct'] == 'graphics_resources':
-                    lines.append(f"            graphics_resources.m_pCbvDataBegin[i] = nullptr;")
+                if res['struct'] == 'g_engine.graphics_resources':
+                    lines.append(f"            g_engine.graphics_resources.m_pCbvDataBegin[i] = nullptr;")
                 lines.append("        }")
                 lines.append("    }")
             else:
@@ -218,8 +218,8 @@ def generate_cleanup_code(resources: list) -> str:
                 lines.append(f"        {res['struct']}.{res['name']}->Unmap(0, nullptr);")
                 lines.append(f"        {res['struct']}.{res['name']}->Release();")
                 lines.append(f"        {res['struct']}.{res['name']} = nullptr;")
-                if res['struct'] == 'graphics_resources' and res['name'] == 'm_PerSceneConstantBuffer':
-                    lines.append("            graphics_resources.m_pPerSceneCbvDataBegin = nullptr;")
+                if res['struct'] == 'g_engine.graphics_resources' and res['name'] == 'm_PerSceneConstantBuffer':
+                    lines.append("            g_engine.graphics_resources.m_pPerSceneCbvDataBegin = nullptr;")
                 lines.append("    }")
         lines.append("")
     
@@ -260,8 +260,8 @@ def generate_cleanup_code(resources: list) -> str:
         
         if res['is_array']:
             arr_sz = res['array_size'] if res['array_size'] else 'g_FrameCount'
-            # Special case: pipeline_dx12.m_pipelineStates[4] has fixed size 4
-            if res['struct'] == 'pipeline_dx12' and res['name'] == 'm_pipelineStates':
+            # Special case: g_engine.pipeline_dx12.m_pipelineStates[4] has fixed size 4
+            if res['struct'] == 'g_engine.pipeline_dx12' and res['name'] == 'm_pipelineStates':
                 arr_sz = '4'
             lines.append(f"    for (UINT i = 0; i < {arr_sz}; i++)")
             lines.append("    {")
@@ -280,10 +280,10 @@ def generate_cleanup_code(resources: list) -> str:
     
     lines.append("")
     lines.append("    // Close fence event handle")
-    lines.append("    if (sync_state.m_fenceEvent)")
+    lines.append("    if (g_engine.sync_state.m_fenceEvent)")
     lines.append("    {")
-    lines.append("        CloseHandle(sync_state.m_fenceEvent);")
-    lines.append("        sync_state.m_fenceEvent = nullptr;")
+    lines.append("        CloseHandle(g_engine.sync_state.m_fenceEvent);")
+    lines.append("        g_engine.sync_state.m_fenceEvent = nullptr;")
     lines.append("    }")
     lines.append("}")
     

@@ -53,11 +53,11 @@ python loc.py --verbose
 
 The rendering system uses several global struct instances defined in `src/renderer_dx12.h`:
 
-- **pipeline_dx12**: Core DX12 pipeline objects (device, command queue, swap chain, multiple pipeline states for MSAA, root signature, command list/allocators, descriptor heaps, MSAA render targets)
-- **graphics_resources**: Per-frame constant buffers, vertex buffer, texture resources
-- **sync_state**: Frame synchronization (fence, fence values, fence event, frame index)
-- **msaa_state**: MSAA configuration (enabled flag, current sample count/index, supported levels, CalcSupportedMSAALevels helper)
-- **viewport_state**: Window dimensions and aspect ratio
+- **g_engine.pipeline_dx12**: Core DX12 pipeline objects (device, command queue, swap chain, multiple pipeline states for MSAA, root signature, command list/allocators, descriptor heaps, MSAA render targets)
+- **g_engine.graphics_resources**: Per-frame constant buffers, vertex buffer, texture resources
+- **g_engine.sync_state**: Frame synchronization (fence, fence values, fence event, frame index)
+- **g_engine.msaa_state**: MSAA configuration (enabled flag, current sample count/index, supported levels, CalcSupportedMSAALevels helper)
+- **g_engine.viewport_state**: Window dimensions and aspect ratio
 - **g_FrameCount**: Set to 3 for triple buffering
 
 ### Key DirectX 12 Patterns
@@ -88,8 +88,8 @@ The project uses triple buffering (`g_FrameCount = 3`) for all per-frame resourc
 
 #### MSAA Support
 Project supports 1x, 2x, 4x, 8x multisample anti-aliasing:
-- **pipeline_dx12.m_pipelineStates[4]**: Array of PSOs, one per MSAA level
-- **msaa_state.CalcSupportedMSAALevels()**: Queries device for supported sample counts
+- **g_engine.pipeline_dx12.m_pipelineStates[4]**: Array of PSOs, one per MSAA level
+- **g_engine.msaa_state.CalcSupportedMSAALevels()**: Queries device for supported sample counts
 - When MSAA enabled, renders to MSAA targets then resolves to back buffer
 - ResetCommandObjects() selects appropriate PSO based on current MSAA setting
 
@@ -122,7 +122,7 @@ Project uses three Python scripts to generate C code:
 
 **When to Regenerate:**
 Run `python meta_ondestroy.py` whenever you:
-- Add new D3D12 resources to pipeline_dx12, graphics_resources, or sync_state structs
+- Add new D3D12 resources to g_engine.pipeline_dx12, g_engine.graphics_resources, or g_engine.sync_state structs
 - Change resource names
 - Add new per-frame resource arrays
 

@@ -113,15 +113,15 @@ static constexpr UINT g_FrameCount = 3; // double, triple buffering etc...
 
 static UINT g_errorHeightmapIndex = 0;
 
-static struct
+struct SyncState
 {
     UINT64 m_fenceValues[g_FrameCount];
     ID3D12Fence *m_fence;
     HANDLE m_fenceEvent;
     UINT m_frameIndex;
-} sync_state;
+};
 
-static struct
+struct MSAAState
 {
     bool m_enabled = false;
     UINT m_currentSampleCount = 1;
@@ -135,18 +135,18 @@ static struct
         {
             D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS msLevels = {};
             msLevels.Format = g_screenFormat;
-            msLevels.SampleCount = msaa_state.m_sampleCounts[i];
+            msLevels.SampleCount = m_sampleCounts[i];
             msLevels.Flags = D3D12_MULTISAMPLE_QUALITY_LEVELS_FLAG_NONE;
             if (SUCCEEDED(device->CheckFeatureSupport(
                     D3D12_FEATURE_MULTISAMPLE_QUALITY_LEVELS, &msLevels, sizeof(msLevels))))
             {
-                msaa_state.m_supported[i] = (msLevels.NumQualityLevels > 0);
+                m_supported[i] = (msLevels.NumQualityLevels > 0);
             }
         }
     }
-} msaa_state;
+};
 
-static struct
+struct PipelineDX12
 {
     CD3DX12_VIEWPORT m_viewport;
     CD3DX12_RECT m_scissorRect;
@@ -177,23 +177,23 @@ static struct
     UINT m_dsvDescriptorSize;
     UINT m_rtvDescriptorSize;
 
-    void ResetCommandObjects()
+    void ResetCommandObjects(const SyncState &sync_state, const MSAAState &msaa_state)
     {
         // Command list allocators can only be reset when the associated
         // command lists have finished execution on the GPU; apps should use
         // fences to determine GPU execution progress.
-        HRAssert(pipeline_dx12.m_commandAllocators[sync_state.m_frameIndex]->Reset());
+        HRAssert(m_commandAllocators[sync_state.m_frameIndex]->Reset());
         // However, when ExecuteCommandList() is called on a particular command
         // list, that command list can then be reset at any time and must be before
         // re-recording.
         UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
         BlendMode b = BlendMode::BLEND_OPAQUE;
         HRAssert(
-            pipeline_dx12.m_commandList[sync_state.m_frameIndex]->Reset(
-                pipeline_dx12.m_commandAllocators[sync_state.m_frameIndex],
-                pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][b][psoIndex]));
+            m_commandList[sync_state.m_frameIndex]->Reset(
+                m_commandAllocators[sync_state.m_frameIndex],
+                m_pipelineStates[RenderPipeline::RENDER_DEFAULT][b][psoIndex]));
     }
-} pipeline_dx12;
+};
 
 struct PerDrawRootConstants
 {
@@ -205,7 +205,7 @@ struct PerDrawRootConstants
 };
 static_assert((sizeof(PerDrawRootConstants) <= 256), "Root32BitConstants size must be 256-bytes or smaller (64 DWORDS)");
 
-static struct
+struct GraphicsResources
 {
     PerFrameConstantBuffer m_PerFrameConstantBufferData[g_FrameCount];
     PerSceneConstantBuffer m_PerSceneConstantBufferData;
@@ -255,7 +255,23 @@ static struct
     } m_models[MAX_LOADED_MODELS];
     UINT m_numModelsLoaded = 0;
 
-} graphics_resources;
+};
+
+struct ViewportState
+{
+    UINT m_width;
+    UINT m_height;
+    float m_aspectRatio;
+};
+
+struct EngineContext {
+    PipelineDX12 pipeline_dx12;
+    GraphicsResources graphics_resources;
+    SyncState sync_state;
+    ViewportState viewport_state;
+    MSAAState msaa_state;
+};
+static EngineContext g_engine;
 
 static char g_modelPaths[MAX_LOADED_MODELS][256] = {};
 
@@ -384,7 +400,7 @@ TextureLoadResult LoadTextureFromFile(ID3D12Device *device, ID3D12GraphicsComman
     cmdList->ResourceBarrier(1, &barrier);
 
     // Allocate index in the heightmap heap
-    UINT index = graphics_resources.m_nextSceneObject;
+    UINT index = g_engine.graphics_resources.m_nextSceneObject;
     if (index >= MAX_HEIGHTMAP_TEXTURES)
     {
         SDL_Log("Out of heightmap texture slots!");
@@ -397,14 +413,14 @@ TextureLoadResult LoadTextureFromFile(ID3D12Device *device, ID3D12GraphicsComman
 
     // Create SRV in the main heap at DescriptorIndices::HEIGHTMAP_SRV + index
     CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(
-        pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart(),
+        g_engine.pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart(),
         DescriptorIndices::HEIGHTMAP_SRV + index,
         g_cbvSrvDescriptorSize);
     device->CreateShaderResourceView(*outResource, nullptr, cpuHandle);
 
     // Store the resource in the array
-    graphics_resources.m_heightmapResources[index] = *outResource;
-    graphics_resources.m_nextSceneObject = index + 1;
+    g_engine.graphics_resources.m_heightmapResources[index] = *outResource;
+    g_engine.graphics_resources.m_nextSceneObject = index + 1;
 
     result.outIndex = index;
     result.success = true;
@@ -486,7 +502,7 @@ TextureLoadResult LoadSkyTextureFromFile(ID3D12Device *device, ID3D12GraphicsCom
     cmdList->ResourceBarrier(1, &barrier);
 
     // Allocate index in the sky texture array
-    UINT index = graphics_resources.m_nextSceneObject;
+    UINT index = g_engine.graphics_resources.m_nextSceneObject;
     if (index >= MAX_SKY_TEXTURES)
     {
         SDL_Log("Out of sky texture slots!");
@@ -498,14 +514,14 @@ TextureLoadResult LoadSkyTextureFromFile(ID3D12Device *device, ID3D12GraphicsCom
 
     // Create SRV in the main heap at DescriptorIndices::SKY_SRV + index
     CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(
-        pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart(),
+        g_engine.pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart(),
         DescriptorIndices::SKY_SRV + index,
         g_cbvSrvDescriptorSize);
     device->CreateShaderResourceView(*outResource, nullptr, cpuHandle);
 
     // Store the resource in the array
-    graphics_resources.m_skyResources[index] = *outResource;
-    graphics_resources.m_nextSceneObject = index + 1;
+    g_engine.graphics_resources.m_skyResources[index] = *outResource;
+    g_engine.graphics_resources.m_nextSceneObject = index + 1;
 
     result.outIndex = index;
     result.success = true;
@@ -575,9 +591,9 @@ bool CreateHeightfieldMesh(
         return false;
     }
     // We need to keep uploadVertex until after command list execution. We'll store it similarly to primitive upload buffers.
-    // For simplicity, we can create a static array or store in graphics_resources and release after WaitForGpu.
-    // We'll add a member to graphics_resources to hold the upload buffer.
-    graphics_resources.m_heightfieldVertexUpload = uploadVertex;
+    // For simplicity, we can create a static array or store in g_engine.graphics_resources and release after WaitForGpu.
+    // We'll add a member to g_engine.graphics_resources to hold the upload buffer.
+    g_engine.graphics_resources.m_heightfieldVertexUpload = uploadVertex;
 
     // Create index buffer similarly
     ID3D12Resource *uploadIndex = nullptr;
@@ -587,7 +603,7 @@ bool CreateHeightfieldMesh(
     {
         return false;
     }
-    graphics_resources.m_heightfieldIndexUpload = uploadIndex;
+    g_engine.graphics_resources.m_heightfieldIndexUpload = uploadIndex;
 
     // Set views
     outVertexView.BufferLocation = outVertexBuffer->GetGPUVirtualAddress();
@@ -744,7 +760,7 @@ ModelTextureLoadResult LoadTextureFromCgltfImage(
     // Find free slot in model albedo array
     UINT index = 0;
     for (; index < MAX_LOADED_MODELS; ++index)
-        if (graphics_resources.m_modelAlbedoTextures[index] == nullptr)
+        if (g_engine.graphics_resources.m_modelAlbedoTextures[index] == nullptr)
             break;
     if (index >= MAX_LOADED_MODELS)
     {
@@ -756,12 +772,12 @@ ModelTextureLoadResult LoadTextureFromCgltfImage(
 
     // Create SRV at MODEL_ALBEDO_SRV + index
     CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(
-        pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart(),
+        g_engine.pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart(),
         DescriptorIndices::MODEL_ALBEDO_SRV + index,
         g_cbvSrvDescriptorSize);
     device->CreateShaderResourceView(result.textureResource, nullptr, cpuHandle);
 
-    graphics_resources.m_modelAlbedoTextures[index] = result.textureResource;
+    g_engine.graphics_resources.m_modelAlbedoTextures[index] = result.textureResource;
     result.index = index;
     result.success = true;
     return result;
@@ -880,10 +896,10 @@ ModelLoadResult LoadModelFromFile(const char *path)
 
     // --- Start of upload section ---
     // Ensure command list is open for recording
-    HRAssert(pipeline_dx12.m_commandAllocators[0]->Reset());
-    HRAssert(pipeline_dx12.m_commandList[0]->Reset(
-        pipeline_dx12.m_commandAllocators[0],
-        pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][BlendMode::BLEND_OPAQUE][0]));
+    HRAssert(g_engine.pipeline_dx12.m_commandAllocators[0]->Reset());
+    HRAssert(g_engine.pipeline_dx12.m_commandList[0]->Reset(
+        g_engine.pipeline_dx12.m_commandAllocators[0],
+        g_engine.pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][BlendMode::BLEND_OPAQUE][0]));
 
     // We'll collect all upload heaps here to release after WaitForAllFrames
     std::vector<ID3D12Resource *> uploadHeaps;
@@ -899,8 +915,8 @@ ModelLoadResult LoadModelFromFile(const char *path)
             if (tex->image)
             {
                 ModelTextureLoadResult texResult = LoadTextureFromCgltfImage(
-                    pipeline_dx12.m_device,
-                    pipeline_dx12.m_commandList[0],
+                    g_engine.pipeline_dx12.m_device,
+                    g_engine.pipeline_dx12.m_commandList[0],
                     tex->image,
                     path);
                 if (texResult.success)
@@ -915,7 +931,7 @@ ModelLoadResult LoadModelFromFile(const char *path)
 
     // Create GPU buffers using CreateDefaultBuffer
     ID3D12Resource *vb = nullptr, *ib = nullptr, *vbUpload = nullptr, *ibUpload = nullptr;
-    if (!CreateDefaultBuffer(pipeline_dx12.m_device, pipeline_dx12.m_commandList[0],
+    if (!CreateDefaultBuffer(g_engine.pipeline_dx12.m_device, g_engine.pipeline_dx12.m_commandList[0],
                              vertices.data(), totalVerts * sizeof(Vertex),
                              D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER,
                              &vb, &vbUpload))
@@ -925,7 +941,7 @@ ModelLoadResult LoadModelFromFile(const char *path)
     }
     uploadHeaps.push_back(vbUpload);
 
-    if (!CreateDefaultBuffer(pipeline_dx12.m_device, pipeline_dx12.m_commandList[0],
+    if (!CreateDefaultBuffer(g_engine.pipeline_dx12.m_device, g_engine.pipeline_dx12.m_commandList[0],
                              indices.data(), totalIndices * sizeof(uint32_t),
                              D3D12_RESOURCE_STATE_INDEX_BUFFER,
                              &ib, &ibUpload))
@@ -938,9 +954,9 @@ ModelLoadResult LoadModelFromFile(const char *path)
     uploadHeaps.push_back(ibUpload);
 
     // Close and execute command list
-    HRAssert(pipeline_dx12.m_commandList[0]->Close());
-    ID3D12CommandList *ppLists[] = {pipeline_dx12.m_commandList[0]};
-    pipeline_dx12.m_commandQueue->ExecuteCommandLists(1, ppLists);
+    HRAssert(g_engine.pipeline_dx12.m_commandList[0]->Close());
+    ID3D12CommandList *ppLists[] = {g_engine.pipeline_dx12.m_commandList[0]};
+    g_engine.pipeline_dx12.m_commandQueue->ExecuteCommandLists(1, ppLists);
 
     // Wait for the GPU to finish copying
     WaitForAllFrames();
@@ -956,18 +972,18 @@ ModelLoadResult LoadModelFromFile(const char *path)
         SDL_Log("Max models reached!");
         return result;
     }
-    graphics_resources.m_models[currentModelIndex].vertexBuffer = vb;
-    graphics_resources.m_models[currentModelIndex].indexBuffer = ib;
-    graphics_resources.m_models[currentModelIndex].vertexView.BufferLocation = vb->GetGPUVirtualAddress();
-    graphics_resources.m_models[currentModelIndex].vertexView.StrideInBytes = sizeof(Vertex);
-    graphics_resources.m_models[currentModelIndex].vertexView.SizeInBytes = totalVerts * sizeof(Vertex);
-    graphics_resources.m_models[currentModelIndex].indexView.BufferLocation = ib->GetGPUVirtualAddress();
-    graphics_resources.m_models[currentModelIndex].indexView.SizeInBytes = totalIndices * sizeof(uint32_t);
-    graphics_resources.m_models[currentModelIndex].indexView.Format = DXGI_FORMAT_R32_UINT;
-    graphics_resources.m_models[currentModelIndex].indexCount = totalIndices;
-    graphics_resources.m_models[currentModelIndex].textureIndex = textureIndex; // store it!
+    g_engine.graphics_resources.m_models[currentModelIndex].vertexBuffer = vb;
+    g_engine.graphics_resources.m_models[currentModelIndex].indexBuffer = ib;
+    g_engine.graphics_resources.m_models[currentModelIndex].vertexView.BufferLocation = vb->GetGPUVirtualAddress();
+    g_engine.graphics_resources.m_models[currentModelIndex].vertexView.StrideInBytes = sizeof(Vertex);
+    g_engine.graphics_resources.m_models[currentModelIndex].vertexView.SizeInBytes = totalVerts * sizeof(Vertex);
+    g_engine.graphics_resources.m_models[currentModelIndex].indexView.BufferLocation = ib->GetGPUVirtualAddress();
+    g_engine.graphics_resources.m_models[currentModelIndex].indexView.SizeInBytes = totalIndices * sizeof(uint32_t);
+    g_engine.graphics_resources.m_models[currentModelIndex].indexView.Format = DXGI_FORMAT_R32_UINT;
+    g_engine.graphics_resources.m_models[currentModelIndex].indexCount = totalIndices;
+    g_engine.graphics_resources.m_models[currentModelIndex].textureIndex = textureIndex; // store it!
     strcpy_s(g_modelPaths[currentModelIndex], sizeof(g_modelPaths[currentModelIndex]), path);
-    graphics_resources.m_numModelsLoaded++;
+    g_engine.graphics_resources.m_numModelsLoaded++;
 
     cgltf_free(data);
     result.success = true;
@@ -979,36 +995,36 @@ ModelLoadResult LoadModelFromFile(const char *path)
 void WaitForFrameReady()
 {
     // Wait if the next frame we want to use isn't ready yet
-    if (sync_state.m_fence->GetCompletedValue() < sync_state.m_fenceValues[sync_state.m_frameIndex])
+    if (g_engine.sync_state.m_fence->GetCompletedValue() < g_engine.sync_state.m_fenceValues[g_engine.sync_state.m_frameIndex])
     {
-        HRAssert(sync_state.m_fence->SetEventOnCompletion(sync_state.m_fenceValues[sync_state.m_frameIndex], sync_state.m_fenceEvent));
-        WaitForSingleObjectEx(sync_state.m_fenceEvent, INFINITE, FALSE);
+        HRAssert(g_engine.sync_state.m_fence->SetEventOnCompletion(g_engine.sync_state.m_fenceValues[g_engine.sync_state.m_frameIndex], g_engine.sync_state.m_fenceEvent));
+        WaitForSingleObjectEx(g_engine.sync_state.m_fenceEvent, INFINITE, FALSE);
     }
 }
 
 void SignalFrameComplete()
 {
-    const UINT64 currentFenceValue = sync_state.m_fenceValues[sync_state.m_frameIndex];
-    HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, currentFenceValue));
-    sync_state.m_fenceValues[sync_state.m_frameIndex] = currentFenceValue + 1;
+    const UINT64 currentFenceValue = g_engine.sync_state.m_fenceValues[g_engine.sync_state.m_frameIndex];
+    HRAssert(g_engine.pipeline_dx12.m_commandQueue->Signal(g_engine.sync_state.m_fence, currentFenceValue));
+    g_engine.sync_state.m_fenceValues[g_engine.sync_state.m_frameIndex] = currentFenceValue + 1;
 }
 
 void AdvanceFrameIndex()
 {
-    sync_state.m_frameIndex = pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
+    g_engine.sync_state.m_frameIndex = g_engine.pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
 }
 
 // Wait for pending GPU work to complete.
 void WaitForGpu()
 {
     // Schedule a Signal command in the queue.
-    HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, sync_state.m_fenceValues[sync_state.m_frameIndex]));
+    HRAssert(g_engine.pipeline_dx12.m_commandQueue->Signal(g_engine.sync_state.m_fence, g_engine.sync_state.m_fenceValues[g_engine.sync_state.m_frameIndex]));
     // Wait until the fence has been processed.
-    HRAssert(sync_state.m_fence->SetEventOnCompletion(sync_state.m_fenceValues[sync_state.m_frameIndex], sync_state.m_fenceEvent));
-    WaitForSingleObjectEx(sync_state.m_fenceEvent, INFINITE, FALSE);
+    HRAssert(g_engine.sync_state.m_fence->SetEventOnCompletion(g_engine.sync_state.m_fenceValues[g_engine.sync_state.m_frameIndex], g_engine.sync_state.m_fenceEvent));
+    WaitForSingleObjectEx(g_engine.sync_state.m_fenceEvent, INFINITE, FALSE);
 
     // Increment the fence value for the current frame.
-    // sync_state.m_fenceValues[sync_state.m_frameIndex]++;
+    // g_engine.sync_state.m_fenceValues[g_engine.sync_state.m_frameIndex]++;
 }
 
 void WaitForAllFrames()
@@ -1019,25 +1035,25 @@ void WaitForAllFrames()
     // Find the maximum fence value among all frames
     for (UINT i = 0; i < g_FrameCount; i++)
     {
-        if (sync_state.m_fenceValues[i] > maxFenceValue)
-            maxFenceValue = sync_state.m_fenceValues[i];
+        if (g_engine.sync_state.m_fenceValues[i] > maxFenceValue)
+            maxFenceValue = g_engine.sync_state.m_fenceValues[i];
     }
 
     // Signal the fence with a new value to ensure we wait for all pending work
     const UINT64 currentFenceValue = maxFenceValue + 1;
-    HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, currentFenceValue));
+    HRAssert(g_engine.pipeline_dx12.m_commandQueue->Signal(g_engine.sync_state.m_fence, currentFenceValue));
 
     // Wait for the fence to reach the new value
-    if (sync_state.m_fence->GetCompletedValue() < currentFenceValue)
+    if (g_engine.sync_state.m_fence->GetCompletedValue() < currentFenceValue)
     {
-        HRAssert(sync_state.m_fence->SetEventOnCompletion(currentFenceValue, sync_state.m_fenceEvent));
-        WaitForSingleObjectEx(sync_state.m_fenceEvent, INFINITE, FALSE);
+        HRAssert(g_engine.sync_state.m_fence->SetEventOnCompletion(currentFenceValue, g_engine.sync_state.m_fenceEvent));
+        WaitForSingleObjectEx(g_engine.sync_state.m_fenceEvent, INFINITE, FALSE);
     }
 
     // Update all frame fence values to the new value
     for (UINT i = 0; i < g_FrameCount; i++)
     {
-        sync_state.m_fenceValues[i] = currentFenceValue;
+        g_engine.sync_state.m_fenceValues[i] = currentFenceValue;
     }
 }
 
@@ -1045,28 +1061,21 @@ void WaitForAllFrames()
 void MoveToNextFrame()
 {
     // Schedule a Signal command in the queue.
-    const UINT64 currentFenceValue = sync_state.m_fenceValues[sync_state.m_frameIndex];
-    HRAssert(pipeline_dx12.m_commandQueue->Signal(sync_state.m_fence, currentFenceValue));
+    const UINT64 currentFenceValue = g_engine.sync_state.m_fenceValues[g_engine.sync_state.m_frameIndex];
+    HRAssert(g_engine.pipeline_dx12.m_commandQueue->Signal(g_engine.sync_state.m_fence, currentFenceValue));
     // Update the frame index.
-    sync_state.m_frameIndex = pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
+    g_engine.sync_state.m_frameIndex = g_engine.pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
 
     // If the next frame is not ready to be rendered yet, wait until it is ready.
-    if (sync_state.m_fence->GetCompletedValue() < sync_state.m_fenceValues[sync_state.m_frameIndex])
+    if (g_engine.sync_state.m_fence->GetCompletedValue() < g_engine.sync_state.m_fenceValues[g_engine.sync_state.m_frameIndex])
     {
-        HRAssert(sync_state.m_fence->SetEventOnCompletion(sync_state.m_fenceValues[sync_state.m_frameIndex], sync_state.m_fenceEvent));
-        WaitForSingleObjectEx(sync_state.m_fenceEvent, INFINITE, FALSE);
+        HRAssert(g_engine.sync_state.m_fence->SetEventOnCompletion(g_engine.sync_state.m_fenceValues[g_engine.sync_state.m_frameIndex], g_engine.sync_state.m_fenceEvent));
+        WaitForSingleObjectEx(g_engine.sync_state.m_fenceEvent, INFINITE, FALSE);
     }
 
     // Set the fence value for the next frame.
-    sync_state.m_fenceValues[sync_state.m_frameIndex] = currentFenceValue + 1;
+    g_engine.sync_state.m_fenceValues[g_engine.sync_state.m_frameIndex] = currentFenceValue + 1;
 }
-
-static struct
-{
-    UINT m_width;
-    UINT m_height;
-    float m_aspectRatio;
-} viewport_state;
 
 // Helper function for acquiring the first available hardware adapter that supports Direct3D 12.
 // If no such adapter can be found, *ppAdapter will be set to nullptr.
@@ -1140,8 +1149,8 @@ void CreateMSAAResources(UINT sampleCount)
     // Recreate MSAA render targets
     D3D12_RESOURCE_DESC msaaRtDesc = {};
     msaaRtDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-    msaaRtDesc.Width = viewport_state.m_width;
-    msaaRtDesc.Height = viewport_state.m_height;
+    msaaRtDesc.Width = g_engine.viewport_state.m_width;
+    msaaRtDesc.Height = g_engine.viewport_state.m_height;
     msaaRtDesc.DepthOrArraySize = 1;
     msaaRtDesc.MipLevels = 1;
     msaaRtDesc.Format = g_screenFormat;
@@ -1149,26 +1158,26 @@ void CreateMSAAResources(UINT sampleCount)
     msaaRtDesc.SampleDesc.Quality = 0;
     msaaRtDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE msaaRtvHandle(pipeline_dx12.m_msaaRtvHeap->GetCPUDescriptorHandleForHeapStart());
+    CD3DX12_CPU_DESCRIPTOR_HANDLE msaaRtvHandle(g_engine.pipeline_dx12.m_msaaRtvHeap->GetCPUDescriptorHandleForHeapStart());
     for (UINT n = 0; n < g_FrameCount; n++)
     {
-        HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+        HRAssert(g_engine.pipeline_dx12.m_device->CreateCommittedResource(
             &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
             D3D12_HEAP_FLAG_NONE,
             &msaaRtDesc,
             D3D12_RESOURCE_STATE_RENDER_TARGET,
             &g_rtClearValue,
-            IID_PPV_ARGS(&pipeline_dx12.m_msaaRenderTargets[n])));
+            IID_PPV_ARGS(&g_engine.pipeline_dx12.m_msaaRenderTargets[n])));
 
-        pipeline_dx12.m_device->CreateRenderTargetView(pipeline_dx12.m_msaaRenderTargets[n], nullptr, msaaRtvHandle);
-        msaaRtvHandle.Offset(1, pipeline_dx12.m_rtvDescriptorSize);
+        g_engine.pipeline_dx12.m_device->CreateRenderTargetView(g_engine.pipeline_dx12.m_msaaRenderTargets[n], nullptr, msaaRtvHandle);
+        msaaRtvHandle.Offset(1, g_engine.pipeline_dx12.m_rtvDescriptorSize);
     }
 
     // Recreate MSAA depth buffer
     D3D12_RESOURCE_DESC msaaDepthDesc = {};
     msaaDepthDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-    msaaDepthDesc.Width = viewport_state.m_width;
-    msaaDepthDesc.Height = viewport_state.m_height;
+    msaaDepthDesc.Width = g_engine.viewport_state.m_width;
+    msaaDepthDesc.Height = g_engine.viewport_state.m_height;
     msaaDepthDesc.DepthOrArraySize = 1;
     msaaDepthDesc.MipLevels = 1;
     msaaDepthDesc.Format = DXGI_FORMAT_D32_FLOAT;
@@ -1176,13 +1185,13 @@ void CreateMSAAResources(UINT sampleCount)
     msaaDepthDesc.SampleDesc.Quality = 0;
     msaaDepthDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
-    HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+    HRAssert(g_engine.pipeline_dx12.m_device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
         &msaaDepthDesc,
         D3D12_RESOURCE_STATE_DEPTH_WRITE,
         &g_depthOptimizedClearValue,
-        IID_PPV_ARGS(&pipeline_dx12.m_msaaDepthStencil)));
+        IID_PPV_ARGS(&g_engine.pipeline_dx12.m_msaaDepthStencil)));
 
     // Create DSV for MSAA depth buffer
     D3D12_DEPTH_STENCIL_VIEW_DESC msaaDsvDesc = {};
@@ -1190,10 +1199,10 @@ void CreateMSAAResources(UINT sampleCount)
     msaaDsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2DMS;
     msaaDsvDesc.Flags = D3D12_DSV_FLAG_NONE;
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE msaaDsvHandle(pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
-    msaaDsvHandle.Offset(1, pipeline_dx12.m_dsvDescriptorSize);
-    pipeline_dx12.m_device->CreateDepthStencilView(
-        pipeline_dx12.m_msaaDepthStencil,
+    CD3DX12_CPU_DESCRIPTOR_HANDLE msaaDsvHandle(g_engine.pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
+    msaaDsvHandle.Offset(1, g_engine.pipeline_dx12.m_dsvDescriptorSize);
+    g_engine.pipeline_dx12.m_device->CreateDepthStencilView(
+        g_engine.pipeline_dx12.m_msaaDepthStencil,
         &msaaDsvDesc,
         msaaDsvHandle);
 }
@@ -1203,16 +1212,16 @@ void ReleaseMSAAResources()
     // Release old MSAA resources
     for (UINT n = 0; n < g_FrameCount; n++)
     {
-        if (pipeline_dx12.m_msaaRenderTargets[n])
+        if (g_engine.pipeline_dx12.m_msaaRenderTargets[n])
         {
-            pipeline_dx12.m_msaaRenderTargets[n]->Release();
-            pipeline_dx12.m_msaaRenderTargets[n] = nullptr;
+            g_engine.pipeline_dx12.m_msaaRenderTargets[n]->Release();
+            g_engine.pipeline_dx12.m_msaaRenderTargets[n] = nullptr;
         }
     }
-    if (pipeline_dx12.m_msaaDepthStencil)
+    if (g_engine.pipeline_dx12.m_msaaDepthStencil)
     {
-        pipeline_dx12.m_msaaDepthStencil->Release();
-        pipeline_dx12.m_msaaDepthStencil = nullptr;
+        g_engine.pipeline_dx12.m_msaaDepthStencil->Release();
+        g_engine.pipeline_dx12.m_msaaDepthStencil = nullptr;
     }
 }
 
@@ -1222,16 +1231,16 @@ void RecreateMSAAResources()
 
     ReleaseMSAAResources();
 
-    if (msaa_state.m_enabled)
+    if (g_engine.msaa_state.m_enabled)
     {
-        CreateMSAAResources(msaa_state.m_currentSampleCount);
+        CreateMSAAResources(g_engine.msaa_state.m_currentSampleCount);
     }
 }
 
 void RecreateSwapChain()
 {
     SDL_Log("Recreating swap chain for new window size: %ux%u",
-            viewport_state.m_width, viewport_state.m_height);
+            g_engine.viewport_state.m_width, g_engine.viewport_state.m_height);
 
     // Wait for all GPU work to complete
     WaitForAllFrames();
@@ -1239,26 +1248,26 @@ void RecreateSwapChain()
     // Release old resources
     for (UINT i = 0; i < g_FrameCount; i++)
     {
-        if (pipeline_dx12.m_renderTargets[i])
+        if (g_engine.pipeline_dx12.m_renderTargets[i])
         {
-            pipeline_dx12.m_renderTargets[i]->Release();
-            pipeline_dx12.m_renderTargets[i] = nullptr;
+            g_engine.pipeline_dx12.m_renderTargets[i]->Release();
+            g_engine.pipeline_dx12.m_renderTargets[i] = nullptr;
         }
     }
 
-    if (pipeline_dx12.m_depthStencil)
+    if (g_engine.pipeline_dx12.m_depthStencil)
     {
-        pipeline_dx12.m_depthStencil->Release();
-        pipeline_dx12.m_depthStencil = nullptr;
+        g_engine.pipeline_dx12.m_depthStencil->Release();
+        g_engine.pipeline_dx12.m_depthStencil = nullptr;
     }
 
     ReleaseMSAAResources();
 
     // Resize swap chain buffers
-    HRESULT hr = pipeline_dx12.m_swapChain->ResizeBuffers(
+    HRESULT hr = g_engine.pipeline_dx12.m_swapChain->ResizeBuffers(
         g_FrameCount,
-        viewport_state.m_width,
-        viewport_state.m_height,
+        g_engine.viewport_state.m_width,
+        g_engine.viewport_state.m_height,
         g_screenFormat,
         DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING);
 
@@ -1269,16 +1278,16 @@ void RecreateSwapChain()
     }
 
     // Update frame index
-    sync_state.m_frameIndex = pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
+    g_engine.sync_state.m_frameIndex = g_engine.pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
 
     // Recreate back buffer RTVs
     CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(
-        pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
+        g_engine.pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
 
     for (UINT i = 0; i < g_FrameCount; i++)
     {
-        hr = pipeline_dx12.m_swapChain->GetBuffer(i,
-                                                  IID_PPV_ARGS(&pipeline_dx12.m_renderTargets[i]));
+        hr = g_engine.pipeline_dx12.m_swapChain->GetBuffer(i,
+                                                  IID_PPV_ARGS(&g_engine.pipeline_dx12.m_renderTargets[i]));
 
         if (FAILED(hr))
         {
@@ -1286,31 +1295,31 @@ void RecreateSwapChain()
             return;
         }
 
-        pipeline_dx12.m_device->CreateRenderTargetView(
-            pipeline_dx12.m_renderTargets[i],
+        g_engine.pipeline_dx12.m_device->CreateRenderTargetView(
+            g_engine.pipeline_dx12.m_renderTargets[i],
             nullptr,
             rtvHandle);
-        rtvHandle.Offset(1, pipeline_dx12.m_rtvDescriptorSize);
+        rtvHandle.Offset(1, g_engine.pipeline_dx12.m_rtvDescriptorSize);
     }
 
     // Recreate depth buffer
     D3D12_RESOURCE_DESC depthStencilDesc = {};
     depthStencilDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-    depthStencilDesc.Width = viewport_state.m_width;
-    depthStencilDesc.Height = viewport_state.m_height;
+    depthStencilDesc.Width = g_engine.viewport_state.m_width;
+    depthStencilDesc.Height = g_engine.viewport_state.m_height;
     depthStencilDesc.DepthOrArraySize = 1;
     depthStencilDesc.MipLevels = 1;
     depthStencilDesc.Format = DXGI_FORMAT_D32_FLOAT;
     depthStencilDesc.SampleDesc.Count = 1;
     depthStencilDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
-    hr = pipeline_dx12.m_device->CreateCommittedResource(
+    hr = g_engine.pipeline_dx12.m_device->CreateCommittedResource(
         &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
         D3D12_HEAP_FLAG_NONE,
         &depthStencilDesc,
         D3D12_RESOURCE_STATE_DEPTH_WRITE,
         &g_depthOptimizedClearValue,
-        IID_PPV_ARGS(&pipeline_dx12.m_depthStencil));
+        IID_PPV_ARGS(&g_engine.pipeline_dx12.m_depthStencil));
 
     if (FAILED(hr))
     {
@@ -1323,26 +1332,26 @@ void RecreateSwapChain()
     dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
     dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
 
-    pipeline_dx12.m_device->CreateDepthStencilView(
-        pipeline_dx12.m_depthStencil,
+    g_engine.pipeline_dx12.m_device->CreateDepthStencilView(
+        g_engine.pipeline_dx12.m_depthStencil,
         &dsvDesc,
-        pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
+        g_engine.pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
 
     // Update viewport and scissor
-    pipeline_dx12.m_viewport = CD3DX12_VIEWPORT(
+    g_engine.pipeline_dx12.m_viewport = CD3DX12_VIEWPORT(
         0.0f, 0.0f,
-        static_cast<float>(viewport_state.m_width),
-        static_cast<float>(viewport_state.m_height));
+        static_cast<float>(g_engine.viewport_state.m_width),
+        static_cast<float>(g_engine.viewport_state.m_height));
 
-    pipeline_dx12.m_scissorRect = CD3DX12_RECT(
+    g_engine.pipeline_dx12.m_scissorRect = CD3DX12_RECT(
         0, 0,
-        static_cast<LONG>(viewport_state.m_width),
-        static_cast<LONG>(viewport_state.m_height));
+        static_cast<LONG>(g_engine.viewport_state.m_width),
+        static_cast<LONG>(g_engine.viewport_state.m_height));
 
     // Recreate MSAA resources if enabled
-    if (msaa_state.m_enabled)
+    if (g_engine.msaa_state.m_enabled)
     {
-        CreateMSAAResources(msaa_state.m_currentSampleCount);
+        CreateMSAAResources(g_engine.msaa_state.m_currentSampleCount);
     }
 
     SDL_Log("Swap chain successfully recreated");
@@ -1385,7 +1394,7 @@ bool LoadPipeline(HWND hwnd)
         if (HRAssert(D3D12CreateDevice(
                 warpAdapter,
                 D3D_FEATURE_LEVEL_11_0,
-                IID_PPV_ARGS(&pipeline_dx12.m_device))))
+                IID_PPV_ARGS(&g_engine.pipeline_dx12.m_device))))
             return false;
     }
     else
@@ -1396,7 +1405,7 @@ bool LoadPipeline(HWND hwnd)
         HRAssert(D3D12CreateDevice(
             hardwareAdapter,
             D3D_FEATURE_LEVEL_11_0,
-            IID_PPV_ARGS(&pipeline_dx12.m_device)));
+            IID_PPV_ARGS(&g_engine.pipeline_dx12.m_device)));
     }
 
     // Describe and create the command queue.
@@ -1404,14 +1413,14 @@ bool LoadPipeline(HWND hwnd)
     queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
     queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 
-    if (!HRAssert(pipeline_dx12.m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&pipeline_dx12.m_commandQueue))))
+    if (!HRAssert(g_engine.pipeline_dx12.m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&g_engine.pipeline_dx12.m_commandQueue))))
         return false;
 
     // Describe and create the swap chain.
     DXGI_SWAP_CHAIN_DESC1 swapChainDesc = {};
     swapChainDesc.BufferCount = g_FrameCount;
-    swapChainDesc.Width = viewport_state.m_width;
-    swapChainDesc.Height = viewport_state.m_height;
+    swapChainDesc.Width = g_engine.viewport_state.m_width;
+    swapChainDesc.Height = g_engine.viewport_state.m_height;
     swapChainDesc.Format = g_screenFormat;
     swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
     swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
@@ -1420,7 +1429,7 @@ bool LoadPipeline(HWND hwnd)
 
     IDXGISwapChain1 *swapChain;
     HRAssert(factory->CreateSwapChainForHwnd(
-        pipeline_dx12.m_commandQueue, // Swap chain needs the queue so that it can force a flush on it.
+        g_engine.pipeline_dx12.m_commandQueue, // Swap chain needs the queue so that it can force a flush on it.
         hwnd,
         &swapChainDesc,
         nullptr,
@@ -1431,9 +1440,9 @@ bool LoadPipeline(HWND hwnd)
     if (!HRAssert(factory->MakeWindowAssociation(hwnd, DXGI_MWA_NO_ALT_ENTER)))
         return false;
 
-    if (!HRAssert(swapChain->QueryInterface(IID_PPV_ARGS(&pipeline_dx12.m_swapChain))))
+    if (!HRAssert(swapChain->QueryInterface(IID_PPV_ARGS(&g_engine.pipeline_dx12.m_swapChain))))
         return false;
-    sync_state.m_frameIndex = pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
+    g_engine.sync_state.m_frameIndex = g_engine.pipeline_dx12.m_swapChain->GetCurrentBackBufferIndex();
 
     // Create descriptor heaps.
     {
@@ -1442,32 +1451,32 @@ bool LoadPipeline(HWND hwnd)
         rtvHeapDesc.NumDescriptors = g_FrameCount;
         rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
         rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-        if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_rtvHeap))))
+        if (!HRAssert(g_engine.pipeline_dx12.m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&g_engine.pipeline_dx12.m_rtvHeap))))
             return false;
 
         D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
         dsvHeapDesc.NumDescriptors = 2; // Regular depth + MSAA depth
         dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
         dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-        if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_dsvHeap))))
+        if (!HRAssert(g_engine.pipeline_dx12.m_device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&g_engine.pipeline_dx12.m_dsvHeap))))
             return false;
-        pipeline_dx12.m_dsvDescriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+        g_engine.pipeline_dx12.m_dsvDescriptorSize = g_engine.pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 
         // Describe and create a shader resource view (SRV) heap for the texture.
         D3D12_DESCRIPTOR_HEAP_DESC mainHeapDesc = {};
         mainHeapDesc.NumDescriptors = DescriptorIndices::NUM_DESCRIPTORS; // Texture + per-frame CBVs + per-scene CBV
         mainHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         mainHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&mainHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_mainHeap))))
+        if (!HRAssert(g_engine.pipeline_dx12.m_device->CreateDescriptorHeap(&mainHeapDesc, IID_PPV_ARGS(&g_engine.pipeline_dx12.m_mainHeap))))
             return false;
-        pipeline_dx12.m_rtvDescriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+        g_engine.pipeline_dx12.m_rtvDescriptorSize = g_engine.pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
         // Create ImGui's descriptor heap
         D3D12_DESCRIPTOR_HEAP_DESC imguiHeapDesc = {};
         imguiHeapDesc.NumDescriptors = 10; // Enough for fonts and a few textures
         imguiHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
         imguiHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-        if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&imguiHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_imguiHeap))))
+        if (!HRAssert(g_engine.pipeline_dx12.m_device->CreateDescriptorHeap(&imguiHeapDesc, IID_PPV_ARGS(&g_engine.pipeline_dx12.m_imguiHeap))))
             return false;
 
         // Create MSAA RTV descriptor heap
@@ -1475,61 +1484,61 @@ bool LoadPipeline(HWND hwnd)
         msaaRtvHeapDesc.NumDescriptors = g_FrameCount;
         msaaRtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
         msaaRtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-        if (!HRAssert(pipeline_dx12.m_device->CreateDescriptorHeap(&msaaRtvHeapDesc, IID_PPV_ARGS(&pipeline_dx12.m_msaaRtvHeap))))
+        if (!HRAssert(g_engine.pipeline_dx12.m_device->CreateDescriptorHeap(&msaaRtvHeapDesc, IID_PPV_ARGS(&g_engine.pipeline_dx12.m_msaaRtvHeap))))
             return false;
     }
 
-    pipeline_dx12.m_viewport = CD3DX12_VIEWPORT(0.0f, 0.0f, static_cast<float>(viewport_state.m_width), static_cast<float>(viewport_state.m_height));
-    pipeline_dx12.m_scissorRect = CD3DX12_RECT(0, 0, static_cast<LONG>(viewport_state.m_width), static_cast<LONG>(viewport_state.m_height));
+    g_engine.pipeline_dx12.m_viewport = CD3DX12_VIEWPORT(0.0f, 0.0f, static_cast<float>(g_engine.viewport_state.m_width), static_cast<float>(g_engine.viewport_state.m_height));
+    g_engine.pipeline_dx12.m_scissorRect = CD3DX12_RECT(0, 0, static_cast<LONG>(g_engine.viewport_state.m_width), static_cast<LONG>(g_engine.viewport_state.m_height));
 
     // Create frame resources.
     {
-        CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
+        CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(g_engine.pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
 
         // Create a RTV and a command allocator for each frame.
         for (UINT n = 0; n < g_FrameCount; n++)
         {
-            if (!HRAssert(pipeline_dx12.m_swapChain->GetBuffer(n, IID_PPV_ARGS(&pipeline_dx12.m_renderTargets[n]))))
+            if (!HRAssert(g_engine.pipeline_dx12.m_swapChain->GetBuffer(n, IID_PPV_ARGS(&g_engine.pipeline_dx12.m_renderTargets[n]))))
                 return false;
-            pipeline_dx12.m_device->CreateRenderTargetView(pipeline_dx12.m_renderTargets[n], nullptr, rtvHandle);
-            rtvHandle.Offset(1, pipeline_dx12.m_rtvDescriptorSize);
+            g_engine.pipeline_dx12.m_device->CreateRenderTargetView(g_engine.pipeline_dx12.m_renderTargets[n], nullptr, rtvHandle);
+            rtvHandle.Offset(1, g_engine.pipeline_dx12.m_rtvDescriptorSize);
 
-            if (!HRAssert(pipeline_dx12.m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&pipeline_dx12.m_commandAllocators[n]))))
+            if (!HRAssert(g_engine.pipeline_dx12.m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&g_engine.pipeline_dx12.m_commandAllocators[n]))))
                 return false;
         }
 
         // create the depth buffer resource
         D3D12_RESOURCE_DESC depthStencilDesc = {};
         depthStencilDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-        depthStencilDesc.Width = viewport_state.m_width;
-        depthStencilDesc.Height = viewport_state.m_height;
+        depthStencilDesc.Width = g_engine.viewport_state.m_width;
+        depthStencilDesc.Height = g_engine.viewport_state.m_height;
         depthStencilDesc.DepthOrArraySize = 1;
         depthStencilDesc.MipLevels = 1;
         depthStencilDesc.Format = DXGI_FORMAT_D32_FLOAT;
         depthStencilDesc.SampleDesc.Count = 1;
         depthStencilDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
-        pipeline_dx12.m_device->CreateCommittedResource(
+        g_engine.pipeline_dx12.m_device->CreateCommittedResource(
             &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
             D3D12_HEAP_FLAG_NONE,
             &depthStencilDesc,
             D3D12_RESOURCE_STATE_DEPTH_WRITE,
             &g_depthOptimizedClearValue,
-            IID_PPV_ARGS(&pipeline_dx12.m_depthStencil));
+            IID_PPV_ARGS(&g_engine.pipeline_dx12.m_depthStencil));
 
         D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc = {};
         dsvDesc.Format = DXGI_FORMAT_D32_FLOAT;
         dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
         dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
 
-        pipeline_dx12.m_device->CreateDepthStencilView(
-            pipeline_dx12.m_depthStencil,
+        g_engine.pipeline_dx12.m_device->CreateDepthStencilView(
+            g_engine.pipeline_dx12.m_depthStencil,
             &dsvDesc,
-            pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
+            g_engine.pipeline_dx12.m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
 
-        msaa_state.CalcSupportedMSAALevels(pipeline_dx12.m_device);
-        if (msaa_state.m_enabled)
-            CreateMSAAResources(msaa_state.m_currentSampleCount);
+        g_engine.msaa_state.CalcSupportedMSAALevels(g_engine.pipeline_dx12.m_device);
+        if (g_engine.msaa_state.m_enabled)
+            CreateMSAAResources(g_engine.msaa_state.m_currentSampleCount);
     }
     factory->Release();
     return true;
@@ -1674,7 +1683,7 @@ bool LoadAssets()
             HRAssert(hr);
             return false;
         }
-        if (!HRAssert(pipeline_dx12.m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&pipeline_dx12.m_rootSignature))))
+        if (!HRAssert(g_engine.pipeline_dx12.m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&g_engine.pipeline_dx12.m_rootSignature))))
             return false;
     }
 
@@ -1695,39 +1704,39 @@ bool LoadAssets()
         // do i do another loop for every blend mode? or what, just stick with blendemode = 0?
         BlendMode b = BlendMode::BLEND_OPAQUE;
         HRAssert(
-            pipeline_dx12.m_device->CreateCommandList(
+            g_engine.pipeline_dx12.m_device->CreateCommandList(
                 0, D3D12_COMMAND_LIST_TYPE_DIRECT,
-                pipeline_dx12.m_commandAllocators[i],
-                pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][b][0],
-                IID_PPV_ARGS(&pipeline_dx12.m_commandList[i])));
-        HRAssert(pipeline_dx12.m_commandList[i]->Close());
+                g_engine.pipeline_dx12.m_commandAllocators[i],
+                g_engine.pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][b][0],
+                IID_PPV_ARGS(&g_engine.pipeline_dx12.m_commandList[i])));
+        HRAssert(g_engine.pipeline_dx12.m_commandList[i]->Close());
     }
 
     // Reset the first command list for setup recording
-    HRAssert(pipeline_dx12.m_commandList[0]->Reset(
-        pipeline_dx12.m_commandAllocators[0],
-        pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][BlendMode::BLEND_OPAQUE][0]));
+    HRAssert(g_engine.pipeline_dx12.m_commandList[0]->Reset(
+        g_engine.pipeline_dx12.m_commandAllocators[0],
+        g_engine.pipeline_dx12.m_pipelineStates[RenderPipeline::RENDER_DEFAULT][BlendMode::BLEND_OPAQUE][0]));
 
     for (UINT i = 0; i < PrimitiveType::PRIMITIVE_COUNT; ++i)
     {
         PrimitiveType type = static_cast<PrimitiveType>(i);
         if (!CreatePrimitiveMeshBuffers(
-                pipeline_dx12.m_device,
-                pipeline_dx12.m_commandList[0],
+                g_engine.pipeline_dx12.m_device,
+                g_engine.pipeline_dx12.m_commandList[0],
                 type,
                 kPrimitiveMeshData[i],
-                graphics_resources.m_vertexBuffer[i],
-                graphics_resources.m_vertexBufferView[i],
-                graphics_resources.m_indexBuffer[i],
-                graphics_resources.m_indexBufferView[i],
-                graphics_resources.m_indexCount[i]))
+                g_engine.graphics_resources.m_vertexBuffer[i],
+                g_engine.graphics_resources.m_vertexBufferView[i],
+                g_engine.graphics_resources.m_indexBuffer[i],
+                g_engine.graphics_resources.m_indexBufferView[i],
+                g_engine.graphics_resources.m_indexCount[i]))
         {
             return false;
         }
     }
 
-    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuStart(pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart());
-    UINT cbvSrvDescriptorSize = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+    CD3DX12_CPU_DESCRIPTOR_HANDLE cpuStart(g_engine.pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart());
+    UINT cbvSrvDescriptorSize = g_engine.pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
     g_cbvSrvDescriptorSize = cbvSrvDescriptorSize;
 
     // Create fallback error texture (4x4 pink/black checkerboard)
@@ -1763,19 +1772,19 @@ bool LoadAssets()
         errDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
         // Check device removed reason first
-        HRESULT removal = pipeline_dx12.m_device->GetDeviceRemovedReason();
+        HRESULT removal = g_engine.pipeline_dx12.m_device->GetDeviceRemovedReason();
         if (removal != S_OK)
         {
             SDL_Log("Device removed before texture creation: 0x%08X", removal);
         }
 
-        HRESULT hr = pipeline_dx12.m_device->CreateCommittedResource(
+        HRESULT hr = g_engine.pipeline_dx12.m_device->CreateCommittedResource(
             &heapProps,
             D3D12_HEAP_FLAG_NONE,
             &errDesc,
             D3D12_RESOURCE_STATE_COPY_DEST,
             nullptr,
-            IID_PPV_ARGS(&graphics_resources.m_heightmapResources[0]));
+            IID_PPV_ARGS(&g_engine.graphics_resources.m_heightmapResources[0]));
 
         if (FAILED(hr))
         {
@@ -1785,8 +1794,8 @@ bool LoadAssets()
         }
 
         ID3D12Resource *errUpload = nullptr;
-        UINT64 uploadSize = GetRequiredIntermediateSize(graphics_resources.m_heightmapResources[0], 0, 1);
-        HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+        UINT64 uploadSize = GetRequiredIntermediateSize(g_engine.graphics_resources.m_heightmapResources[0], 0, 1);
+        HRAssert(g_engine.pipeline_dx12.m_device->CreateCommittedResource(
             &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
             D3D12_HEAP_FLAG_NONE,
             &CD3DX12_RESOURCE_DESC::Buffer(uploadSize),
@@ -1799,27 +1808,27 @@ bool LoadAssets()
         subData.RowPitch = errWidth * 4;
         subData.SlicePitch = subData.RowPitch * errHeight;
 
-        UpdateSubresources(pipeline_dx12.m_commandList[0],
-                           graphics_resources.m_heightmapResources[0],
+        UpdateSubresources(g_engine.pipeline_dx12.m_commandList[0],
+                           g_engine.graphics_resources.m_heightmapResources[0],
                            errUpload,
                            0, 0, 1, &subData);
 
         auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-            graphics_resources.m_heightmapResources[0],
+            g_engine.graphics_resources.m_heightmapResources[0],
             D3D12_RESOURCE_STATE_COPY_DEST,
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-        pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
+        g_engine.pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
 
         // After resource creation, create SRV at HEIGHTMAP_SRV + 0
         UINT errorIndex = 0;
         CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(
-            pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart(),
+            g_engine.pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart(),
             DescriptorIndices::HEIGHTMAP_SRV + errorIndex,
             cbvSrvDescriptorSize);
-        pipeline_dx12.m_device->CreateShaderResourceView(graphics_resources.m_heightmapResources[0], nullptr, cpuHandle);
+        g_engine.pipeline_dx12.m_device->CreateShaderResourceView(g_engine.graphics_resources.m_heightmapResources[0], nullptr, cpuHandle);
 
-        graphics_resources.m_heightmapResources[errorIndex] = graphics_resources.m_heightmapResources[0];
-        graphics_resources.m_nextSceneObject = 1; // next free index is 1
+        g_engine.graphics_resources.m_heightmapResources[errorIndex] = g_engine.graphics_resources.m_heightmapResources[0];
+        g_engine.graphics_resources.m_nextSceneObject = 1; // next free index is 1
         g_errorHeightmapIndex = errorIndex;
     }
 
@@ -1837,7 +1846,7 @@ bool LoadAssets()
         D3D12_RESOURCE_DESC desc = CD3DX12_RESOURCE_DESC::Tex2D(
             DXGI_FORMAT_R8G8B8A8_UNORM, fallbackWidth, fallbackHeight, 1, 1);
         ID3D12Resource *tex = nullptr;
-        HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+        HRAssert(g_engine.pipeline_dx12.m_device->CreateCommittedResource(
             &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
             D3D12_HEAP_FLAG_NONE,
             &desc,
@@ -1847,7 +1856,7 @@ bool LoadAssets()
 
         ID3D12Resource *upload = nullptr;
         UINT64 uploadSize = GetRequiredIntermediateSize(tex, 0, 1);
-        HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+        HRAssert(g_engine.pipeline_dx12.m_device->CreateCommittedResource(
             &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
             D3D12_HEAP_FLAG_NONE,
             &CD3DX12_RESOURCE_DESC::Buffer(uploadSize),
@@ -1860,20 +1869,20 @@ bool LoadAssets()
         subData.RowPitch = fallbackWidth * 4;
         subData.SlicePitch = subData.RowPitch * fallbackHeight;
 
-        UpdateSubresources(pipeline_dx12.m_commandList[0], tex, upload, 0, 0, 1, &subData);
+        UpdateSubresources(g_engine.pipeline_dx12.m_commandList[0], tex, upload, 0, 0, 1, &subData);
         auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(tex,
                                                             D3D12_RESOURCE_STATE_COPY_DEST,
                                                             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-        pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
+        g_engine.pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
 
         // Create SRV at index 0 in model albedo range
         CD3DX12_CPU_DESCRIPTOR_HANDLE cpuHandle(
-            pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart(),
+            g_engine.pipeline_dx12.m_mainHeap->GetCPUDescriptorHandleForHeapStart(),
             DescriptorIndices::MODEL_ALBEDO_SRV,
             g_cbvSrvDescriptorSize);
-        pipeline_dx12.m_device->CreateShaderResourceView(tex, nullptr, cpuHandle);
+        g_engine.pipeline_dx12.m_device->CreateShaderResourceView(tex, nullptr, cpuHandle);
 
-        graphics_resources.m_modelAlbedoTextures[0] = tex;
+        g_engine.graphics_resources.m_modelAlbedoTextures[0] = tex;
         // Keep upload heap alive until after WaitForGpu (add to a list or just release after WaitForGpu)
         // We'll add it to a temporary list and release after the final WaitForGpu at the end of LoadAssets.
         // For simplicity, we can store it in a static variable and release at the end.
@@ -1885,14 +1894,14 @@ bool LoadAssets()
     // create the shared heightfield mesh
     const UINT heightfieldGridSize = 256; // 256x256 quads -> 257x257 vertices
     if (!CreateHeightfieldMesh(
-            pipeline_dx12.m_device,
-            pipeline_dx12.m_commandList[0],
+            g_engine.pipeline_dx12.m_device,
+            g_engine.pipeline_dx12.m_commandList[0],
             heightfieldGridSize,
-            graphics_resources.m_heightfieldVertexBuffer,
-            graphics_resources.m_heightfieldVertexView,
-            graphics_resources.m_heightfieldIndexBuffer,
-            graphics_resources.m_heightfieldIndexView,
-            graphics_resources.m_heightfieldIndexCount))
+            g_engine.graphics_resources.m_heightfieldVertexBuffer,
+            g_engine.graphics_resources.m_heightfieldVertexView,
+            g_engine.graphics_resources.m_heightfieldIndexBuffer,
+            g_engine.graphics_resources.m_heightfieldIndexView,
+            g_engine.graphics_resources.m_heightfieldIndexCount))
     {
         HRAssert(E_ABORT);
         return false;
@@ -1903,48 +1912,48 @@ bool LoadAssets()
     {
         const UINT PerFrameConstantBufferSize = sizeof(PerFrameConstantBuffer); // CB size is required to be 256-byte aligned.
 
-        if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+        if (!HRAssert(g_engine.pipeline_dx12.m_device->CreateCommittedResource(
                 &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
                 D3D12_HEAP_FLAG_NONE,
                 &CD3DX12_RESOURCE_DESC::Buffer(PerFrameConstantBufferSize),
                 D3D12_RESOURCE_STATE_GENERIC_READ,
                 nullptr,
-                IID_PPV_ARGS(&graphics_resources.m_PerFrameConstantBuffer[i]))))
+                IID_PPV_ARGS(&g_engine.graphics_resources.m_PerFrameConstantBuffer[i]))))
             return false;
 
         // Describe and create a constant buffer view.
         D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-        cbvDesc.BufferLocation = graphics_resources.m_PerFrameConstantBuffer[i]->GetGPUVirtualAddress();
+        cbvDesc.BufferLocation = g_engine.graphics_resources.m_PerFrameConstantBuffer[i]->GetGPUVirtualAddress();
         cbvDesc.SizeInBytes = PerFrameConstantBufferSize;
 
         CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(
             cpuStart,
             (INT)i,
             cbvSrvDescriptorSize);
-        pipeline_dx12.m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);
+        g_engine.pipeline_dx12.m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);
 
         // Map and initialize the constant buffer. We don't unmap this until the
         // app closes. Keeping things mapped for the lifetime of the resource is okay.
         CD3DX12_RANGE readRange(0, 0); // We do not intend to read from this resource on the CPU.
-        if (!HRAssert(graphics_resources.m_PerFrameConstantBuffer[i]->Map(0, &readRange, reinterpret_cast<void **>(&graphics_resources.m_pCbvDataBegin[i]))))
+        if (!HRAssert(g_engine.graphics_resources.m_PerFrameConstantBuffer[i]->Map(0, &readRange, reinterpret_cast<void **>(&g_engine.graphics_resources.m_pCbvDataBegin[i]))))
             return false;
-        memcpy(graphics_resources.m_pCbvDataBegin[i], &graphics_resources.m_PerFrameConstantBufferData, sizeof(graphics_resources.m_PerFrameConstantBufferData));
+        memcpy(g_engine.graphics_resources.m_pCbvDataBegin[i], &g_engine.graphics_resources.m_PerFrameConstantBufferData, sizeof(g_engine.graphics_resources.m_PerFrameConstantBufferData));
     }
 
     // create per scene constant buffer that just sits and gets updated rarely
     {
         const UINT PerSceneConstantBufferSize = sizeof(PerSceneConstantBuffer); // CB size is required to be 256-byte aligned.
 
-        HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+        HRAssert(g_engine.pipeline_dx12.m_device->CreateCommittedResource(
             &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
             D3D12_HEAP_FLAG_NONE,
             &CD3DX12_RESOURCE_DESC::Buffer(PerSceneConstantBufferSize),
             D3D12_RESOURCE_STATE_GENERIC_READ,
             nullptr,
-            IID_PPV_ARGS(&graphics_resources.m_PerSceneConstantBuffer)));
+            IID_PPV_ARGS(&g_engine.graphics_resources.m_PerSceneConstantBuffer)));
 
         D3D12_CONSTANT_BUFFER_VIEW_DESC perSceneCbvDesc = {};
-        perSceneCbvDesc.BufferLocation = graphics_resources.m_PerSceneConstantBuffer->GetGPUVirtualAddress();
+        perSceneCbvDesc.BufferLocation = g_engine.graphics_resources.m_PerSceneConstantBuffer->GetGPUVirtualAddress();
         perSceneCbvDesc.SizeInBytes = PerSceneConstantBufferSize;
 
         // Per-scene CBV goes at descriptor index g_FrameCount + 1 (after per-frame CBVs)
@@ -1952,22 +1961,22 @@ bool LoadAssets()
             cpuStart,
             (INT)(DescriptorIndices::PER_SCENE_CBV),
             cbvSrvDescriptorSize);
-        pipeline_dx12.m_device->CreateConstantBufferView(&perSceneCbvDesc, perSceneCbvHandle);
+        g_engine.pipeline_dx12.m_device->CreateConstantBufferView(&perSceneCbvDesc, perSceneCbvHandle);
 
         // todo: abstract this so i can call it from main when i want it updated
         // Map and initialize the per-scene constant buffer
         CD3DX12_RANGE readRange(0, 0);
-        HRAssert(graphics_resources.m_PerSceneConstantBuffer->Map(
+        HRAssert(g_engine.graphics_resources.m_PerSceneConstantBuffer->Map(
             0, &readRange,
-            reinterpret_cast<void **>(&graphics_resources.m_pPerSceneCbvDataBegin)));
+            reinterpret_cast<void **>(&g_engine.graphics_resources.m_pPerSceneCbvDataBegin)));
 
-        graphics_resources.m_PerSceneConstantBufferData.ambient_colour = DirectX::XMFLOAT4(0.2f, 0.2f, 0.3f, 1.0f);
-        graphics_resources.m_PerSceneConstantBufferData.light_direction = DirectX::XMFLOAT4(0.2f, 0.2f, 0.3f, 1.0f);
-        graphics_resources.m_PerSceneConstantBufferData.light_colour = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+        g_engine.graphics_resources.m_PerSceneConstantBufferData.ambient_colour = DirectX::XMFLOAT4(0.2f, 0.2f, 0.3f, 1.0f);
+        g_engine.graphics_resources.m_PerSceneConstantBufferData.light_direction = DirectX::XMFLOAT4(0.2f, 0.2f, 0.3f, 1.0f);
+        g_engine.graphics_resources.m_PerSceneConstantBufferData.light_colour = DirectX::XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 
-        memcpy(graphics_resources.m_pPerSceneCbvDataBegin,
-               &graphics_resources.m_PerSceneConstantBufferData,
-               sizeof(graphics_resources.m_PerSceneConstantBufferData));
+        memcpy(g_engine.graphics_resources.m_pPerSceneCbvDataBegin,
+               &g_engine.graphics_resources.m_PerSceneConstantBufferData,
+               sizeof(g_engine.graphics_resources.m_PerSceneConstantBufferData));
     }
 
     // Note: ComPtr's are CPU objects but this resource needs to stay in scope until
@@ -2082,24 +2091,24 @@ bool LoadAssets()
         textureDesc.SampleDesc.Quality = 0;
         textureDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 
-        if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+        if (!HRAssert(g_engine.pipeline_dx12.m_device->CreateCommittedResource(
                 &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
                 D3D12_HEAP_FLAG_NONE,
                 &textureDesc,
                 D3D12_RESOURCE_STATE_COPY_DEST,
                 nullptr,
-                IID_PPV_ARGS(&graphics_resources.m_defaultTexture))))
+                IID_PPV_ARGS(&g_engine.graphics_resources.m_defaultTexture))))
             return false;
 
         // Calculate upload buffer size for ALL mip levels
         const UINT64 uploadBufferSize = GetRequiredIntermediateSize(
-            graphics_resources.m_defaultTexture,
+            g_engine.graphics_resources.m_defaultTexture,
             0,
             imageCountUINT // Already cast to UINT
         );
 
         // Create the GPU upload buffer.
-        if (!HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+        if (!HRAssert(g_engine.pipeline_dx12.m_device->CreateCommittedResource(
                 &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
                 D3D12_HEAP_FLAG_NONE,
                 &CD3DX12_RESOURCE_DESC::Buffer(uploadBufferSize),
@@ -2118,20 +2127,20 @@ bool LoadAssets()
         }
 
         // Copy ALL mip levels to the GPU
-        UpdateSubresources(pipeline_dx12.m_commandList[0],
-                           graphics_resources.m_defaultTexture,
+        UpdateSubresources(g_engine.pipeline_dx12.m_commandList[0],
+                           g_engine.graphics_resources.m_defaultTexture,
                            textureUploadHeap,
                            0, 0,
                            imageCountUINT, // Already cast to UINT
                            subresources.data());
 
         auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-            graphics_resources.m_defaultTexture,
+            g_engine.graphics_resources.m_defaultTexture,
             D3D12_RESOURCE_STATE_COPY_DEST,
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
-        pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
+        g_engine.pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
 
-        UINT increment = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(
+        UINT increment = g_engine.pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(
             D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         CD3DX12_CPU_DESCRIPTOR_HANDLE cpuSrv(cpuStart);
         cpuSrv.Offset(DescriptorIndices::TEXTURE_SRV, increment);
@@ -2144,7 +2153,7 @@ bool LoadAssets()
         srvDesc.Texture2D.MostDetailedMip = 0;
         srvDesc.Texture2D.MipLevels = mipLevelsUINT; // ALL mips!
         srvDesc.Texture2D.ResourceMinLODClamp = 0.0f;
-        pipeline_dx12.m_device->CreateShaderResourceView(graphics_resources.m_defaultTexture, &srvDesc, cpuSrv);
+        g_engine.pipeline_dx12.m_device->CreateShaderResourceView(g_engine.graphics_resources.m_defaultTexture, &srvDesc, cpuSrv);
     }
 
     {
@@ -2174,17 +2183,17 @@ bool LoadAssets()
         hmDesc.Flags = D3D12_RESOURCE_FLAG_NONE;
 
         // Create default heap texture
-        HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+        HRAssert(g_engine.pipeline_dx12.m_device->CreateCommittedResource(
             &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
             D3D12_HEAP_FLAG_NONE,
             &hmDesc,
             D3D12_RESOURCE_STATE_COPY_DEST,
             nullptr,
-            IID_PPV_ARGS(&graphics_resources.m_heightmapTexture)));
+            IID_PPV_ARGS(&g_engine.graphics_resources.m_heightmapTexture)));
 
         // Upload via staging heap
-        UINT64 uploadSize = GetRequiredIntermediateSize(graphics_resources.m_heightmapTexture, 0, 1);
-        HRAssert(pipeline_dx12.m_device->CreateCommittedResource(
+        UINT64 uploadSize = GetRequiredIntermediateSize(g_engine.graphics_resources.m_heightmapTexture, 0, 1);
+        HRAssert(g_engine.pipeline_dx12.m_device->CreateCommittedResource(
             &CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
             D3D12_HEAP_FLAG_NONE,
             &CD3DX12_RESOURCE_DESC::Buffer(uploadSize),
@@ -2197,20 +2206,20 @@ bool LoadAssets()
         subData.RowPitch = hmWidth * hmPixelSize;
         subData.SlicePitch = subData.RowPitch * hmHeight;
 
-        UpdateSubresources(pipeline_dx12.m_commandList[0],
-                           graphics_resources.m_heightmapTexture,
+        UpdateSubresources(g_engine.pipeline_dx12.m_commandList[0],
+                           g_engine.graphics_resources.m_heightmapTexture,
                            stagingHeap,
                            0, 0, 1, &subData);
 
         // Transition to shader‑readable state
         auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(
-            graphics_resources.m_heightmapTexture,
+            g_engine.graphics_resources.m_heightmapTexture,
             D3D12_RESOURCE_STATE_COPY_DEST,
             D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE);
-        pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
+        g_engine.pipeline_dx12.m_commandList[0]->ResourceBarrier(1, &barrier);
 
         // Create SRV in the main heap at DescriptorIndices::HEIGHTMAP_SRV
-        UINT inc = pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        UINT inc = g_engine.pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
         CD3DX12_CPU_DESCRIPTOR_HANDLE cpuSrv(cpuStart);
         cpuSrv.Offset(DescriptorIndices::HEIGHTMAP_SRV, inc);
 
@@ -2220,38 +2229,38 @@ bool LoadAssets()
         srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
         srvDesc.Texture2D.MostDetailedMip = 0;
         srvDesc.Texture2D.MipLevels = 1;
-        pipeline_dx12.m_device->CreateShaderResourceView(graphics_resources.m_heightmapTexture, &srvDesc, cpuSrv);
+        g_engine.pipeline_dx12.m_device->CreateShaderResourceView(g_engine.graphics_resources.m_heightmapTexture, &srvDesc, cpuSrv);
 
         // Store CPU data for later editing
-        graphics_resources.m_heightmapData = (UINT8 *)malloc(hmWidth * hmHeight);
-        memcpy(graphics_resources.m_heightmapData, hmData.data(), hmWidth * hmHeight);
-        graphics_resources.m_heightmapWidth = hmWidth;
-        graphics_resources.m_heightmapHeight = hmHeight;
+        g_engine.graphics_resources.m_heightmapData = (UINT8 *)malloc(hmWidth * hmHeight);
+        memcpy(g_engine.graphics_resources.m_heightmapData, hmData.data(), hmWidth * hmHeight);
+        g_engine.graphics_resources.m_heightmapWidth = hmWidth;
+        g_engine.graphics_resources.m_heightmapHeight = hmHeight;
 
         // Add stagingHeap to a list of temporary resources to release after WaitForGpu()
         // (For now, we'll just keep it and release at the end of LoadAssets)
     }
 
     // Close the command list and execute it to begin the initial GPU setup.
-    if (!HRAssert(pipeline_dx12.m_commandList[0]->Close()))
+    if (!HRAssert(g_engine.pipeline_dx12.m_commandList[0]->Close()))
         return false;
-    ID3D12CommandList *ppCommandLists[] = {pipeline_dx12.m_commandList[0]};
-    pipeline_dx12.m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+    ID3D12CommandList *ppCommandLists[] = {g_engine.pipeline_dx12.m_commandList[0]};
+    g_engine.pipeline_dx12.m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
     // Create synchronization objects and wait until assets have been uploaded to the GPU.
     {
-        if (!HRAssert(pipeline_dx12.m_device->CreateFence(sync_state.m_fenceValues[sync_state.m_frameIndex], D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&sync_state.m_fence))))
+        if (!HRAssert(g_engine.pipeline_dx12.m_device->CreateFence(g_engine.sync_state.m_fenceValues[g_engine.sync_state.m_frameIndex], D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&g_engine.sync_state.m_fence))))
             return false;
-        sync_state.m_fenceValues[sync_state.m_frameIndex]++;
+        g_engine.sync_state.m_fenceValues[g_engine.sync_state.m_frameIndex]++;
 
         for (UINT i = 0; i < g_FrameCount; i++)
         {
-            sync_state.m_fenceValues[i] = 1;
+            g_engine.sync_state.m_fenceValues[i] = 1;
         }
 
         // Create an event handle to use for frame synchronization.
-        sync_state.m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-        if (sync_state.m_fenceEvent == nullptr)
+        g_engine.sync_state.m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+        if (g_engine.sync_state.m_fenceEvent == nullptr)
         {
             if (!HRAssert(HRESULT_FROM_WIN32(GetLastError())))
                 return false;
@@ -2283,7 +2292,7 @@ bool LoadAssets()
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
         psoDesc.InputLayout = {inputElementDescs, _countof(inputElementDescs)};
-        psoDesc.pRootSignature = pipeline_dx12.m_rootSignature;
+        psoDesc.pRootSignature = g_engine.pipeline_dx12.m_rootSignature;
         psoDesc.VS = CD3DX12_SHADER_BYTECODE(vsWire);
         psoDesc.PS = CD3DX12_SHADER_BYTECODE(psWire);
         psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
@@ -2303,14 +2312,14 @@ bool LoadAssets()
         // Create one PSO per supported MSAA level
         for (UINT msaaIdx = 0; msaaIdx < 4; ++msaaIdx)
         {
-            if (!msaa_state.m_supported[msaaIdx])
+            if (!g_engine.msaa_state.m_supported[msaaIdx])
                 continue;
-            psoDesc.SampleDesc.Count = msaa_state.m_sampleCounts[msaaIdx];
+            psoDesc.SampleDesc.Count = g_engine.msaa_state.m_sampleCounts[msaaIdx];
             psoDesc.SampleDesc.Quality = 0;
 
-            HRESULT hr = pipeline_dx12.m_device->CreateGraphicsPipelineState(
+            HRESULT hr = g_engine.pipeline_dx12.m_device->CreateGraphicsPipelineState(
                 &psoDesc,
-                IID_PPV_ARGS(&pipeline_dx12.m_wireframePSO[msaaIdx]));
+                IID_PPV_ARGS(&g_engine.pipeline_dx12.m_wireframePSO[msaaIdx]));
             if (!HRAssert(hr))
                 return false;
         }
@@ -2329,6 +2338,6 @@ void OnDestroy()
     // cleaned up by the destructor.
     WaitForGpu();
 
-    CloseHandle(sync_state.m_fenceEvent);
+    CloseHandle(g_engine.sync_state.m_fenceEvent);
 }
 #endif

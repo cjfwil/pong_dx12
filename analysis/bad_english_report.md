@@ -14,7 +14,7 @@ Total matches: 6
 
 | Line | Column | Original | Suggestion | Context |
 |------|--------|---------|------------|---------|
-| 336 | 107 | `Color` | `colour` | pipeline_dx12.m_commandList[sync_state.m_frameIndex]->Cle... |
+| 336 | 107 | `Color` | `colour` | g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->Cle... |
 | 859 | 30 | `Color` | `colour` | ImGui::Text("Ambient Color"); |
 | 862 | 58 | `color` | `colour` | // Update the per-scene constant buffer when color changes |
 

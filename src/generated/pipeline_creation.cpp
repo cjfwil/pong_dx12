@@ -90,11 +90,11 @@ bool CreateAllPipelines(const D3D12_INPUT_ELEMENT_DESC* inputLayout, UINT numInp
     // Create PSO for each supported MSAA level
     for (UINT msaaIdx = 0; msaaIdx < 4; ++msaaIdx)
     {
-        if (!msaa_state.m_supported[msaaIdx]) continue;
+        if (!g_engine.msaa_state.m_supported[msaaIdx]) continue;
 
         D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
         psoDesc.InputLayout = {inputLayout, numInputElements};
-        psoDesc.pRootSignature = pipeline_dx12.m_rootSignature;
+        psoDesc.pRootSignature = g_engine.pipeline_dx12.m_rootSignature;
         psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
         psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
         psoDesc.DepthStencilState.DepthEnable = true;
@@ -105,7 +105,7 @@ bool CreateAllPipelines(const D3D12_INPUT_ELEMENT_DESC* inputLayout, UINT numInp
         psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
         psoDesc.NumRenderTargets = 1;
         psoDesc.RTVFormats[0] = g_screenFormat;
-        psoDesc.SampleDesc.Count = msaa_state.m_sampleCounts[msaaIdx];
+        psoDesc.SampleDesc.Count = g_engine.msaa_state.m_sampleCounts[msaaIdx];
         psoDesc.SampleDesc.Quality = 0;
 
         for (UINT tech = 0; tech < RENDER_COUNT; ++tech)
@@ -130,9 +130,9 @@ bool CreateAllPipelines(const D3D12_INPUT_ELEMENT_DESC* inputLayout, UINT numInp
                 }
                 // For BLEND_OPAQUE, the default opaque state is used (no changes)
 
-                HRAssert(pipeline_dx12.m_device->CreateGraphicsPipelineState(
+                HRAssert(g_engine.pipeline_dx12.m_device->CreateGraphicsPipelineState(
                     &psoDesc,
-                    IID_PPV_ARGS(&pipeline_dx12.m_pipelineStates[tech][blend][msaaIdx])));
+                    IID_PPV_ARGS(&g_engine.pipeline_dx12.m_pipelineStates[tech][blend][msaaIdx])));
             }
         }
     }

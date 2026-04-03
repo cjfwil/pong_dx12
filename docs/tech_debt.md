@@ -119,7 +119,7 @@ The main loop in `main.cpp` contains a very long block of ImGui calls (the “Se
 
 **Solution**  
 Split each major UI component into its own function that takes the relevant global state (by pointer) and renders the ImGui controls:
-- `DrawSettingsWindow(window_state*, msaa_state*, config*, ...)`
+- `DrawSettingsWindow(window_state*, g_engine.msaa_state*, config*, ...)`
 - `DrawSceneObjectsWindow(object_list*, selected_index*)`
 - `DrawGizmo(selected_object*, camera_params*)`  
 The main loop then calls these functions sequentially, dramatically shortening the loop and isolating UI logic.
@@ -142,7 +142,7 @@ Make the window‑mode transition a single operation: `RequestWindowMode(newMode
 ## 12. Global state – implicit dependencies
 
 **Problem**  
-Many functions (e.g., `PopulateCommandList`, `Update`, `Render`, `RecreateSwapChain`) access global structs directly (`pipeline_dx12`, `sync_state`, `graphics_resources`, `viewport_state`, `msaa_state`). This makes dependencies implicit and hinders unit testing or future refactoring.
+Many functions (e.g., `PopulateCommandList`, `Update`, `Render`, `RecreateSwapChain`) access global structs directly (`g_engine.pipeline_dx12`, `g_engine.sync_state`, `g_engine.graphics_resources`, `g_engine.viewport_state`, `g_engine.msaa_state`). This makes dependencies implicit and hinders unit testing or future refactoring.
 
 **Where**  
 Throughout `renderer_dx12.h` and `main.cpp`.

@@ -32,10 +32,10 @@ Generated on 2026-02-25 07:26:32
 
 ```
    387: 
-   388:         UINT psoIndex = msaa_state.m_enabled ? msaa_state.m_currentSampleIndex : 0;
+   388:         UINT psoIndex = g_engine.msaa_state.m_enabled ? g_engine.msaa_state.m_currentSampleIndex : 0;
 →  389:         bool enableAlphaForSky = true; // TODO: make this per object
    390:         UINT activeBlendMode = (objectType == ObjectType::OBJECT_SKY_SPHERE && enableAlphaForSky) ? BLEND_ALPHA : BLEND_OPAQUE;
-   391:         ID3D12PipelineState *currentPSO = pipeline_dx12.m_pipelineStates[pl][activeBlendMode][psoIndex];
+   391:         ID3D12PipelineState *currentPSO = g_engine.pipeline_dx12.m_pipelineStates[pl][activeBlendMode][psoIndex];
 ```
 
 ### Line 431
@@ -48,8 +48,8 @@ Generated on 2026-02-25 07:26:32
    429:         else if (objectType == OBJECT_LOADED_MODEL)
    430:         {
 →  431:             // todo unify outside this if statement
-   432:             currentDrawConstants.heightmapIndex = graphics_resources.m_models[loadedModelIndex].textureIndex;            
-   433:             pipeline_dx12.m_commandList[sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
+   432:             currentDrawConstants.heightmapIndex = g_engine.graphics_resources.m_models[loadedModelIndex].textureIndex;            
+   433:             g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
 ```
 
 ### Line 498
@@ -295,7 +295,7 @@ Generated on 2026-02-25 07:26:32
 **Context:**
 
 ```
-  1921:         pipeline_dx12.m_device->CreateConstantBufferView(&perSceneCbvDesc, perSceneCbvHandle);
+  1921:         g_engine.pipeline_dx12.m_device->CreateConstantBufferView(&perSceneCbvDesc, perSceneCbvHandle);
   1922: 
 → 1923:         // todo: abstract this so i can call it from main when i want it updated
   1924:         // Map and initialize the per-scene constant buffer

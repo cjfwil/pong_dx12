@@ -174,3 +174,6 @@ perhaps this is only in the selector, or maybe it is a guard in the actual code?
 
 ## doors
 - somehow do a door, need to be able to hinge rotate, also requires moving collision boxes
+
+
+## draw bot state in bot window
