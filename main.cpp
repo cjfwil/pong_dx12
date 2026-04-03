@@ -51,6 +51,14 @@
 #include "cylinder_overlap.h"
 
 static bool g_show_player_wireframe = false;
+static struct
+{
+    bool valid = false;
+    DirectX::XMFLOAT3 start;
+    DirectX::XMFLOAT3 end;
+    bool hit;
+    DirectX::XMFLOAT3 hitPoint;
+} g_debugRay;
 
 static ConfigData g_liveConfigData = {};
 static Scene g_scene; // TODO: this is called scene but in practice it is only the static geometry, perhaps we should extend when we add enemies, or we should rename to static environment geometry only? TODO decide
@@ -909,9 +917,46 @@ struct Contact
     bool isGround;
 };
 
+void DrawDebugRay(const DirectX::XMFLOAT3 &start, const DirectX::XMFLOAT3 &end, bool hit, const DirectX::XMFLOAT3 &hitPoint)
+{
+    ImDrawList *dl = ImGui::GetBackgroundDrawList();
+    if (!dl)
+        return;
+
+    // Project world to screen
+    auto worldToScreen = [](const DirectX::XMFLOAT3 &world) -> ImVec2
+    {
+        DirectX::XMVECTOR v = DirectX::XMVectorSet(world.x, world.y, world.z, 1.0f);
+        DirectX::XMVECTOR clip = XMVector4Transform(v, g_view);
+        clip = XMVector4Transform(clip, g_projection);
+        float w = DirectX::XMVectorGetW(clip);
+        if (w <= 0.0f)
+            return ImVec2(-1, -1);
+        float x = (DirectX::XMVectorGetX(clip) / w + 1.0f) * 0.5f * viewport_state.m_width;
+        float y = (1.0f - (DirectX::XMVectorGetY(clip) / w + 1.0f) * 0.5f) * viewport_state.m_height;
+        return ImVec2(x, y);
+    };
+
+    ImVec2 s = worldToScreen(start);
+    ImVec2 e = worldToScreen(end);
+    if (s.x >= 0 && e.x >= 0)
+    {
+        dl->AddLine(s, e, IM_COL32(255, 0, 0, 255), 2.0f);
+    }
+    if (hit)
+    {
+        ImVec2 hp = worldToScreen(hitPoint);
+        if (hp.x >= 0)
+        {
+            dl->AddCircleFilled(hp, 6.0f, IM_COL32(0, 255, 0, 200));
+            dl->AddCircle(hp, 6.0f, IM_COL32(255, 255, 255, 255), 0, 1.5f);
+        }
+    }
+}
+
 void DebugFireShot()
 {
-    // Get camera eye and forward direction (same as Update)
+    // Camera eye and forward
     DirectX::XMVECTOR eye = XMLoadFloat3(&g_camera.position);
     DirectX::XMVECTOR forward = DirectX::XMVectorSet(
         sinf(g_camera.yaw) * cosf(g_camera.pitch),
@@ -924,20 +969,25 @@ void DebugFireShot()
     XMStoreFloat3(&origin, eye);
     XMStoreFloat3(&dir, forward);
 
+    float maxDist = 500.0f;
+    DirectX::XMFLOAT3 rayEnd = {
+        origin.x + dir.x * maxDist,
+        origin.y + dir.y * maxDist,
+        origin.z + dir.z * maxDist};
+
     float closestDist = FLT_MAX;
     int hitIndex = -1;
+    DirectX::XMFLOAT3 hitPoint = {0, 0, 0};
 
     for (int i = 0; i < MAX_BOT_OBJECTS; ++i)
     {
         const BotObjects &bot = g_bot_objects[i];
-        // Sphere radius 0.5 (unit sphere scaled by 1)
         float radius = 0.5f;
 
         float dx = bot.pos.x - origin.x;
         float dy = bot.pos.y - origin.y;
         float dz = bot.pos.z - origin.z;
 
-        // Project onto ray direction
         float t = dx * dir.x + dy * dir.y + dz * dir.z;
         if (t < 0)
             continue;
@@ -959,14 +1009,25 @@ void DebugFireShot()
             {
                 closestDist = hitDist;
                 hitIndex = i;
+                hitPoint = {closestX, closestY, closestZ};
             }
         }
     }
 
     if (hitIndex != -1)
+    {
         SDL_Log("HIT BOT %d at distance %.2f", hitIndex, closestDist);
+        rayEnd = hitPoint;
+    }
     else
         SDL_Log("MISS");
+
+    // Store the ray for drawing in editor
+    g_debugRay.valid = true;
+    g_debugRay.start = origin;
+    g_debugRay.end = rayEnd;
+    g_debugRay.hit = (hitIndex != -1);
+    g_debugRay.hitPoint = hitPoint;
 }
 
 void Update()
@@ -1320,6 +1381,12 @@ void DrawBotsEditorGUI()
 void DrawEditorGUI()
 {
     ImGui::NewFrame();
+
+    if (g_debugRay.valid)
+    {
+        DrawDebugRay(g_debugRay.start, g_debugRay.end, g_debugRay.hit, g_debugRay.hitPoint);
+        // g_debugRay.valid = false;
+    }
 
     // gizmos
     // ============================================
@@ -2030,12 +2097,7 @@ int main(void)
             break;
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
             {
-                if (sdlEvent.button.button == SDL_BUTTON_RIGHT && !g_view_editor)
-                {
-                    SDL_SetWindowRelativeMouseMode(program_state.window.window, true);
-                    g_input.mouseCaptured = true;
-                }
-                if (sdlEvent.button.button == SDL_BUTTON_LEFT && !g_view_editor && !g_input.mouseCaptured)
+                if (sdlEvent.button.button == SDL_BUTTON_LEFT && !g_view_editor && g_input.mouseCaptured)
                 {
                     DebugFireShot();
                 }
@@ -2063,6 +2125,16 @@ int main(void)
             ImGui_ImplDX12_NewFrame();
             ImGui_ImplSDL3_NewFrame();
             DrawEditorGUI();
+
+            SDL_SetWindowRelativeMouseMode(program_state.window.window, false);
+            g_input.mouseCaptured = false;
+
+            // DrawDebugRay();
+        }
+        else
+        {
+            SDL_SetWindowRelativeMouseMode(program_state.window.window, true);
+            g_input.mouseCaptured = true;
         }
 
         program_state.timing.UpdateTimer();
