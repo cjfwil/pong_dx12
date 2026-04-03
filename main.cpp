@@ -123,16 +123,25 @@ void UpdateBots(float deltaTime)
         BotObjects &bot = g_bot_objects[i];
 
         // ---- STATE HANDLING ----
-        const float FALL_SPEED = 5.0f; // units per second
-        const float GROUND_Y = 10.0f;  // constant landing height
         if (bot.state == BOT_DYING)
         {
-            bot.pos.y -= FALL_SPEED * deltaTime;
+            const float GRAVITY = 15.0f;  // units per second squared
+            const float GROUND_Y = 10.0f; // constant landing height
+
+            // Apply gravity to vertical velocity
+            bot.velocity.y -= GRAVITY * deltaTime;
+
+            // Update position using current velocity
+            bot.pos.x += bot.velocity.x * deltaTime;
+            bot.pos.y += bot.velocity.y * deltaTime;
+            bot.pos.z += bot.velocity.z * deltaTime;
+
+            // When we hit the ground, stop all movement and become DEAD
             if (bot.pos.y <= GROUND_Y)
             {
                 bot.pos.y = GROUND_Y;
+                bot.velocity = {0, 0, 0};
                 bot.state = BOT_DEAD;
-                bot.velocity = {0, 0, 0}; // stop any leftover velocity
             }
             continue; // skip ALIVE logic
         }
@@ -473,6 +482,7 @@ struct window_state
 static struct
 {
     bool mouseCaptured = false;
+    bool lmbDown = false;
     bool keys[512] = {false};
 } g_input;
 
@@ -1065,6 +1075,11 @@ void DebugFireShot()
 
 void Update()
 {
+    if (g_input.lmbDown)
+    {
+        DebugFireShot();
+    }
+
     UpdateBots((float)program_state.timing.deltaTime);
 
     DirectX::XMFLOAT3 oldEye = g_camera.position;
@@ -2130,14 +2145,14 @@ int main(void)
             break;
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
             {
-                if (sdlEvent.button.button == SDL_BUTTON_LEFT && !g_view_editor && g_input.mouseCaptured)
-                {
-                    DebugFireShot();
-                }
+                if (sdlEvent.button.button == SDL_BUTTON_LEFT)
+                    g_input.lmbDown = true;
             }
             break;
             case SDL_EVENT_MOUSE_BUTTON_UP:
             {
+                if (sdlEvent.button.button == SDL_BUTTON_LEFT)
+                    g_input.lmbDown = false;
                 if (sdlEvent.button.button == SDL_BUTTON_RIGHT && g_input.mouseCaptured)
                 {
                     SDL_SetWindowRelativeMouseMode(program_state.window.window, false);
