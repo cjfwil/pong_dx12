@@ -127,7 +127,7 @@ struct MSAAState
     UINT m_currentSampleCount = 1;
     UINT m_currentSampleIndex = 0;                     // 0=1x, 1=2x, 2=4x, 3=8x
     bool m_supported[4] = {true, false, false, false}; // 1x always supported
-    const UINT m_sampleCounts[4] = {1, 2, 4, 8};
+    UINT m_sampleCounts[4] = {1, 2, 4, 8};
 
     void CalcSupportedMSAALevels(ID3D12Device *device)
     {
@@ -216,10 +216,14 @@ struct ModelResources
 
     void Release()
     {
-        if (vertexBuffer)
+        if (vertexBuffer) {
             vertexBuffer->Release();
-        if (indexBuffer)
+            vertexBuffer = nullptr;
+        }
+        if (indexBuffer) {
             indexBuffer->Release();
+            indexBuffer = nullptr;
+        }
     }
 };
 
@@ -397,8 +401,8 @@ TextureLoadResult LoadTextureFromFile(ID3D12Device *device, ID3D12GraphicsComman
     {
         const DirectX::Image *subImg = image.GetImage(i, 0, 0);
         subresources[i].pData = subImg->pixels;
-        subresources[i].RowPitch = subImg->rowPitch;
-        subresources[i].SlicePitch = subImg->slicePitch;
+        subresources[i].RowPitch = (LONG_PTR)subImg->rowPitch;
+        subresources[i].SlicePitch = (LONG_PTR)subImg->slicePitch;
     }
 
     UpdateSubresources(cmdList, *outResource, result.uploadHeap, 0, 0, (UINT)image.GetImageCount(), subresources.data());
@@ -462,7 +466,7 @@ TextureLoadResult LoadSkyTextureFromFile(ID3D12Device *device, ID3D12GraphicsCom
     D3D12_RESOURCE_DESC texDesc = {};
     texDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
     texDesc.Width = metadata.width;
-    texDesc.Height = metadata.height;
+    texDesc.Height = (UINT)metadata.height;
     texDesc.DepthOrArraySize = 1;
     texDesc.MipLevels = (UINT16)metadata.mipLevels;
     texDesc.Format = metadata.format;
@@ -499,8 +503,8 @@ TextureLoadResult LoadSkyTextureFromFile(ID3D12Device *device, ID3D12GraphicsCom
     {
         const DirectX::Image *subImg = image.GetImage(i, 0, 0);
         subresources[i].pData = subImg->pixels;
-        subresources[i].RowPitch = subImg->rowPitch;
-        subresources[i].SlicePitch = subImg->slicePitch;
+        subresources[i].RowPitch = (LONG_PTR)subImg->rowPitch;
+        subresources[i].SlicePitch = (LONG_PTR)subImg->slicePitch;
     }
 
     UpdateSubresources(cmdList, *outResource, result.uploadHeap, 0, 0, (UINT)image.GetImageCount(), subresources.data());
@@ -556,18 +560,18 @@ bool CreateHeightfieldMesh(
     std::vector<Vertex> vertices(vertexCount);
     std::vector<uint32_t> indices(indexCount);
 
-    float step = 1.0f / gridSize; // world units? We'll keep positions in [-0.5,0.5] range for simplicity.
+    float step = 1.0f / (float)gridSize; // world units? We'll keep positions in [-0.5,0.5] range for simplicity.
     // Generate vertices in row‑major order: z first then x (so that z is row, x is column)
     for (UINT j = 0; j < verticesPerSide; ++j)
     {
-        float z = -0.5f + j * step;
+        float z = -0.5f + (float)j * step;
         for (UINT i = 0; i < verticesPerSide; ++i)
         {
-            float x = -0.5f + i * step;
+            float x = -0.5f + (float)i * step;
             UINT idx = j * verticesPerSide + i;
             vertices[idx].position = {x, 0.0f, z};
             vertices[idx].normal = {0.0f, 1.0f, 0.0f}; // flat
-            vertices[idx].uv = {(float)i / gridSize, (float)j / gridSize};
+            vertices[idx].uv = {(float)i / (float)gridSize, (float)j / (float)gridSize};
         }
     }
 
@@ -2177,7 +2181,7 @@ bool LoadAssets()
         {
             for (int y = 0; y < hmWidth; ++y)
             {
-                hmData[x + y * hmWidth] = (int)(rand() % 255);
+                hmData[x + y * hmWidth] = (UINT8)(rand() % 255);
             }
         }
 

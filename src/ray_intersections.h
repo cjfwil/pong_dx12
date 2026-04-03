@@ -107,7 +107,7 @@ bool IntersectRayCylinder(const DirectX::XMFLOAT3 &rayOrigin, const DirectX::XMF
     // ----- Caps (y = ±halfH) -----
     for (int sign = -1; sign <= 1; sign += 2)
     {
-        float y_plane = sign * halfH;
+        float y_plane = (float)sign * halfH;
         if (fabsf(d[1]) > epsilon)
         {
             float t = (y_plane - o[1]) / d[1];
@@ -336,7 +336,7 @@ bool IntersectRayPrism(const DirectX::XMFLOAT3 &rayOrigin, const DirectX::XMFLOA
             XMVECTOR centroid = XMVectorZero();
             for (int i = 0; i < n; ++i)
                 centroid = XMVectorAdd(centroid, XMLoadFloat3(f.verts[i]));
-            centroid = XMVectorScale(centroid, 1.0f / n);
+            centroid = XMVectorScale(centroid, 1.0f / (float)n);
 
             inside = true;
             for (int i = 0; i < n; ++i)

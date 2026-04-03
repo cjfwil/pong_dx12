@@ -911,16 +911,16 @@ float SampleHeightmapWorldY(const SceneObject &obj, const DirectX::XMFLOAT3 &wor
 
     // --- Bilinear interpolation ---
     // Convert UV to texel coordinates in [0, width-1] and [0, height-1]
-    float u_tex = u * (cpu.width - 1);
-    float v_tex = v * (cpu.height - 1);
+    float u_tex = u * ((float)cpu.width - 1);
+    float v_tex = v * ((float)cpu.height - 1);
 
     // Get integer texel indices and fractions
     UINT ix0 = (UINT)u_tex;
     UINT iy0 = (UINT)v_tex;
     UINT ix1 = min(ix0 + 1, cpu.width - 1);
     UINT iy1 = min(iy0 + 1, cpu.height - 1);
-    float fx = u_tex - ix0;
-    float fy = v_tex - iy0;
+    float fx = u_tex - (float)ix0;
+    float fy = v_tex - (float)iy0;
 
     // Fetch four surrounding texels (values 0‑255)
     float p00 = (float)cpu.data[iy0 * cpu.width + ix0];
@@ -988,8 +988,8 @@ void DrawDebugRay(const DirectX::XMFLOAT3 &start, const DirectX::XMFLOAT3 &end, 
         float w = DirectX::XMVectorGetW(clip);
         if (w <= 0.0f)
             return ImVec2(-1, -1);
-        float x = (DirectX::XMVectorGetX(clip) / w + 1.0f) * 0.5f * g_engine.viewport_state.m_width;
-        float y = (1.0f - (DirectX::XMVectorGetY(clip) / w + 1.0f) * 0.5f) * g_engine.viewport_state.m_height;
+        float x = (DirectX::XMVectorGetX(clip) / (float)w + 1.0f) * 0.5f * (float)g_engine.viewport_state.m_width;
+        float y = (1.0f - (DirectX::XMVectorGetY(clip) / (float)w + 1.0f) * 0.5f) * (float)g_engine.viewport_state.m_height;
         return ImVec2(x, y);
     };
 
@@ -1133,8 +1133,8 @@ void Update()
                 DirectX::XMFLOAT3 fakeCentre = centre;
                 fakeCentre.y += g_stepHeight * 0.5f;
                 float fakePlayerHeight = playerHeight - g_stepHeight;
-                DirectX::XMFLOAT3 normal;
-                float penetration;
+                DirectX::XMFLOAT3 normal = {};
+                float penetration = 0.0f;
                 bool overlap = false;
                 PrimitiveType pt = obj.data.primitive.primitiveType;
                 if (pt == PRIMITIVE_CUBE)
@@ -2082,7 +2082,7 @@ int main(void)
         if (so.objectType == ObjectType::OBJECT_LOADED_MODEL)
         {
             bool modelAlreadyLoaded = false;
-            for (int j = 0; j < g_engine.graphics_resources.m_numModelsLoaded; ++j)
+            for (uint32_t j = 0; j < g_engine.graphics_resources.m_numModelsLoaded; ++j)
             {
                 if (strcmp(g_modelPaths[j], so.data.loaded_model.pathTo) == 0)
                 {
