@@ -2,11 +2,9 @@
 """
 meta_ondestroy.py - Generate OnDestroy_generated.cpp.
 
-Parses renderer_dx12.cpp, finds D3D12 COM pointers in known structs,
+Parses renderer_dx12.cpp, finds D3D12 COM pointers in structs:
+  PipelineDX12, GraphicsResources, SyncState (members of g_engine)
 orders them by dependency, emits cleanup code.
-
-Now uses common.py for logging, file I/O, and header generation,
-but retains its own specialised parser (the original one works).
 """
 
 import re
@@ -22,163 +20,163 @@ except ImportError:
     sys.path.insert(0, str(Path(__file__).parent))
     import common
 
-# ----------------------------------------------------------------------
-# Parser - exact original, proven to work
-# ----------------------------------------------------------------------
 def parse_dx12_resources(content: str) -> list:
     resources = []
-    
-    # Pattern for COM pointer declarations
-    com_pattern = r'(ID3D\w+|IDXGISwapChain\d*)\s*\*\s*(\w+)(\[[^\]]*\])?\s*(=\s*[^;]*)?;'
-    
-    # Find all static struct definitions
-    struct_pattern = r'static struct\s*\{(.+?)\}\s*(\w+);'
-    
-    for struct_match in re.finditer(struct_pattern, content, re.DOTALL):
-        struct_body = struct_match.group(1)
-        struct_name = struct_match.group(2)
-        
-        if struct_name not in ['g_engine.pipeline_dx12', 'g_engine.graphics_resources', 'g_engine.sync_state']:
+    structs = {
+        'PipelineDX12': 'g_engine.pipeline_dx12',
+        'GraphicsResources': 'g_engine.graphics_resources',
+        'SyncState': 'g_engine.sync_state'
+    }
+
+    for struct_name, prefix in structs.items():
+        # Find struct body using brace counting
+        pattern = rf'struct\s+{struct_name}\s*\{{'
+        match = re.search(pattern, content)
+        if not match:
+            common.log_warning(f"Could not find start of struct {struct_name}")
             continue
-        
-        # --- First, find and process nested struct arrays ---
-        # Pattern for: struct { ... } arrayName[arraySize];
-        nested_array_pattern = r'struct\s*\{([^}]*)\}\s*(\w+)\[([^\]]+)\]\s*;'
-        for nested_match in re.finditer(nested_array_pattern, struct_body, re.DOTALL):
-            inner_body = nested_match.group(1)
-            array_name = nested_match.group(2)
-            array_size = nested_match.group(3).strip()
-            
-            # Parse inner body for COM pointers
-            for com_match in re.finditer(com_pattern, inner_body):
-                type_name = com_match.group(1)
-                var_name = com_match.group(2)
-                # Inside a nested struct, the member is not an array itself
-                resources.append({
-                    'struct': struct_name,
-                    'type': type_name,
-                    'name': var_name,
-                    'is_array': False,
-                    'array_size': None,
-                    'parent_array': array_name,
-                    'array_size_parent': array_size
-                })
-            
-            # Remove this nested definition from struct_body so we don't double‑count
-            struct_body = struct_body.replace(nested_match.group(0), '')
-        
-        # --- Now parse the remaining body for top‑level COM pointers ---
-        for match in re.finditer(com_pattern, struct_body):
-            type_name = match.group(1)
-            var_name = match.group(2)
-            is_array = match.group(3) is not None
-            
-            if is_array:
-                array_size = match.group(3).strip('[]')
-                resources.append({
-                    'struct': struct_name,
-                    'type': type_name,
-                    'name': var_name,
-                    'is_array': True,
-                    'array_size': array_size
-                })
-            else:
-                resources.append({
-                    'struct': struct_name,
-                    'type': type_name,
-                    'name': var_name,
-                    'is_array': False,
-                    'array_size': None
-                })
-    
+        start = match.end()
+        brace_count = 1
+        i = start
+        while i < len(content) and brace_count > 0:
+            if content[i] == '{':
+                brace_count += 1
+            elif content[i] == '}':
+                brace_count -= 1
+            i += 1
+        if brace_count != 0:
+            common.log_warning(f"Unmatched braces in struct {struct_name}")
+            continue
+        body = content[start:i-1]
+
+        # Remove comments
+        body = re.sub(r'//.*?$', '', body, flags=re.MULTILINE)
+        body = re.sub(r'/\*.*?\*/', '', body, flags=re.DOTALL)
+
+        # Split into lines and parse each line
+        lines = body.split('\n')
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+
+            # Look for COM pointer declarations
+            m = re.search(r'(ID3D\w+|IDXGISwapChain\d*)\s*\*\s*(\w+)', line)
+            if not m:
+                continue
+
+            type_name = m.group(1)
+            var_name = m.group(2)          # includes leading 'm_' if present
+
+            # Check for array brackets after the variable name
+            is_array = False
+            array_size = None
+            rest = line[line.find(var_name) + len(var_name):]
+            if '[' in rest:
+                is_array = True
+                bracket_start = rest.find('[')
+                bracket_end = rest.find(']', bracket_start)
+                if bracket_end != -1:
+                    array_size = rest[bracket_start+1:bracket_end].strip()
+                    if not array_size:
+                        array_size = 'g_FrameCount'   # fallback for empty brackets
+
+            resources.append({
+                'struct': prefix,
+                'type': type_name,
+                'name': var_name,
+                'is_array': is_array,
+                'array_size': array_size
+            })
+
     return resources
 
 # ----------------------------------------------------------------------
-# Cleanup ordering - original priority map
+# Cleanup ordering - original priority map (unchanged)
 # ----------------------------------------------------------------------
 PRIORITY_MAP = {
     # Sync objects (release first)
-    'fence': 0,
     'm_fence': 0,
     # Constant buffers (need Unmap)
-    'constantBuffer': 1,
-    'm_constantBuffer': 1,
-    # Added explicit names for our constant buffers
     'm_PerFrameConstantBuffer': 1,
     'm_PerSceneConstantBuffer': 1,
     # Graphics resources
-    'texture': 2,
-    'm_texture': 2,
-    'vertexBuffer': 2,
+    'm_defaultTexture': 2,
+    'm_heightmapTexture': 2,
+    'm_heightfieldVertexBuffer': 2,
+    'm_heightfieldIndexBuffer': 2,
+    'm_heightfieldVertexUpload': 2,
+    'm_heightfieldIndexUpload': 2,
     'm_vertexBuffer': 2,
-    'depthStencil': 2,
+    'm_indexBuffer': 2,
     'm_depthStencil': 2,
     # Pipeline objects
-    'rootSignature': 3,
     'm_rootSignature': 3,
-    'pipelineState': 3,
-    'm_pipelineState': 3,
-    'commandList': 3,
+    'm_pipelineStates': 3,
     'm_commandList': 3,
-    # Per-frame resources
-    'commandAllocators': 4,
     'm_commandAllocators': 4,
-    'renderTargets': 4,
     'm_renderTargets': 4,
+    'm_msaaRenderTargets': 4,
+    'm_msaaDepthStencil': 4,
     # Descriptor heaps
-    'dsvHeap': 5,
     'm_dsvHeap': 5,
-    'mainHeap': 5,
     'm_mainHeap': 5,
-    'rtvHeap': 5,
     'm_rtvHeap': 5,
+    'm_imguiHeap': 5,
+    'm_msaaRtvHeap': 5,
     # Swap chain
-    'swapChain': 6,
     'm_swapChain': 6,
     # Command queue
-    'commandQueue': 7,
     'm_commandQueue': 7,
     # Device (last)
-    'device': 8,
     'm_device': 8,
+    # Extra arrays
+    'm_heightmapResources': 2,
+    'm_skyResources': 2,
+    'm_modelAlbedoTextures': 2,
 }
 
 def get_priority(resource: dict) -> int:
-    """Return priority value for sorting (lower = earlier cleanup)."""
     name = resource['name']
+    # Some array names may not be in map; default to high number
     return PRIORITY_MAP.get(name, 999)
 
 def get_category_comment(name: str) -> str:
     """Return descriptive comment for a resource category."""
-    clean = name[2:] if name.startswith('m_') else name
     categories = {
-        'fence': 'Release sync objects',
-        'texture': 'Release graphics resources',
-        'vertexBuffer': 'Release graphics resources',
-        'indexBuffer': 'Release graphics resources',
-        'depthStencil': 'Release graphics resources',
-        'rootSignature': 'Release pipeline objects',
-        'pipelineState': 'Release pipeline objects',
-        'commandList': 'Release pipeline objects',
-        'commandAllocators': 'Release per-frame resources',
-        'renderTargets': 'Release per-frame resources',
-        'dsvHeap': 'Release descriptor heaps',
-        'mainHeap': 'Release descriptor heaps',
-        'rtvHeap': 'Release descriptor heaps',
-        'swapChain': 'Release swap chain',
-        'commandQueue': 'Release command queue',
-        'device': 'Release device (last)',
-        'imguiHeap': 'Release other resources',
-        'msaaRtvHeap': 'Release other resources',
-        'msaaRenderTargets': 'Release other resources',
-        'msaaDepthStencil': 'Release other resources',
-        'PerSceneConstantBuffer': 'Release other resources',
-        'PerFrameConstantBuffer': 'Release other resources',
+        'm_fence': 'Release sync objects',
+        'm_PerFrameConstantBuffer': 'Unmap and release constant buffers',
+        'm_PerSceneConstantBuffer': 'Unmap and release constant buffers',
+        'm_defaultTexture': 'Release graphics resources',
+        'm_heightmapTexture': 'Release graphics resources',
+        'm_heightfieldVertexBuffer': 'Release graphics resources',
+        'm_heightfieldIndexBuffer': 'Release graphics resources',
+        'm_vertexBuffer': 'Release graphics resources',
+        'm_indexBuffer': 'Release graphics resources',
+        'm_depthStencil': 'Release graphics resources',
+        'm_rootSignature': 'Release pipeline objects',
+        'm_pipelineStates': 'Release pipeline objects',
+        'm_commandList': 'Release pipeline objects',
+        'm_commandAllocators': 'Release per‑frame resources',
+        'm_renderTargets': 'Release per‑frame resources',
+        'm_msaaRenderTargets': 'Release MSAA resources',
+        'm_msaaDepthStencil': 'Release MSAA resources',
+        'm_dsvHeap': 'Release descriptor heaps',
+        'm_mainHeap': 'Release descriptor heaps',
+        'm_rtvHeap': 'Release descriptor heaps',
+        'm_imguiHeap': 'Release other resources',
+        'm_msaaRtvHeap': 'Release other resources',
+        'm_swapChain': 'Release swap chain',
+        'm_commandQueue': 'Release command queue',
+        'm_device': 'Release device (last)',
+        'm_heightmapResources': 'Release texture arrays',
+        'm_skyResources': 'Release texture arrays',
+        'm_modelAlbedoTextures': 'Release texture arrays',
     }
-    return categories.get(clean, 'Release other resources')
+    return categories.get(name, 'Release other resources')
 
 # ----------------------------------------------------------------------
-# Code generation - original logic with fixes
+# Code generation - adapted for g_engine prefix
 # ----------------------------------------------------------------------
 def generate_cleanup_code(resources: list) -> str:
     lines = []
@@ -194,8 +192,20 @@ def generate_cleanup_code(resources: list) -> str:
     lines.append("    WaitForAllFrames();")
     lines.append("")
     
-    # 1. Constant buffers (special unmapping)
-    cb_resources = [r for r in resources if 'constantbuffer' in r['name'].lower()]
+    # Special case: release m_models array using its Release method
+    lines.append("    // Release model resources")
+    lines.append("    for (UINT i = 0; i < MAX_LOADED_MODELS; i++)")
+    lines.append("    {")
+    lines.append("        g_engine.graphics_resources.m_models[i].Release();")
+    lines.append("    }")
+    lines.append("")
+    
+    # Separate constant buffers for special handling (Unmap)
+    cb_names = {'m_PerFrameConstantBuffer', 'm_PerSceneConstantBuffer'}
+    cb_resources = [r for r in resources if r['name'] in cb_names]
+    other_resources = [r for r in resources if r['name'] not in cb_names]
+    
+    # 1. Constant buffers (unmap then release)
     if cb_resources:
         lines.append("    // Unmap and release constant buffers")
         for res in cb_resources:
@@ -208,8 +218,8 @@ def generate_cleanup_code(resources: list) -> str:
                 lines.append(f"            {res['struct']}.{res['name']}[i]->Unmap(0, nullptr);")
                 lines.append(f"            {res['struct']}.{res['name']}[i]->Release();")
                 lines.append(f"            {res['struct']}.{res['name']}[i] = nullptr;")
-                if res['struct'] == 'g_engine.graphics_resources':
-                    lines.append(f"            g_engine.graphics_resources.m_pCbvDataBegin[i] = nullptr;")
+                if res['name'] == 'm_PerFrameConstantBuffer':
+                    lines.append(f"            {res['struct']}.m_pCbvDataBegin[i] = nullptr;")
                 lines.append("        }")
                 lines.append("    }")
             else:
@@ -218,39 +228,33 @@ def generate_cleanup_code(resources: list) -> str:
                 lines.append(f"        {res['struct']}.{res['name']}->Unmap(0, nullptr);")
                 lines.append(f"        {res['struct']}.{res['name']}->Release();")
                 lines.append(f"        {res['struct']}.{res['name']} = nullptr;")
-                if res['struct'] == 'g_engine.graphics_resources' and res['name'] == 'm_PerSceneConstantBuffer':
-                    lines.append("            g_engine.graphics_resources.m_pPerSceneCbvDataBegin = nullptr;")
+                if res['name'] == 'm_PerSceneConstantBuffer':
+                    lines.append(f"        {res['struct']}.m_pPerSceneCbvDataBegin = nullptr;")
                 lines.append("    }")
         lines.append("")
     
-    # Separate resources with parent_array from top‑level ones
-    nested_resources = [r for r in resources if 'parent_array' in r]
-    other_resources = [r for r in resources if 'constantbuffer' not in r['name'].lower() and 'parent_array' not in r]
-    
-    # Group nested resources by parent array
-    nested_by_parent = {}
-    for res in nested_resources:
-        key = (res['struct'], res['parent_array'], res['array_size_parent'])
-        nested_by_parent.setdefault(key, []).append(res)
-    
-    # Generate nested loops for each parent array
-    if nested_by_parent:
-        lines.append("    // Release resources inside arrays of structs")
-        for (struct_name, parent_array, array_size), members in nested_by_parent.items():
-            lines.append(f"    for (UINT i = 0; i < {array_size}; i++)")
-            lines.append("    {")
-            for res in members:
-                lines.append(f"        if ({struct_name}.{parent_array}[i].{res['name']})")
-                lines.append("        {")
-                lines.append(f"            {struct_name}.{parent_array}[i].{res['name']}->Release();")
-                lines.append(f"            {struct_name}.{parent_array}[i].{res['name']} = nullptr;")
-                lines.append("        }")
-            lines.append("    }")
-        lines.append("")
-    
-    # 2. Other COM resources (top‑level)
+    # 2. Other resources, grouped by category
     current_category = None
-    for res in other_resources:
+    for res in sorted(other_resources, key=lambda r: (get_priority(r), r['name'])):
+        # Special handling for the 3D pipeline states array
+        if res['name'] == 'm_pipelineStates':
+            lines.append("    // Release pipeline state objects")
+            lines.append("    for (UINT tech = 0; tech < RENDER_COUNT; ++tech)")
+            lines.append("    {")
+            lines.append("        for (UINT blend = 0; blend < BLEND_COUNT; ++blend)")
+            lines.append("        {")
+            lines.append("            for (UINT msaa = 0; msaa < 4; ++msaa)")
+            lines.append("            {")
+            lines.append(f"                if ({res['struct']}.{res['name']}[tech][blend][msaa])")
+            lines.append("                {")
+            lines.append(f"                    {res['struct']}.{res['name']}[tech][blend][msaa]->Release();")
+            lines.append(f"                    {res['struct']}.{res['name']}[tech][blend][msaa] = nullptr;")
+            lines.append("                }")
+            lines.append("            }")
+            lines.append("        }")
+            lines.append("    }")
+            continue
+        
         category = get_category_comment(res['name'])
         if category != current_category:
             if current_category is not None:
@@ -260,8 +264,8 @@ def generate_cleanup_code(resources: list) -> str:
         
         if res['is_array']:
             arr_sz = res['array_size'] if res['array_size'] else 'g_FrameCount'
-            # Special case: g_engine.pipeline_dx12.m_pipelineStates[4] has fixed size 4
-            if res['struct'] == 'g_engine.pipeline_dx12' and res['name'] == 'm_pipelineStates':
+            # For m_wireframePSO, size is 4
+            if res['name'] == 'm_wireframePSO':
                 arr_sz = '4'
             lines.append(f"    for (UINT i = 0; i < {arr_sz}; i++)")
             lines.append("    {")
@@ -297,7 +301,6 @@ def generate_cleanup(
     output_path: Path = Path("src/generated/OnDestroy_generated.cpp"),
     force: bool = False
 ) -> bool:
-    """Parse header and write cleanup code. Returns True if file written/updated."""
     if not input_path.exists():
         common.log_error(f"Header not found: {input_path}")
         return False
@@ -309,7 +312,7 @@ def generate_cleanup(
     common.log_info(f"Found {len(resources)} COM resources")
     
     # Optional verbose listing
-    if common._USE_COLOR:  # cheap way to detect verbose? We'll just log at info level.
+    if common._USE_COLOR:
         for res in resources:
             arr = f"[{res['array_size']}]" if res['is_array'] else ""
             common.log_info(f"  - {res['struct']}.{res['name']}{arr} ({res['type']})")
@@ -324,11 +327,10 @@ def generate_cleanup(
     header = common.make_header(tool_name="meta_ondestroy.py", comment="GENERATED ONDESTROY")
     full_content = header + code
 
-    # Write atomically
     return common.write_file_if_changed(output_path, full_content)
 
 # ----------------------------------------------------------------------
-# Convenience wrapper for unified driver (uses default paths)
+# Convenience wrapper for unified driver
 # ----------------------------------------------------------------------
 def generate(force: bool = False) -> bool:
     return generate_cleanup(force=force)

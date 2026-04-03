@@ -2,7 +2,7 @@
 // GENERATED ONDESTROY – DO NOT EDIT
 //   This file was automatically generated.
 //   by meta_ondestroy.py
-//   Generated: 2026-02-25 13:43:01
+//   Generated: 2026-04-03 17:52:37
 //------------------------------------------------------------------------
 
 #pragma once
@@ -16,13 +16,19 @@ void OnDestroy()
     WaitForGpu();
     WaitForAllFrames();
 
+    // Release model resources
+    for (UINT i = 0; i < MAX_LOADED_MODELS; i++)
+    {
+        g_engine.graphics_resources.m_models[i].Release();
+    }
+
     // Unmap and release constant buffers
     if (g_engine.graphics_resources.m_PerSceneConstantBuffer)
     {
         g_engine.graphics_resources.m_PerSceneConstantBuffer->Unmap(0, nullptr);
         g_engine.graphics_resources.m_PerSceneConstantBuffer->Release();
         g_engine.graphics_resources.m_PerSceneConstantBuffer = nullptr;
-            g_engine.graphics_resources.m_pPerSceneCbvDataBegin = nullptr;
+        g_engine.graphics_resources.m_pPerSceneCbvDataBegin = nullptr;
     }
     for (UINT i = 0; i < g_FrameCount; i++)
     {
@@ -35,21 +41,6 @@ void OnDestroy()
         }
     }
 
-    // Release resources inside arrays of structs
-    for (UINT i = 0; i < MAX_LOADED_MODELS; i++)
-    {
-        if (g_engine.graphics_resources.m_models[i].vertexBuffer)
-        {
-            g_engine.graphics_resources.m_models[i].vertexBuffer->Release();
-            g_engine.graphics_resources.m_models[i].vertexBuffer = nullptr;
-        }
-        if (g_engine.graphics_resources.m_models[i].indexBuffer)
-        {
-            g_engine.graphics_resources.m_models[i].indexBuffer->Release();
-            g_engine.graphics_resources.m_models[i].indexBuffer = nullptr;
-        }
-    }
-
     // Release sync objects
     if (g_engine.sync_state.m_fence)
     {
@@ -58,11 +49,87 @@ void OnDestroy()
     }
 
     // Release graphics resources
+    if (g_engine.graphics_resources.m_defaultTexture)
+    {
+        g_engine.graphics_resources.m_defaultTexture->Release();
+        g_engine.graphics_resources.m_defaultTexture = nullptr;
+    }
     if (g_engine.pipeline_dx12.m_depthStencil)
     {
         g_engine.pipeline_dx12.m_depthStencil->Release();
         g_engine.pipeline_dx12.m_depthStencil = nullptr;
     }
+    if (g_engine.graphics_resources.m_heightfieldIndexBuffer)
+    {
+        g_engine.graphics_resources.m_heightfieldIndexBuffer->Release();
+        g_engine.graphics_resources.m_heightfieldIndexBuffer = nullptr;
+    }
+
+    // Release other resources
+    if (g_engine.graphics_resources.m_heightfieldIndexUpload)
+    {
+        g_engine.graphics_resources.m_heightfieldIndexUpload->Release();
+        g_engine.graphics_resources.m_heightfieldIndexUpload = nullptr;
+    }
+
+    // Release graphics resources
+    if (g_engine.graphics_resources.m_heightfieldVertexBuffer)
+    {
+        g_engine.graphics_resources.m_heightfieldVertexBuffer->Release();
+        g_engine.graphics_resources.m_heightfieldVertexBuffer = nullptr;
+    }
+
+    // Release other resources
+    if (g_engine.graphics_resources.m_heightfieldVertexUpload)
+    {
+        g_engine.graphics_resources.m_heightfieldVertexUpload->Release();
+        g_engine.graphics_resources.m_heightfieldVertexUpload = nullptr;
+    }
+
+    // Release texture arrays
+    for (UINT i = 0; i < MAX_HEIGHTMAP_TEXTURES; i++)
+    {
+        if (g_engine.graphics_resources.m_heightmapResources[i])
+        {
+            g_engine.graphics_resources.m_heightmapResources[i]->Release();
+            g_engine.graphics_resources.m_heightmapResources[i] = nullptr;
+        }
+    }
+
+    // Release graphics resources
+    if (g_engine.graphics_resources.m_heightmapTexture)
+    {
+        g_engine.graphics_resources.m_heightmapTexture->Release();
+        g_engine.graphics_resources.m_heightmapTexture = nullptr;
+    }
+    for (UINT i = 0; i < PrimitiveType::PRIMITIVE_COUNT; i++)
+    {
+        if (g_engine.graphics_resources.m_indexBuffer[i])
+        {
+            g_engine.graphics_resources.m_indexBuffer[i]->Release();
+            g_engine.graphics_resources.m_indexBuffer[i] = nullptr;
+        }
+    }
+
+    // Release texture arrays
+    for (UINT i = 0; i < MAX_LOADED_MODELS; i++)
+    {
+        if (g_engine.graphics_resources.m_modelAlbedoTextures[i])
+        {
+            g_engine.graphics_resources.m_modelAlbedoTextures[i]->Release();
+            g_engine.graphics_resources.m_modelAlbedoTextures[i] = nullptr;
+        }
+    }
+    for (UINT i = 0; i < MAX_SKY_TEXTURES; i++)
+    {
+        if (g_engine.graphics_resources.m_skyResources[i])
+        {
+            g_engine.graphics_resources.m_skyResources[i]->Release();
+            g_engine.graphics_resources.m_skyResources[i] = nullptr;
+        }
+    }
+
+    // Release graphics resources
     for (UINT i = 0; i < PrimitiveType::PRIMITIVE_COUNT; i++)
     {
         if (g_engine.graphics_resources.m_vertexBuffer[i])
@@ -81,13 +148,53 @@ void OnDestroy()
             g_engine.pipeline_dx12.m_commandList[i] = nullptr;
         }
     }
+    // Release pipeline state objects
+    for (UINT tech = 0; tech < RENDER_COUNT; ++tech)
+    {
+        for (UINT blend = 0; blend < BLEND_COUNT; ++blend)
+        {
+            for (UINT msaa = 0; msaa < 4; ++msaa)
+            {
+                if (g_engine.pipeline_dx12.m_pipelineStates[tech][blend][msaa])
+                {
+                    g_engine.pipeline_dx12.m_pipelineStates[tech][blend][msaa]->Release();
+                    g_engine.pipeline_dx12.m_pipelineStates[tech][blend][msaa] = nullptr;
+                }
+            }
+        }
+    }
     if (g_engine.pipeline_dx12.m_rootSignature)
     {
         g_engine.pipeline_dx12.m_rootSignature->Release();
         g_engine.pipeline_dx12.m_rootSignature = nullptr;
     }
 
-    // Release per-frame resources
+    // Release per‑frame resources
+    for (UINT i = 0; i < g_FrameCount; i++)
+    {
+        if (g_engine.pipeline_dx12.m_commandAllocators[i])
+        {
+            g_engine.pipeline_dx12.m_commandAllocators[i]->Release();
+            g_engine.pipeline_dx12.m_commandAllocators[i] = nullptr;
+        }
+    }
+
+    // Release MSAA resources
+    if (g_engine.pipeline_dx12.m_msaaDepthStencil)
+    {
+        g_engine.pipeline_dx12.m_msaaDepthStencil->Release();
+        g_engine.pipeline_dx12.m_msaaDepthStencil = nullptr;
+    }
+    for (UINT i = 0; i < g_FrameCount; i++)
+    {
+        if (g_engine.pipeline_dx12.m_msaaRenderTargets[i])
+        {
+            g_engine.pipeline_dx12.m_msaaRenderTargets[i]->Release();
+            g_engine.pipeline_dx12.m_msaaRenderTargets[i] = nullptr;
+        }
+    }
+
+    // Release per‑frame resources
     for (UINT i = 0; i < g_FrameCount; i++)
     {
         if (g_engine.pipeline_dx12.m_renderTargets[i])
@@ -98,20 +205,38 @@ void OnDestroy()
     }
 
     // Release descriptor heaps
-    if (g_engine.pipeline_dx12.m_rtvHeap)
+    if (g_engine.pipeline_dx12.m_dsvHeap)
     {
-        g_engine.pipeline_dx12.m_rtvHeap->Release();
-        g_engine.pipeline_dx12.m_rtvHeap = nullptr;
+        g_engine.pipeline_dx12.m_dsvHeap->Release();
+        g_engine.pipeline_dx12.m_dsvHeap = nullptr;
     }
+
+    // Release other resources
+    if (g_engine.pipeline_dx12.m_imguiHeap)
+    {
+        g_engine.pipeline_dx12.m_imguiHeap->Release();
+        g_engine.pipeline_dx12.m_imguiHeap = nullptr;
+    }
+
+    // Release descriptor heaps
     if (g_engine.pipeline_dx12.m_mainHeap)
     {
         g_engine.pipeline_dx12.m_mainHeap->Release();
         g_engine.pipeline_dx12.m_mainHeap = nullptr;
     }
-    if (g_engine.pipeline_dx12.m_dsvHeap)
+
+    // Release other resources
+    if (g_engine.pipeline_dx12.m_msaaRtvHeap)
     {
-        g_engine.pipeline_dx12.m_dsvHeap->Release();
-        g_engine.pipeline_dx12.m_dsvHeap = nullptr;
+        g_engine.pipeline_dx12.m_msaaRtvHeap->Release();
+        g_engine.pipeline_dx12.m_msaaRtvHeap = nullptr;
+    }
+
+    // Release descriptor heaps
+    if (g_engine.pipeline_dx12.m_rtvHeap)
+    {
+        g_engine.pipeline_dx12.m_rtvHeap->Release();
+        g_engine.pipeline_dx12.m_rtvHeap = nullptr;
     }
 
     // Release swap chain
@@ -135,104 +260,13 @@ void OnDestroy()
         g_engine.pipeline_dx12.m_device = nullptr;
     }
 
-    // Release per-frame resources
-    for (UINT i = 0; i < g_FrameCount; i++)
-    {
-        if (g_engine.pipeline_dx12.m_commandAllocators[i])
-        {
-            g_engine.pipeline_dx12.m_commandAllocators[i]->Release();
-            g_engine.pipeline_dx12.m_commandAllocators[i] = nullptr;
-        }
-    }
-
     // Release other resources
-    if (g_engine.pipeline_dx12.m_imguiHeap)
+    for (UINT i = 0; i < 4; i++)
     {
-        g_engine.pipeline_dx12.m_imguiHeap->Release();
-        g_engine.pipeline_dx12.m_imguiHeap = nullptr;
-    }
-    if (g_engine.pipeline_dx12.m_msaaRtvHeap)
-    {
-        g_engine.pipeline_dx12.m_msaaRtvHeap->Release();
-        g_engine.pipeline_dx12.m_msaaRtvHeap = nullptr;
-    }
-    for (UINT i = 0; i < g_FrameCount; i++)
-    {
-        if (g_engine.pipeline_dx12.m_msaaRenderTargets[i])
+        if (g_engine.pipeline_dx12.m_wireframePSO[i])
         {
-            g_engine.pipeline_dx12.m_msaaRenderTargets[i]->Release();
-            g_engine.pipeline_dx12.m_msaaRenderTargets[i] = nullptr;
-        }
-    }
-    if (g_engine.pipeline_dx12.m_msaaDepthStencil)
-    {
-        g_engine.pipeline_dx12.m_msaaDepthStencil->Release();
-        g_engine.pipeline_dx12.m_msaaDepthStencil = nullptr;
-    }
-
-    // Release graphics resources
-    for (UINT i = 0; i < PrimitiveType::PRIMITIVE_COUNT; i++)
-    {
-        if (g_engine.graphics_resources.m_indexBuffer[i])
-        {
-            g_engine.graphics_resources.m_indexBuffer[i]->Release();
-            g_engine.graphics_resources.m_indexBuffer[i] = nullptr;
-        }
-    }
-
-    // Release other resources
-    if (g_engine.graphics_resources.m_defaultTexture)
-    {
-        g_engine.graphics_resources.m_defaultTexture->Release();
-        g_engine.graphics_resources.m_defaultTexture = nullptr;
-    }
-    if (g_engine.graphics_resources.m_heightmapTexture)
-    {
-        g_engine.graphics_resources.m_heightmapTexture->Release();
-        g_engine.graphics_resources.m_heightmapTexture = nullptr;
-    }
-    if (g_engine.graphics_resources.m_heightfieldVertexBuffer)
-    {
-        g_engine.graphics_resources.m_heightfieldVertexBuffer->Release();
-        g_engine.graphics_resources.m_heightfieldVertexBuffer = nullptr;
-    }
-    if (g_engine.graphics_resources.m_heightfieldIndexBuffer)
-    {
-        g_engine.graphics_resources.m_heightfieldIndexBuffer->Release();
-        g_engine.graphics_resources.m_heightfieldIndexBuffer = nullptr;
-    }
-    if (g_engine.graphics_resources.m_heightfieldVertexUpload)
-    {
-        g_engine.graphics_resources.m_heightfieldVertexUpload->Release();
-        g_engine.graphics_resources.m_heightfieldVertexUpload = nullptr;
-    }
-    if (g_engine.graphics_resources.m_heightfieldIndexUpload)
-    {
-        g_engine.graphics_resources.m_heightfieldIndexUpload->Release();
-        g_engine.graphics_resources.m_heightfieldIndexUpload = nullptr;
-    }
-    for (UINT i = 0; i < MAX_HEIGHTMAP_TEXTURES; i++)
-    {
-        if (g_engine.graphics_resources.m_heightmapResources[i])
-        {
-            g_engine.graphics_resources.m_heightmapResources[i]->Release();
-            g_engine.graphics_resources.m_heightmapResources[i] = nullptr;
-        }
-    }
-    for (UINT i = 0; i < MAX_SKY_TEXTURES; i++)
-    {
-        if (g_engine.graphics_resources.m_skyResources[i])
-        {
-            g_engine.graphics_resources.m_skyResources[i]->Release();
-            g_engine.graphics_resources.m_skyResources[i] = nullptr;
-        }
-    }
-    for (UINT i = 0; i < MAX_LOADED_MODELS; i++)
-    {
-        if (g_engine.graphics_resources.m_modelAlbedoTextures[i])
-        {
-            g_engine.graphics_resources.m_modelAlbedoTextures[i]->Release();
-            g_engine.graphics_resources.m_modelAlbedoTextures[i] = nullptr;
+            g_engine.pipeline_dx12.m_wireframePSO[i]->Release();
+            g_engine.pipeline_dx12.m_wireframePSO[i] = nullptr;
         }
     }
 

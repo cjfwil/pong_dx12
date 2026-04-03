@@ -205,6 +205,24 @@ struct PerDrawRootConstants
 };
 static_assert((sizeof(PerDrawRootConstants) <= 256), "Root32BitConstants size must be 256-bytes or smaller (64 DWORDS)");
 
+struct ModelResources
+{
+    ID3D12Resource *vertexBuffer;
+    ID3D12Resource *indexBuffer;
+    D3D12_VERTEX_BUFFER_VIEW vertexView;
+    D3D12_INDEX_BUFFER_VIEW indexView;
+    UINT indexCount;
+    UINT textureIndex = 0; // index into m_modelAlbedoTextures
+
+    void Release()
+    {
+        if (vertexBuffer)
+            vertexBuffer->Release();
+        if (indexBuffer)
+            indexBuffer->Release();
+    }
+};
+
 struct GraphicsResources
 {
     PerFrameConstantBuffer m_PerFrameConstantBufferData[g_FrameCount];
@@ -244,17 +262,8 @@ struct GraphicsResources
     UINT m_nextSceneObject = 0;                        // next free slot (starts at 0)
 
     ID3D12Resource *m_modelAlbedoTextures[MAX_LOADED_MODELS] = {};
-    struct
-    {
-        ID3D12Resource *vertexBuffer;
-        ID3D12Resource *indexBuffer;
-        D3D12_VERTEX_BUFFER_VIEW vertexView;
-        D3D12_INDEX_BUFFER_VIEW indexView;
-        UINT indexCount;
-        UINT textureIndex = 0; // index into m_modelAlbedoTextures
-    } m_models[MAX_LOADED_MODELS];
+    ModelResources m_models[MAX_LOADED_MODELS];
     UINT m_numModelsLoaded = 0;
-
 };
 
 struct ViewportState
@@ -264,7 +273,8 @@ struct ViewportState
     float m_aspectRatio;
 };
 
-struct EngineContext {
+struct EngineContext
+{
     PipelineDX12 pipeline_dx12;
     GraphicsResources graphics_resources;
     SyncState sync_state;
@@ -1287,7 +1297,7 @@ void RecreateSwapChain()
     for (UINT i = 0; i < g_FrameCount; i++)
     {
         hr = g_engine.pipeline_dx12.m_swapChain->GetBuffer(i,
-                                                  IID_PPV_ARGS(&g_engine.pipeline_dx12.m_renderTargets[i]));
+                                                           IID_PPV_ARGS(&g_engine.pipeline_dx12.m_renderTargets[i]));
 
         if (FAILED(hr))
         {
@@ -2279,9 +2289,8 @@ bool LoadAssets()
     textureUploadHeap->Release();
     stagingHeap->Release();
 
-    
-    // Create wireframe PSO for debug visualisation    
-    {        
+    // Create wireframe PSO for debug visualisation
+    {
         ID3DBlob *vsWire = nullptr, *psWire = nullptr;
         if (!CompileShader(L"shader_source\\shaders.hlsl", "VSMain", "vs_5_1", &vsWire, nullptr) ||
             !CompileShader(L"shader_source\\shaders.hlsl", "PSMain", "ps_5_1", &psWire, nullptr))
