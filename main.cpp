@@ -85,9 +85,14 @@ struct BotObjects
     bool isWaiting = false;
     float waitTimeRemaining = 0.0f;
     float waitTimeSeconds = 2.0f;
+
+    // realistic movement values
+    DirectX::XMFLOAT3 velocity;
+    float maxSpeed = 10.0f;
+    float acceleration = 8.0f;
 };
 
-#define MAX_BOT_OBJECTS 32
+#define MAX_BOT_OBJECTS 16
 static BotObjects g_bot_objects[MAX_BOT_OBJECTS] = {}; // TODO: This structure is runtime only, this data is store on file, perhaps the scene.json
 
 void UpdateBots(float deltaTime)
@@ -135,7 +140,7 @@ void UpdateBots(float deltaTime)
             continue;
         }
 
-        // Moving toward the current target
+        // Moving toward the current target using velocity control
         DirectX::XMFLOAT3 target = bot.patrolPoints[bot.currentPatrolPointTargetIndex];
 
         float dx = target.x - bot.pos.x;
@@ -143,25 +148,59 @@ void UpdateBots(float deltaTime)
         float dz = target.z - bot.pos.z;
         float distance = sqrtf(dx * dx + dy * dy + dz * dz);
 
-        if (distance > EPSILON)
+        if (distance < EPSILON && bot.velocity.x == 0 && bot.velocity.y == 0 && bot.velocity.z == 0)
         {
-            dx /= distance;
-            dy /= distance;
-            dz /= distance;
-            float move = bot.speed * deltaTime;
-            if (move > distance)
-                move = distance;
-            bot.pos.x += dx * move;
-            bot.pos.y += dy * move;
-            bot.pos.z += dz * move;
-        }
-        else
-        {
-            // Reached target - start waiting
+            // Already at target and stationary
             bot.pos = target;
             bot.isWaiting = true;
             bot.waitTimeRemaining = bot.waitTimeSeconds;
+            continue;
         }
+
+        if (distance < EPSILON)
+        {
+            // Very close - snap and stop
+            bot.pos = target;
+            bot.velocity = {0, 0, 0};
+            bot.isWaiting = true;
+            bot.waitTimeRemaining = bot.waitTimeSeconds;
+            continue;
+        }
+
+        // Compute desired speed based on distance (proportional control)
+        float desired_speed = bot.maxSpeed;
+        float r_stop = (bot.maxSpeed * bot.maxSpeed) / (2.0f * bot.acceleration);
+        if (distance < r_stop)
+        {
+            desired_speed = (2.0f * bot.acceleration / bot.maxSpeed) * distance;
+        }
+
+        // Desired velocity direction
+        float invDist = 1.0f / distance;
+        float desiredVX = dx * invDist * desired_speed;
+        float desiredVY = dy * invDist * desired_speed;
+        float desiredVZ = dz * invDist * desired_speed;
+
+        // Accelerate current velocity toward desired
+        float dvx = desiredVX - bot.velocity.x;
+        float dvy = desiredVY - bot.velocity.y;
+        float dvz = desiredVZ - bot.velocity.z;
+        float dvMag = sqrtf(dvx * dvx + dvy * dvy + dvz * dvz);
+        float maxDelta = bot.acceleration * deltaTime;
+        if (dvMag > maxDelta)
+        {
+            dvx = dvx / dvMag * maxDelta;
+            dvy = dvy / dvMag * maxDelta;
+            dvz = dvz / dvMag * maxDelta;
+        }
+        bot.velocity.x += dvx;
+        bot.velocity.y += dvy;
+        bot.velocity.z += dvz;
+
+        // Update position
+        bot.pos.x += bot.velocity.x * deltaTime;
+        bot.pos.y += bot.velocity.y * deltaTime;
+        bot.pos.z += bot.velocity.z * deltaTime;
     }
 }
 
@@ -1842,9 +1881,9 @@ int main(void)
         bot.scale = {1, 1, 1};
 
         // Random number of patrol points
-        bot.patrolPointCount = 2 + (rand() % (maxPatrolPoints-2));
+        bot.patrolPointCount = 2 + (rand() % (maxPatrolPoints - 2));
         for (int p = 0; p < bot.patrolPointCount && p < maxPatrolPoints; ++p)
-        {            
+        {
             // Each patrol point is a random offset from bot's position
             float offX = (float)(rand() % 60) - 30.0f;
             float offZ = (float)(rand() % 60) - 30.0f;
@@ -1860,7 +1899,12 @@ int main(void)
         bot.speed = 3.0f + (float)(rand() % 70) / 10.0f;
         // Random wait time between 1 and 4 seconds
         bot.waitTimeSeconds = 1.0f + (float)(rand() % 30) / 10.0f;
+
+        bot.velocity = {0, 0, 0};
+        bot.maxSpeed = 8.0f + (float)(rand() % 50) / 10.0f;     // 8 to 13
+        bot.acceleration = 6.0f + (float)(rand() % 40) / 10.0f; // 6 to 10
     }
+
     for (int i = 0; i < g_scene.objectCount; ++i)
     {
         SceneObject so = g_scene.objects[i];
