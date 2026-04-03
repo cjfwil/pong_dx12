@@ -92,7 +92,7 @@ struct BotObjects
     float acceleration = 8.0f;
 };
 
-#define MAX_BOT_OBJECTS 16
+#define MAX_BOT_OBJECTS 1024
 static BotObjects g_bot_objects[MAX_BOT_OBJECTS] = {}; // TODO: This structure is runtime only, this data is store on file, perhaps the scene.json
 
 void UpdateBots(float deltaTime)
@@ -908,6 +908,66 @@ struct Contact
     float penetration;
     bool isGround;
 };
+
+void DebugFireShot()
+{
+    // Get camera eye and forward direction (same as Update)
+    DirectX::XMVECTOR eye = XMLoadFloat3(&g_camera.position);
+    DirectX::XMVECTOR forward = DirectX::XMVectorSet(
+        sinf(g_camera.yaw) * cosf(g_camera.pitch),
+        sinf(g_camera.pitch),
+        cosf(g_camera.yaw) * cosf(g_camera.pitch),
+        0.0f);
+    forward = DirectX::XMVector3Normalize(forward);
+
+    DirectX::XMFLOAT3 origin, dir;
+    XMStoreFloat3(&origin, eye);
+    XMStoreFloat3(&dir, forward);
+
+    float closestDist = FLT_MAX;
+    int hitIndex = -1;
+
+    for (int i = 0; i < MAX_BOT_OBJECTS; ++i)
+    {
+        const BotObjects &bot = g_bot_objects[i];
+        // Sphere radius 0.5 (unit sphere scaled by 1)
+        float radius = 0.5f;
+
+        float dx = bot.pos.x - origin.x;
+        float dy = bot.pos.y - origin.y;
+        float dz = bot.pos.z - origin.z;
+
+        // Project onto ray direction
+        float t = dx * dir.x + dy * dir.y + dz * dir.z;
+        if (t < 0)
+            continue;
+
+        float closestX = origin.x + dir.x * t;
+        float closestY = origin.y + dir.y * t;
+        float closestZ = origin.z + dir.z * t;
+
+        float distSq = (closestX - bot.pos.x) * (closestX - bot.pos.x) +
+                       (closestY - bot.pos.y) * (closestY - bot.pos.y) +
+                       (closestZ - bot.pos.z) * (closestZ - bot.pos.z);
+
+        if (distSq <= radius * radius)
+        {
+            float hitDist = sqrtf((closestX - origin.x) * (closestX - origin.x) +
+                                  (closestY - origin.y) * (closestY - origin.y) +
+                                  (closestZ - origin.z) * (closestZ - origin.z));
+            if (hitDist < closestDist)
+            {
+                closestDist = hitDist;
+                hitIndex = i;
+            }
+        }
+    }
+
+    if (hitIndex != -1)
+        SDL_Log("HIT BOT %d at distance %.2f", hitIndex, closestDist);
+    else
+        SDL_Log("MISS");
+}
 
 void Update()
 {
@@ -1974,6 +2034,10 @@ int main(void)
                 {
                     SDL_SetWindowRelativeMouseMode(program_state.window.window, true);
                     g_input.mouseCaptured = true;
+                }
+                if (sdlEvent.button.button == SDL_BUTTON_LEFT && !g_view_editor && !g_input.mouseCaptured)
+                {
+                    DebugFireShot();
                 }
             }
             break;
