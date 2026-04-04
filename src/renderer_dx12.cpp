@@ -23,6 +23,7 @@ struct Vertex
 #include "mesh_data.h"
 #include "render_pipeline_data.h"
 #include "scene_data.h"
+#include "descriptor_layout.h"
 
 #include "generated/descriptor_layout.h"
 
@@ -1661,10 +1662,10 @@ bool LoadAssets()
         srvRanges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, MAX_LOADED_MODELS, RegisterLayout::ALBEDO_REGISTER_BASE);
 
         CD3DX12_ROOT_PARAMETER rootParameters[4];
-        rootParameters[0].InitAsConstants(sizeof(PerDrawRootConstants) / 4, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
-        rootParameters[1].InitAsConstantBufferView(1, 0, D3D12_SHADER_VISIBILITY_ALL); // register b1
-        rootParameters[2].InitAsDescriptorTable(1, &cbvRange, D3D12_SHADER_VISIBILITY_ALL);
-        rootParameters[3].InitAsDescriptorTable(_countof(srvRanges), srvRanges, D3D12_SHADER_VISIBILITY_ALL);
+        rootParameters[RootParameters::PER_DRAW_CONSTANTS].InitAsConstants(sizeof(PerDrawRootConstants) / 4, 0, 0, D3D12_SHADER_VISIBILITY_ALL);
+        rootParameters[RootParameters::PER_FRAME_CBV].InitAsConstantBufferView(1, 0, D3D12_SHADER_VISIBILITY_ALL); // register b1
+        rootParameters[RootParameters::PER_SCENE_DESC_TABLE].InitAsDescriptorTable(1, &cbvRange, D3D12_SHADER_VISIBILITY_ALL);
+        rootParameters[RootParameters::SRV_DESC_TABLE].InitAsDescriptorTable(_countof(srvRanges), srvRanges, D3D12_SHADER_VISIBILITY_ALL);
 
         D3D12_STATIC_SAMPLER_DESC sampler = {};
         sampler.Filter = D3D12_FILTER_ANISOTROPIC;

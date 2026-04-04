@@ -49,6 +49,7 @@
 #include "generated/scene_json.cpp"
 #include "ray_intersections.h"
 #include "cylinder_overlap.h"
+#include "descriptor_layout.h"
 
 static bool g_show_player_wireframe = false;
 static struct
@@ -596,7 +597,7 @@ bool PopulateCommandList()
     g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetDescriptorHeaps(_countof(ppHeaps), ppHeaps);
 
     D3D12_GPU_VIRTUAL_ADDRESS cbvAddress = g_engine.graphics_resources.m_PerFrameConstantBuffer[g_engine.sync_state.m_frameIndex]->GetGPUVirtualAddress();
-    g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRootConstantBufferView(1, cbvAddress);
+    g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRootConstantBufferView(RootParameters::PER_FRAME_CBV, cbvAddress);
 
     // Set per - scene CBV(root parameter 2 - descriptor table)
     UINT descriptorSize = g_engine.pipeline_dx12.m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -605,14 +606,14 @@ bool PopulateCommandList()
         g_engine.pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
         DescriptorIndices::PER_SCENE_CBV, // Per-scene CBV is after all per-frame CBVs
         descriptorSize);
-    g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRootDescriptorTable(2, perSceneCbvHandle);
+    g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRootDescriptorTable(RootParameters::PER_SCENE_DESC_TABLE, perSceneCbvHandle);
 
     // texture handle
     CD3DX12_GPU_DESCRIPTOR_HANDLE srvHandle(
         g_engine.pipeline_dx12.m_mainHeap->GetGPUDescriptorHandleForHeapStart(),
         DescriptorIndices::TEXTURE_SRV, // SRV is after all CBVs
         descriptorSize);
-    g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRootDescriptorTable(3, srvHandle);
+    g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRootDescriptorTable(RootParameters::SRV_DESC_TABLE, srvHandle);
 
     g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->RSSetViewports(1, &g_engine.pipeline_dx12.m_viewport);
     g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->RSSetScissorRects(1, &g_engine.pipeline_dx12.m_scissorRect);
@@ -702,7 +703,7 @@ bool PopulateCommandList()
 
         currentDrawConstants.heightmapIndex = g_draw_list.heightmapIndices[i];
 
-        g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
+        g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(RootParameters::PER_DRAW_CONSTANTS, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
 
         if (objectType == OBJECT_PRIMITIVE || objectType == OBJECT_SKY_SPHERE)
         {
@@ -721,7 +722,7 @@ bool PopulateCommandList()
         {
             // todo unify outside this if statement
             currentDrawConstants.heightmapIndex = g_engine.graphics_resources.m_models[loadedModelIndex].textureIndex;
-            g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
+            g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(RootParameters::PER_DRAW_CONSTANTS, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
 
             g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &g_engine.graphics_resources.m_models[loadedModelIndex].vertexView);
             g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->IASetIndexBuffer(&g_engine.graphics_resources.m_models[loadedModelIndex].indexView);
@@ -754,7 +755,7 @@ bool PopulateCommandList()
             cylConstants.heightmapIndex = 0; // unused
 
             g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(
-                0, sizeof(PerDrawRootConstants) / 4, &cylConstants, 0);
+                RootParameters::PER_DRAW_CONSTANTS, sizeof(PerDrawRootConstants) / 4, &cylConstants, 0);
 
             // Use the existing cylinder mesh
             PrimitiveType cylType = PRIMITIVE_CYLINDER;

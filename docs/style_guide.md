@@ -1,6 +1,6 @@
 # Project Style & Best Practices
 
-## Core Philosophy
+## Core Philosophy (Inspired my Casey Muratori and Mike Acton)
 
 - **Procedural, not object-oriented** – Code is organised around data transformation, not objects with methods. Structs contain only data; functions operate on data.
 - **No hidden state** – Dependencies are explicit. Functions receive necessary data via parameters (e.g., `EngineContext* ctx`) rather than reaching for globals.
