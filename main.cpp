@@ -112,7 +112,69 @@ struct BotObjects
     float acceleration = 8.0f;
 };
 
-#define MAX_BOT_OBJECTS 64
+struct HeightmapDataCPU
+{
+    UINT8 *data;
+    UINT width;
+    UINT height;
+};
+
+static HeightmapDataCPU g_heightmapDataCPU = {};
+
+float SampleHeightmapWorldY(const SceneObject &obj, const DirectX::XMFLOAT3 &worldPos)
+{
+    HeightmapDataCPU cpu = g_heightmapDataCPU;
+    if (!cpu.data)
+        return obj.pos.y; // fallback
+
+    // Transform world → local object space (no rotation, uniform XZ scale)
+    float localX = (worldPos.x - obj.pos.x) / obj.scale.x; // obj.scale.x == obj.scale.z
+    float localZ = (worldPos.z - obj.pos.z) / obj.scale.z;
+
+    // Check if inside the heightmap’s square footprint ([-0.5, 0.5] in X and Z)
+    if (localX < -0.5f || localX > 0.5f || localZ < -0.5f || localZ > 0.5f)
+        return obj.pos.y; // outside – return base height
+
+    // Convert to UV [0,1]
+    float u = localX + 0.5f;
+    float v = localZ + 0.5f;
+
+    // Clamp to avoid edge artefacts
+    u = min(max(u, 0.0f), 1.0f);
+    v = min(max(v, 0.0f), 1.0f);
+
+    // --- Bilinear interpolation ---
+    // Convert UV to texel coordinates in [0, width-1] and [0, height-1]
+    float u_tex = u * ((float)cpu.width - 1);
+    float v_tex = v * ((float)cpu.height - 1);
+
+    // Get integer texel indices and fractions
+    UINT ix0 = (UINT)u_tex;
+    UINT iy0 = (UINT)v_tex;
+    UINT ix1 = min(ix0 + 1, cpu.width - 1);
+    UINT iy1 = min(iy0 + 1, cpu.height - 1);
+    float fx = u_tex - (float)ix0;
+    float fy = v_tex - (float)iy0;
+
+    // Fetch four surrounding texels (values 0‑255)
+    float p00 = (float)cpu.data[iy0 * cpu.width + ix0];
+    float p10 = (float)cpu.data[iy0 * cpu.width + ix1];
+    float p01 = (float)cpu.data[iy1 * cpu.width + ix0];
+    float p11 = (float)cpu.data[iy1 * cpu.width + ix1];
+
+    // Interpolate along X first
+    float p0 = (1.0f - fx) * p00 + fx * p10;
+    float p1 = (1.0f - fx) * p01 + fx * p11;
+
+    // Interpolate along Y
+    float heightVal = (1.0f - fy) * p0 + fy * p1;
+
+    // Convert 0‑255 → [0,1] and apply object's Y scale
+    float h = heightVal / 255.0f;
+    return obj.pos.y + h * obj.scale.y;
+}
+
+#define MAX_BOT_OBJECTS 1024
 static BotObjects g_bot_objects[MAX_BOT_OBJECTS] = {}; // TODO: This structure is runtime only, this data is store on file, perhaps the scene.json
 
 void UpdateBots(float deltaTime)
@@ -126,8 +188,9 @@ void UpdateBots(float deltaTime)
         // ---- STATE HANDLING ----
         if (bot.state == BOT_DYING)
         {
-            const float GRAVITY = 15.0f;  // units per second squared
-            const float GROUND_Y = 10.0f; // constant landing height
+            // todo: separate out heightmaps from rest of environment
+            const float GRAVITY = 15.0f;                                               // units per second squared
+            const float GROUND_Y = SampleHeightmapWorldY(g_scene.objects[0], bot.pos); // hardcoded object index 0 is the heightmap
 
             // Apply gravity to vertical velocity
             bot.velocity.y -= GRAVITY * deltaTime;
@@ -259,15 +322,6 @@ static struct
     float eyeHeight = 1.7f;
     float radius = 0.15f;
 } g_player_bounds;
-
-struct HeightmapDataCPU
-{
-    UINT8 *data;
-    UINT width;
-    UINT height;
-};
-
-static HeightmapDataCPU g_heightmapDataCPU = {};
 
 void write_scene()
 {
@@ -905,59 +959,6 @@ void FillDrawList()
         drawCount++;
     }
     g_draw_list.drawAmount = drawCount;
-}
-
-float SampleHeightmapWorldY(const SceneObject &obj, const DirectX::XMFLOAT3 &worldPos)
-{
-    HeightmapDataCPU cpu = g_heightmapDataCPU;
-    if (!cpu.data)
-        return obj.pos.y; // fallback
-
-    // Transform world → local object space (no rotation, uniform XZ scale)
-    float localX = (worldPos.x - obj.pos.x) / obj.scale.x; // obj.scale.x == obj.scale.z
-    float localZ = (worldPos.z - obj.pos.z) / obj.scale.z;
-
-    // Check if inside the heightmap’s square footprint ([-0.5, 0.5] in X and Z)
-    if (localX < -0.5f || localX > 0.5f || localZ < -0.5f || localZ > 0.5f)
-        return obj.pos.y; // outside – return base height
-
-    // Convert to UV [0,1]
-    float u = localX + 0.5f;
-    float v = localZ + 0.5f;
-
-    // Clamp to avoid edge artefacts
-    u = min(max(u, 0.0f), 1.0f);
-    v = min(max(v, 0.0f), 1.0f);
-
-    // --- Bilinear interpolation ---
-    // Convert UV to texel coordinates in [0, width-1] and [0, height-1]
-    float u_tex = u * ((float)cpu.width - 1);
-    float v_tex = v * ((float)cpu.height - 1);
-
-    // Get integer texel indices and fractions
-    UINT ix0 = (UINT)u_tex;
-    UINT iy0 = (UINT)v_tex;
-    UINT ix1 = min(ix0 + 1, cpu.width - 1);
-    UINT iy1 = min(iy0 + 1, cpu.height - 1);
-    float fx = u_tex - (float)ix0;
-    float fy = v_tex - (float)iy0;
-
-    // Fetch four surrounding texels (values 0‑255)
-    float p00 = (float)cpu.data[iy0 * cpu.width + ix0];
-    float p10 = (float)cpu.data[iy0 * cpu.width + ix1];
-    float p01 = (float)cpu.data[iy1 * cpu.width + ix0];
-    float p11 = (float)cpu.data[iy1 * cpu.width + ix1];
-
-    // Interpolate along X first
-    float p0 = (1.0f - fx) * p00 + fx * p10;
-    float p1 = (1.0f - fx) * p01 + fx * p11;
-
-    // Interpolate along Y
-    float heightVal = (1.0f - fy) * p0 + fy * p1;
-
-    // Convert 0‑255 → [0,1] and apply object's Y scale
-    float h = heightVal / 255.0f;
-    return obj.pos.y + h * obj.scale.y;
 }
 
 // Convert pitch (X), yaw (Y), roll (Z) in radians to a quaternion.
