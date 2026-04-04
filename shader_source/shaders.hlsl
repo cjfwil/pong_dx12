@@ -40,7 +40,6 @@ Texture2D g_albedoTextures[] : register(ALBEDO_REGISTER_BASE);
 
 // TODO: METAPROGRAM all these register positions, or calculate with macros? doesn't matter just get rid of magic numbers
 
-
 SamplerState g_sampler : register(s0);
 // add a separate sampler for sampling heightfield?
 
@@ -91,23 +90,23 @@ PSInput VSMain(VSInput input)
 
 #ifdef HEIGHTFIELD
     float h = g_heightmaps[heightmapIndex].SampleLevel(g_sampler, input.uv, 0).r;
-    float3 worldNormal = normalize(mul(input.norm, (float3x3)world));    
+    float3 worldNormal = normalize(mul(input.norm, (float3x3)world));
     float3 displacedPos = input.position.xyz + worldNormal * h;
-    
+
     float4 finalWorldPos = mul(float4(displacedPos, 1.0f), world);
     result.position = mul(mul(finalWorldPos, view), projection);
     result.worldPos = finalWorldPos.xyz;
     result.normal = worldNormal;
     // result.uv = input.uv;
     result.uv = float2(h, h);
-#elif defined(TRIPLANAR)    
+#elif defined(TRIPLANAR)
     float4 worldPosition = mul(input.position, world);
     result.position = mul(mul(worldPosition, view), projection);
     result.worldPos = worldPosition.xyz;
     result.normal = normalize(mul(input.norm, (float3x3)world));
     result.uv = input.uv;
 
-#else    
+#else
     float4 pos = mul(input.position, world);
     result.position = mul(mul(pos, view), projection);
     result.worldPos = 0.0; // unused
@@ -139,6 +138,44 @@ float4 PSMain(PSInput input) : SV_TARGET
     float3 L = normalize(light_direction.xyz);
     float NdotL = saturate(dot(N, L));
 
-    float3 final = texColor.rgb * ambient_colour.rgb + texColor.rgb * light_colour.rgb * NdotL;    
+    float3 final = texColor.rgb * ambient_colour.rgb + texColor.rgb * light_colour.rgb * NdotL;
     return float4(final, texColor.a);
+}
+
+struct VSOutputReticle
+{
+    float4 position : SV_POSITION;
+    float2 uv : TEXCOORD;    
+};
+
+VSOutputReticle VSReticle(uint vertexID: SV_VertexID)
+{
+    VSOutputReticle output;
+    // Clockwise order: (-1,-1), (-1,3), (3,-1)
+    float2 pos = float2(
+        (vertexID == 0) ? -1.0 : (vertexID == 1) ? -1.0
+                                                 : 3.0,
+        (vertexID == 0) ? -1.0 : (vertexID == 1) ? 3.0
+                                                 : -1.0);
+    output.position = float4(pos, 0.0, 1.0);
+    output.uv = pos * 0.5 + 0.5;
+
+    // store aspect ratio in w of the position
+    return output;
+}
+
+float4 PSReticle(VSOutputReticle input) : SV_TARGET
+{
+    float2 uv = input.uv;
+    float2 centre = float2(0.5, 0.5);
+    float2 delta = uv - centre;
+    
+    float aspect = 16.0f/9.0f;
+    delta.x *= aspect;
+
+    float dist = length(delta);
+    if (dist > 0.003f)
+        discard;
+    float alpha = 1.0 - smoothstep(0.001, 0.003, dist);
+    return float4(1, 1, 1, alpha*0.5f);
 }

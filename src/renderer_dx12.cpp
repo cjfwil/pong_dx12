@@ -33,6 +33,10 @@ static ID3D12Resource *g_vertexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_C
 static ID3D12Resource *g_indexBufferUploadPrimitives[PrimitiveType::PRIMITIVE_COUNT] = {};
 static UINT g_cbvSrvDescriptorSize = 0;
 
+// Reticle root signature (empty, no parameters), TODO: abstract this out when adding more 2d UI screenspace system
+static ID3D12RootSignature *g_reticleRootSig = nullptr;
+static ID3D12PipelineState *g_reticlePSO = nullptr;
+
 bool CreateDefaultBuffer(ID3D12Device *device, ID3D12GraphicsCommandList *cmdList, const void *data, UINT64 size, D3D12_RESOURCE_STATES targetState, ID3D12Resource **outResource, ID3D12Resource **outUploadBuffer) // caller must release after GPU work
 {
     HRESULT hr = device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &CD3DX12_RESOURCE_DESC::Buffer(size), D3D12_RESOURCE_STATE_COPY_DEST, nullptr, IID_PPV_ARGS(outResource));
@@ -217,11 +221,13 @@ struct ModelResources
 
     void Release()
     {
-        if (vertexBuffer) {
+        if (vertexBuffer)
+        {
             vertexBuffer->Release();
             vertexBuffer = nullptr;
         }
-        if (indexBuffer) {
+        if (indexBuffer)
+        {
             indexBuffer->Release();
             indexBuffer = nullptr;
         }
@@ -2341,6 +2347,62 @@ bool LoadAssets()
         vsWire->Release();
         psWire->Release();
     }
+
+    // Create reticle root signature.  TODO: Abstract this more
+    {
+        CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc;
+        rootSigDesc.Init(0, nullptr, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+        ID3DBlob *sigBlob = nullptr;
+        ID3DBlob *errorBlob = nullptr;
+        HRESULT hr = D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, &sigBlob, &errorBlob);
+        if (FAILED(hr))
+        {
+            if (errorBlob)
+                SDL_Log("Reticle root sig error: %s", (char *)errorBlob->GetBufferPointer());
+            return false;
+        }
+        hr = g_engine.pipeline_dx12.m_device->CreateRootSignature(0, sigBlob->GetBufferPointer(), sigBlob->GetBufferSize(), IID_PPV_ARGS(&g_reticleRootSig));
+        sigBlob->Release();
+        if (FAILED(hr))
+            return false;
+    }
+
+    // Compile shaders
+    ID3DBlob *vsReticle = nullptr;
+    ID3DBlob *psReticle = nullptr;
+    if (!CompileShader(L"shader_source\\shaders.hlsl", "VSReticle", "vs_5_1", &vsReticle) ||
+        !CompileShader(L"shader_source\\shaders.hlsl", "PSReticle", "ps_5_1", &psReticle))
+    {
+        return false;
+    }
+
+    // Create PSO
+    D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = {};
+    psoDesc.pRootSignature = g_reticleRootSig;
+    psoDesc.VS = CD3DX12_SHADER_BYTECODE(vsReticle);
+    psoDesc.PS = CD3DX12_SHADER_BYTECODE(psReticle);
+    psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+    psoDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+    psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
+    psoDesc.BlendState.RenderTarget[0].BlendEnable = TRUE;
+    psoDesc.BlendState.RenderTarget[0].SrcBlend = D3D12_BLEND_SRC_ALPHA;
+    psoDesc.BlendState.RenderTarget[0].DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+    psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+    psoDesc.DepthStencilState.DepthEnable = FALSE; // always on top
+    psoDesc.SampleMask = UINT_MAX;
+    psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+    psoDesc.NumRenderTargets = 1;
+    psoDesc.RTVFormats[0] = g_screenFormat;
+    psoDesc.SampleDesc.Count = 1;
+    psoDesc.SampleDesc.Quality = 0;
+
+    HRESULT hr = g_engine.pipeline_dx12.m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&g_reticlePSO));
+    if (FAILED(hr))
+        return false;
+
+    vsReticle->Release();
+    psReticle->Release();
     return true;
 }
 

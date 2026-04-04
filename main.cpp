@@ -491,18 +491,18 @@ struct FlyCamera
 {
     DirectX::XMMATRIX viewMatrix;
     DirectX::XMMATRIX projectionMatrix;
-    
+
     DirectX::XMVECTOR forward;
     DirectX::XMVECTOR right;
     DirectX::XMVECTOR up;
     DirectX::XMVECTOR eye;
-    
+
     DirectX::XMFLOAT3 position = {0.2f, 24.3f, 5.071f};
     float yaw = 0.0f;
     float pitch = 0.0f;
     float moveSpeed = 5.0f;
     float lookSpeed = 0.002f;
-    float padSpeed = 1.5f;    
+    float padSpeed = 1.5f;
     float fov_deg = 60.0f;
 
     void UpdateFlyCamera(float deltaTime)
@@ -797,6 +797,25 @@ bool PopulateCommandList()
         ID3D12DescriptorHeap *imguiHeaps[] = {g_imguiHeap.Heap};
         g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetDescriptorHeaps(_countof(imguiHeaps), imguiHeaps);
         ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]);
+    }
+    else
+    {
+        // Draw reticle to back buffer (single-sampled)
+        if (g_reticlePSO && g_reticleRootSig)
+        {
+            // Set back buffer as render target
+            CD3DX12_CPU_DESCRIPTOR_HANDLE backBufferRtvHandle(
+                g_engine.pipeline_dx12.m_rtvHeap->GetCPUDescriptorHandleForHeapStart(),
+                (INT)g_engine.sync_state.m_frameIndex,
+                g_engine.pipeline_dx12.m_rtvDescriptorSize);
+            g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->OMSetRenderTargets(1, &backBufferRtvHandle, FALSE, nullptr);
+
+            auto cmdList = g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex];
+            cmdList->SetPipelineState(g_reticlePSO);
+            cmdList->SetGraphicsRootSignature(g_reticleRootSig);
+            cmdList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+            cmdList->DrawInstanced(3, 1, 0, 0);
+        }
     }
 
     // Final transition to PRESENT
@@ -2196,5 +2215,11 @@ int main(void)
     }
     g_imguiHeap.Destroy();
     OnDestroy();
+
+    // todo: move out when abstracting 2d UI system in future
+    if (g_reticlePSO)
+        g_reticlePSO->Release();
+    if (g_reticleRootSig)
+        g_reticleRootSig->Release();
     return (0);
 }
