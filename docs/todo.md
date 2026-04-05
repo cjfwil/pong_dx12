@@ -177,3 +177,7 @@ perhaps this is only in the selector, or maybe it is a guard in the actual code?
 
 
 ## draw bot state in bot window
+
+## rename heightmapIndices for albedo textures because that is terrible
+- separate heightmap and other static objects and loaded model into separate list
+- maybe draw heightmap second to last (after all objects but before sky) to minimise overdraw?

@@ -92,6 +92,7 @@ struct BotObjects
 
     // game data
     BotState state = BOT_ALIVE;
+    UINT modelIndex = 0;
 
     // patrol data (TODO: abstract this when we have different behaviours (maybe union with other behaviour data))
     DirectX::XMFLOAT3 patrolPoints[maxPatrolPoints];
@@ -555,7 +556,7 @@ struct FlyCamera
     float yaw = 0.0f;
     float pitch = 0.0f;
     float moveSpeed = 5.0f;
-    float lookSpeed = 0.002f;
+    float lookSpeed = 0.2f;
     float padSpeed = 1.5f;
     float fov_deg = 60.0f;
 
@@ -953,8 +954,12 @@ void FillDrawList()
         // g_draw_list.transforms.scale[drawCount] = bot.scale;        //TODO: have this setup on load
         g_draw_list.transforms.scale[drawCount] = scaleOverride;
 
-        g_draw_list.objectTypes[drawCount] = ObjectType::OBJECT_PRIMITIVE;
-        g_draw_list.primitiveTypes[drawCount] = PrimitiveType::PRIMITIVE_SPHERE;
+        g_draw_list.objectTypes[drawCount] = ObjectType::OBJECT_LOADED_MODEL;
+        g_draw_list.loadedModelIndex[drawCount] = bot.modelIndex;
+        g_draw_list.pipelines[drawCount] = RENDER_LOADED_MODEL;
+        // g_draw_list.primitiveTypes[drawCount] = PrimitiveType::PRIMITIVE_SPHERE;
+        
+        g_draw_list.heightmapIndices[drawCount] = g_engine.graphics_resources.m_models[bot.modelIndex].textureIndex;
 
         drawCount++;
     }
@@ -1510,7 +1515,8 @@ void DrawEditorGUI()
     ImGui::End();
 
     ImGui::Begin("Settings");
-    ImGui::SliderFloat("fov_deg", &g_camera.fov_deg, 60.0f, 120.0f);
+    ImGui::SliderFloat("fov_deg", &g_camera.fov_deg, 10.0f, 120.0f);
+    ImGui::SliderFloat("lookSpeed", &g_camera.lookSpeed, 0.02f, 0.2f);
     ImGui::Text("Frametime %.3f ms (%.2f FPS)",
                 1000.0f / ImGui::GetIO().Framerate,
                 ImGui::GetIO().Framerate);
@@ -2060,13 +2066,17 @@ int main(void)
     LoadAllTextures();
 
     // set up bot objects
+    ModelLoadResult botModelResult = LoadModelFromFile("assets/models/Drone.glb");
+
     for (int i = 0; i < MAX_BOT_OBJECTS; ++i)
     {
         BotObjects &bot = g_bot_objects[i];
+        if (botModelResult.success)
+            bot.modelIndex = botModelResult.index;
 
         // Random position within heightfield bounds (approx -100 to 100 in X and Z)
-        float x = (float)(rand() % 256) - 0;
-        float z = (float)(rand() % 256) - 0;
+        float x = (float)(rand() % 256) - g_scene.objects[0].pos.x / 2; // heightfield position TODO: pull out into own thing
+        float z = (float)(rand() % 256) - g_scene.objects[0].pos.z / 2;
         float y = 25.0f + (float)(rand() % 20); // between 25 and 45
 
         bot.pos = {x, y, z};
@@ -2097,6 +2107,7 @@ int main(void)
         bot.acceleration = 6.0f + (float)(rand() % 40) / 10.0f; // 6 to 10
     }
 
+    // load all the models after the fact
     for (int i = 0; i < g_scene.objectCount; ++i)
     {
         SceneObject so = g_scene.objects[i];
@@ -2150,8 +2161,8 @@ int main(void)
             {
                 if (g_input.mouseCaptured)
                 {
-                    g_camera.yaw += sdlEvent.motion.xrel * g_camera.lookSpeed;
-                    g_camera.pitch -= sdlEvent.motion.yrel * g_camera.lookSpeed;
+                    g_camera.yaw += sdlEvent.motion.xrel * (g_camera.lookSpeed / 100.0f);
+                    g_camera.pitch -= sdlEvent.motion.yrel * (g_camera.lookSpeed / 100.0f);
                     const float maxPitch = DirectX::XMConvertToRadians(89.0f);
                     if (g_camera.pitch > maxPitch)
                         g_camera.pitch = maxPitch;
