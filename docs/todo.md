@@ -128,7 +128,7 @@ Heightmaps also can ony be scaled in Y and the X/Z together. The Y scale determi
 
 ## change allow support of heightmaps of 16bits precision
 
-## controller movement
+## controller movement and look
 
 ## debug camera offset
 ## debug player cylinder render

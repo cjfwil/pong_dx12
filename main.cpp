@@ -109,6 +109,7 @@ struct BotObjects
 
     // realistic movement values
     DirectX::XMFLOAT3 velocity;
+    DirectX::XMFLOAT3 tumbleAnglularVelocity; // for tumbling when falling through air in dying
     float maxSpeed = 10.0f;
     float acceleration = 8.0f;
 };
@@ -191,6 +192,28 @@ void UpdateBots(float deltaTime)
         // ---- STATE HANDLING ----
         if (bot.state == BOT_DYING)
         {
+            // Apply tumbling rotation
+            if (bot.tumbleAnglularVelocity.x != 0.0f || bot.tumbleAnglularVelocity.y != 0.0f || bot.tumbleAnglularVelocity.z != 0.0f)
+            {
+                DirectX::XMVECTOR quat = DirectX::XMLoadFloat4(&bot.rot);
+                DirectX::XMVECTOR angVel = DirectX::XMLoadFloat3(&bot.tumbleAnglularVelocity);
+                float angle = DirectX::XMVectorGetX(DirectX::XMVector3Length(angVel)) * deltaTime;
+                if (angle > 0.001f)
+                {
+                    DirectX::XMVECTOR axis = DirectX::XMVector3Normalize(angVel);
+                    DirectX::XMVECTOR deltaQ = DirectX::XMQuaternionRotationAxis(axis, angle);
+                    quat = DirectX::XMQuaternionMultiply(deltaQ, quat);
+                    quat = DirectX::XMQuaternionNormalize(quat);
+                    DirectX::XMStoreFloat4(&bot.rot, quat);
+                }
+                // Damping (exponential decay, 95% per second)
+                float damping = 0.95f;
+                float factor = powf(damping, deltaTime);
+                bot.tumbleAnglularVelocity.x *= factor;
+                bot.tumbleAnglularVelocity.y *= factor;
+                bot.tumbleAnglularVelocity.z *= factor;
+            }
+
             // todo: separate out heightmaps from rest of environment
             const float GRAVITY = 15.0f;                                                                // units per second squared
             const float GROUND_Y = SampleHeightmapWorldY(g_scene.objects[g_heightfieldIndex], bot.pos); // hardcoded object index 0 is the heightmap
@@ -206,9 +229,10 @@ void UpdateBots(float deltaTime)
             // When we hit the ground, stop all movement and become DEAD
             if (bot.pos.y <= GROUND_Y)
             {
+                bot.state = BOT_DEAD;
                 bot.pos.y = GROUND_Y;
                 bot.velocity = {0, 0, 0};
-                bot.state = BOT_DEAD;
+                bot.tumbleAnglularVelocity = {0, 0, 0};
             }
             continue; // skip ALIVE logic
         }
@@ -1112,8 +1136,20 @@ void DebugFireShot()
         SDL_Log("HIT BOT %d at distance %.2f", hitIndex, closestDist);
         rayEnd = hitPoint;
         BotObjects &bot = g_bot_objects[hitIndex];
+
+        // set up tumble when dying (only for drone like falling bots)
+        if (bot.state != BotState::BOT_DEAD)
+        {
+            // todo: make these magic constants adjustable (they are currently very realistic however)            
+            // Random angular velocity between -12 and 12 rad/s (approx 700 deg/s)
+            // NOTE: these constants result in a very well tuned result for a small quadcopter bot being shot down
+            // only for different type of bot, like a larger flying object
+            bot.tumbleAnglularVelocity.x = ((float)(rand() % 240) / 10.0f - 12.0f);
+            bot.tumbleAnglularVelocity.y = ((float)(rand() % 240) / 10.0f - 12.0f);
+            bot.tumbleAnglularVelocity.z = ((float)(rand() % 240) / 10.0f - 12.0f);
+        }
+
         bot.state = BOT_DYING;
-        // bot.velocity = {0, 0, 0}; // stop any residual movement (optional)
     }
     else
         SDL_Log("MISS");
@@ -2099,6 +2135,7 @@ int main(void)
 
         bot.pos = {x, y, z};
         bot.scale = {1, 1, 1};
+        bot.rot = {0.0f, 0.0f, 0.0f, 1.0f};
 
         // Random number of patrol points
         bot.patrolPointCount = 2 + (rand() % (maxPatrolPoints - 2));
