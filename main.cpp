@@ -178,6 +178,8 @@ float SampleHeightmapWorldY(const SceneObject &obj, const DirectX::XMFLOAT3 &wor
 #define MAX_BOT_OBJECTS 1024
 static BotObjects g_bot_objects[MAX_BOT_OBJECTS] = {}; // TODO: This structure is runtime only, this data is store on file, perhaps the scene.json
 
+static UINT g_heightfieldIndex = 0; // the heightfield index into the objects in the scene
+
 void UpdateBots(float deltaTime)
 {
     const float EPSILON = 0.1f;
@@ -190,8 +192,8 @@ void UpdateBots(float deltaTime)
         if (bot.state == BOT_DYING)
         {
             // todo: separate out heightmaps from rest of environment
-            const float GRAVITY = 15.0f;                                               // units per second squared
-            const float GROUND_Y = SampleHeightmapWorldY(g_scene.objects[0], bot.pos); // hardcoded object index 0 is the heightmap
+            const float GRAVITY = 15.0f;                                                                // units per second squared
+            const float GROUND_Y = SampleHeightmapWorldY(g_scene.objects[g_heightfieldIndex], bot.pos); // hardcoded object index 0 is the heightmap
 
             // Apply gravity to vertical velocity
             bot.velocity.y -= GRAVITY * deltaTime;
@@ -537,9 +539,12 @@ struct window_state
 
 static struct
 {
+    bool keys[512] = {false};
     bool mouseCaptured = false;
     bool lmbDown = false;
-    bool keys[512] = {false};
+
+    float mouseDeltaX = 0.0f;
+    float mouseDeltaY = 0.0f;
 } g_input;
 
 struct FlyCamera
@@ -556,12 +561,25 @@ struct FlyCamera
     float yaw = 0.0f;
     float pitch = 0.0f;
     float moveSpeed = 5.0f;
-    float lookSpeed = 0.2f;
+    float lookSpeed = 12.0f;
     float padSpeed = 1.5f;
     float fov_deg = 60.0f;
 
     void UpdateFlyCamera(float deltaTime)
     {
+        float sensitivity_final = lookSpeed * deltaTime / 100.0f;
+        yaw += g_input.mouseDeltaX * sensitivity_final;
+        pitch -= g_input.mouseDeltaY * sensitivity_final;
+        g_input.mouseDeltaX = 0.0f;
+        g_input.mouseDeltaY = 0.0f;
+
+        // clamping view
+        const float maxPitch = DirectX::XMConvertToRadians(89.0f);
+        if (g_camera.pitch > maxPitch)
+            g_camera.pitch = maxPitch;
+        if (g_camera.pitch < -maxPitch)
+            g_camera.pitch = -maxPitch;
+
         forward = DirectX::XMVectorSet(
             sinf(yaw) * cosf(pitch),
             sinf(pitch),
@@ -625,7 +643,7 @@ static struct
     PrimitiveType primitiveTypes[g_draw_list_element_total] = {};
     UINT loadedModelIndex[g_draw_list_element_total] = {};
     RenderPipeline pipelines[g_draw_list_element_total] = {};
-    UINT heightmapIndices[g_draw_list_element_total] = {};
+    UINT textureArrayIndices[g_draw_list_element_total] = {};
     struct
     {
         DirectX::XMFLOAT3 pos[g_draw_list_element_total];
@@ -756,7 +774,7 @@ bool PopulateCommandList()
             &currentDrawConstants.world,
             DirectX::XMMatrixTranspose(worldMatrix));
 
-        currentDrawConstants.heightmapIndex = g_draw_list.heightmapIndices[i];
+        currentDrawConstants.textureArrayIndex = g_draw_list.textureArrayIndices[i];
 
         g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(RootParameters::PER_DRAW_CONSTANTS, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
 
@@ -776,7 +794,7 @@ bool PopulateCommandList()
         else if (objectType == OBJECT_LOADED_MODEL)
         {
             // todo unify outside this if statement
-            currentDrawConstants.heightmapIndex = g_engine.graphics_resources.m_models[loadedModelIndex].textureIndex;
+            currentDrawConstants.textureArrayIndex = g_engine.graphics_resources.m_models[loadedModelIndex].textureIndex;
             g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(RootParameters::PER_DRAW_CONSTANTS, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
 
             g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->IASetVertexBuffers(0, 1, &g_engine.graphics_resources.m_models[loadedModelIndex].vertexView);
@@ -807,7 +825,7 @@ bool PopulateCommandList()
 
             PerDrawRootConstants cylConstants;
             DirectX::XMStoreFloat4x4(&cylConstants.world, DirectX::XMMatrixTranspose(world));
-            cylConstants.heightmapIndex = 0; // unused
+            cylConstants.textureArrayIndex = 0; // unused
 
             g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(
                 RootParameters::PER_DRAW_CONSTANTS, sizeof(PerDrawRootConstants) / 4, &cylConstants, 0);
@@ -922,17 +940,17 @@ void FillDrawList()
         }
         else if (obj.objectType == OBJECT_HEIGHTFIELD)
         {
-            g_draw_list.heightmapIndices[drawCount] = g_engine.graphics_resources.m_sceneObjectIndices[i];
+            g_draw_list.textureArrayIndices[drawCount] = g_engine.graphics_resources.m_sceneObjectIndices[i];
         }
         else if (obj.objectType == OBJECT_SKY_SPHERE)
         {
             g_draw_list.primitiveTypes[drawCount] = PRIMITIVE_INVERTED_SPHERE;
-            g_draw_list.heightmapIndices[drawCount] = g_engine.graphics_resources.m_sceneObjectIndices[i];
+            g_draw_list.textureArrayIndices[drawCount] = g_engine.graphics_resources.m_sceneObjectIndices[i];
         }
         else if (obj.objectType == OBJECT_LOADED_MODEL)
         {
             g_draw_list.loadedModelIndex[drawCount] = g_scene.objects[i].data.loaded_model.model_index;
-            // g_draw_list.heightmapIndices[drawCount] = g_scene.objects[i].data.loaded_model.model_index;
+            // g_draw_list.textureArrayIndices[drawCount] = g_scene.objects[i].data.loaded_model.model_index;
         }
 
         g_draw_list.pipelines[drawCount] = obj.pipeline;
@@ -958,8 +976,8 @@ void FillDrawList()
         g_draw_list.loadedModelIndex[drawCount] = bot.modelIndex;
         g_draw_list.pipelines[drawCount] = RENDER_LOADED_MODEL;
         // g_draw_list.primitiveTypes[drawCount] = PrimitiveType::PRIMITIVE_SPHERE;
-        
-        g_draw_list.heightmapIndices[drawCount] = g_engine.graphics_resources.m_models[bot.modelIndex].textureIndex;
+
+        g_draw_list.textureArrayIndices[drawCount] = g_engine.graphics_resources.m_models[bot.modelIndex].textureIndex;
 
         drawCount++;
     }
@@ -1516,7 +1534,7 @@ void DrawEditorGUI()
 
     ImGui::Begin("Settings");
     ImGui::SliderFloat("fov_deg", &g_camera.fov_deg, 10.0f, 120.0f);
-    ImGui::SliderFloat("lookSpeed", &g_camera.lookSpeed, 0.02f, 0.2f);
+    ImGui::SliderFloat("lookSpeed", &g_camera.lookSpeed, 1.0f, 15.0f);
     ImGui::Text("Frametime %.3f ms (%.2f FPS)",
                 1000.0f / ImGui::GetIO().Framerate,
                 ImGui::GetIO().Framerate);
@@ -2161,13 +2179,8 @@ int main(void)
             {
                 if (g_input.mouseCaptured)
                 {
-                    g_camera.yaw += sdlEvent.motion.xrel * (g_camera.lookSpeed / 100.0f);
-                    g_camera.pitch -= sdlEvent.motion.yrel * (g_camera.lookSpeed / 100.0f);
-                    const float maxPitch = DirectX::XMConvertToRadians(89.0f);
-                    if (g_camera.pitch > maxPitch)
-                        g_camera.pitch = maxPitch;
-                    if (g_camera.pitch < -maxPitch)
-                        g_camera.pitch = -maxPitch;
+                    g_input.mouseDeltaX += sdlEvent.motion.xrel;
+                    g_input.mouseDeltaY += sdlEvent.motion.yrel;
                 }
             }
             break;

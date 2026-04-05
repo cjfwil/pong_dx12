@@ -48,7 +48,7 @@ Generated on 2026-02-25 07:26:32
    429:         else if (objectType == OBJECT_LOADED_MODEL)
    430:         {
 →  431:             // todo unify outside this if statement
-   432:             currentDrawConstants.heightmapIndex = g_engine.graphics_resources.m_models[loadedModelIndex].textureIndex;            
+   432:             currentDrawConstants.textureArrayIndex = g_engine.graphics_resources.m_models[loadedModelIndex].textureIndex;            
    433:             g_engine.pipeline_dx12.m_commandList[g_engine.sync_state.m_frameIndex]->SetGraphicsRoot32BitConstants(0, sizeof(PerDrawRootConstants) / 4, &currentDrawConstants, 0);
 ```
 
@@ -114,14 +114,14 @@ Generated on 2026-02-25 07:26:32
 
 ### Line 11
 
-**Line content:** `uint heightmapIndex; // TODO: rename this because in practice it is just an abstract index into albedo, heightmap or sky texture arrays`
+**Line content:** `uint textureArrayIndex; // TODO: rename this because in practice it is just an abstract index into albedo, heightmap or sky texture arrays`
 
 **Context:**
 
 ```
      9: {
     10:     float4x4 world;
-→   11:     uint heightmapIndex; // TODO: rename this because in practice it is just an abstract index into albedo, heightmap or sky texture arrays
+→   11:     uint textureArrayIndex; // TODO: rename this because in practice it is just an abstract index into albedo, heightmap or sky texture arrays
     12:     float per_draw_padding[3];
     13: };
 ```

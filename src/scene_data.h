@@ -30,7 +30,7 @@ enum CollisionShapeBounds {
 
 // maybe rejig this to allow for enemies?
 struct SceneObject {
-    char nametag[128];
+    char nametag[128]; // name tag is the name for visuals in the editor only. TODO (optimisation): maybe separate this out to somewhere else so we dont have to pull it into the cache?
     DirectX::XMFLOAT3 pos;
     DirectX::XMFLOAT4 rot;
     DirectX::XMFLOAT3 scale;
@@ -65,7 +65,12 @@ struct SceneObject {
 };
 
 struct Scene {
-    SceneObject objects[MAX_SCENE_OBJECTS];
+    //TODO: maybe put heightfields here example:
+    // SceneObject heightfields[N * N];
+    // or maybe in a spatial partition?
+    // also maybe a special type of object that work together to build a larger set of fields (instead of SceneObject)
+
+    SceneObject objects[MAX_SCENE_OBJECTS]; //static environment objects
     int objectCount;
     // todo add more fields here later (ambient colour, lights etc.)
 };

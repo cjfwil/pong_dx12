@@ -205,7 +205,7 @@ struct PerDrawRootConstants
     DirectX::XMFLOAT4X4 world; // NOTE: changing this to XMFLOAT3x4 screws up rendering on faster gpu for some reason??????
     static_assert(sizeof(world) == 16 * 4, "Dont change type of world matrix, it screws up everything on test bench for some reason (faster GPU)");
 
-    UINT heightmapIndex;
+    UINT textureArrayIndex;
     UINT padding[3]; // ensure 16‑byte alignment
 };
 static_assert((sizeof(PerDrawRootConstants) <= 256), "Root32BitConstants size must be 256-bytes or smaller (64 DWORDS)");

@@ -8,7 +8,7 @@
 cbuffer PerDrawRootConstants : register(b0)
 {
     float4x4 world;
-    uint heightmapIndex; // TODO: rename this because in practice it is just an abstract index into albedo, heightmap or sky texture arrays
+    uint textureArrayIndex; // TODO: rename this because in practice it is just an abstract index into albedo, heightmap or sky texture arrays
     float per_draw_padding[3];
 };
 
@@ -89,7 +89,7 @@ PSInput VSMain(VSInput input)
     PSInput result;
 
 #ifdef HEIGHTFIELD
-    float h = g_heightmaps[heightmapIndex].SampleLevel(g_sampler, input.uv, 0).r;
+    float h = g_heightmaps[textureArrayIndex].SampleLevel(g_sampler, input.uv, 0).r;
     float3 worldNormal = normalize(mul(input.norm, (float3x3)world));
     float3 displacedPos = input.position.xyz + worldNormal * h;
 
@@ -120,10 +120,10 @@ PSInput VSMain(VSInput input)
 float4 PSMain(PSInput input) : SV_TARGET
 {
 #ifdef SKY
-    float4 texColor = g_skyTextures[heightmapIndex].Sample(g_sampler, input.uv);
+    float4 texColor = g_skyTextures[textureArrayIndex].Sample(g_sampler, input.uv);
     return texColor;
 #elif defined(LOADED_MODEL)
-    float4 texColor = g_albedoTextures[heightmapIndex].Sample(g_sampler, input.uv);
+    float4 texColor = g_albedoTextures[textureArrayIndex].Sample(g_sampler, input.uv);
 #elif defined(HEIGHTFIELD)
     float4 texColor = float4(input.uv, input.uv.x, 1.0f);
 #elif defined(TRIPLANAR)
