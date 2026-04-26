@@ -1,5 +1,5 @@
 {
-	"objectCount":	62,
+	"objectCount":	63,
 	"objects":	[{
 			"nametag":	"hf base",
 			"pos":	[77.3419418334961, 0, 98.671600341796875],
@@ -620,6 +620,16 @@
 			"pipeline":	"Default",
 			"primitiveData":	{
 				"primitiveType":	"Cube"
+			}
+		}, {
+			"nametag":	"gun",
+			"pos":	[2.43493914604187, 23.974157333374023, 6.8426260948181152],
+			"rot":	[-0.0061149322427809238, 0.79600816965103149, -0.60522526502609253, -0.00599793391302228],
+			"scale":	[0.050002843141555786, 0.05000121146440506, 0.050000786781311035],
+			"objectType":	"Loaded Model",
+			"pipeline":	"Default",
+			"loaded_modelData":	{
+				"pathTo":	"assets/models/br.glb"
 			}
 		}]
 }

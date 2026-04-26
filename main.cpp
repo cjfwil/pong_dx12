@@ -42,6 +42,8 @@
 #include <cJSON.h>
 #pragma warning(pop)
 
+#define PI 3.14159265358979323846f
+
 #include "local_error.h"
 #include "config_ini_io.cpp"
 #include "renderer_dx12.cpp"
@@ -82,7 +84,7 @@ enum BotState
     BOT_DEAD
 };
 
-struct BotObjects
+struct BotObject
 {
     bool visible;
     DirectX::XMFLOAT3 pos;
@@ -177,7 +179,7 @@ float SampleHeightmapWorldY(const SceneObject &obj, const DirectX::XMFLOAT3 &wor
 }
 
 #define MAX_BOT_OBJECTS 1024
-static BotObjects g_bot_objects[MAX_BOT_OBJECTS] = {}; // TODO: This structure is runtime only, this data is store on file, perhaps the scene.json
+static BotObject g_bot_objects[MAX_BOT_OBJECTS] = {}; // TODO: This structure is runtime only, this data is store on file, perhaps the scene.json
 
 static UINT g_heightfieldIndex = 0; // the heightfield index into the objects in the scene
 
@@ -187,7 +189,7 @@ void UpdateBots(float deltaTime)
 
     for (int i = 0; i < MAX_BOT_OBJECTS; ++i)
     {
-        BotObjects &bot = g_bot_objects[i];
+        BotObject &bot = g_bot_objects[i];
 
         // ---- STATE HANDLING ----
         if (bot.state == BOT_DYING)
@@ -561,6 +563,7 @@ struct window_state
     }
 };
 
+static SDL_Gamepad *g_gamepad = nullptr;
 static struct
 {
     bool keys[512] = {false};
@@ -569,7 +572,17 @@ static struct
 
     float mouseDeltaX = 0.0f;
     float mouseDeltaY = 0.0f;
+
+    float controllerMoveX = 0.0f;
+    float controllerMoveY = 0.0f;
+    float controllerLookX = 0.0f;
+    float controllerLookY = 0.0f;
+    bool controllerFire = false;
+
+    bool zoomActive = false;
 } g_input;
+
+static bool g_view_editor = true;
 
 struct FlyCamera
 {
@@ -587,15 +600,43 @@ struct FlyCamera
     float moveSpeed = 5.0f;
     float lookSpeed = 12.0f;
     float padSpeed = 1.5f;
+    float baseFov = 60.0f;
     float fov_deg = 60.0f;
 
     void UpdateFlyCamera(float deltaTime)
     {
-        float sensitivity_final = lookSpeed * deltaTime / 100.0f;
-        yaw += g_input.mouseDeltaX * sensitivity_final;
-        pitch -= g_input.mouseDeltaY * sensitivity_final;
-        g_input.mouseDeltaX = 0.0f;
-        g_input.mouseDeltaY = 0.0f;
+        bool useController = (g_gamepad != nullptr) && !g_view_editor;
+
+        float lookX = 0.0f, lookY = 0.0f;
+        if (useController)
+        {
+            // Right stick for looking – apply deadzone and sensitivity
+            const float deadzone = 0.2f;
+            if (fabsf(g_input.controllerLookX) > deadzone)
+                lookX = g_input.controllerLookX;
+            if (fabsf(g_input.controllerLookY) > deadzone)
+                lookY = g_input.controllerLookY;    
+            const float controllerLookMultiplier = lookSpeed;
+            lookX *= controllerLookMultiplier;
+            lookY *= controllerLookMultiplier;
+
+            //TODO: maybe dont do that so we can have both inputs at the same time, with a isolation switch in the settings
+            // Zero out mouse delta so it doesn't fight the stick
+            g_input.mouseDeltaX = 0.0f;
+            g_input.mouseDeltaY = 0.0f;
+        }
+        else
+        {
+            lookX = g_input.mouseDeltaX;
+            lookY = g_input.mouseDeltaY;
+            g_input.mouseDeltaX = 0.0f;
+            g_input.mouseDeltaY = 0.0f;
+        }
+
+        float dynamicLookSpeed = 1.0f + (fov_deg - 10.0f) * (11.0f / 50.0f);
+        float sensitivity_final = dynamicLookSpeed * deltaTime / 100.0f;
+        yaw += lookX * sensitivity_final;
+        pitch -= lookY * sensitivity_final;
 
         // clamping view
         const float maxPitch = DirectX::XMConvertToRadians(89.0f);
@@ -614,19 +655,47 @@ struct FlyCamera
         forward = DirectX::XMVector3Normalize(forward);
         right = DirectX::XMVector3Normalize(right);
 
-        DirectX::XMVECTOR moveDelta = DirectX::XMVectorZero();
-        if (g_input.keys[SDL_SCANCODE_W])
-            moveDelta = DirectX::XMVectorAdd(moveDelta, forward);
-        if (g_input.keys[SDL_SCANCODE_S])
-            moveDelta = DirectX::XMVectorSubtract(moveDelta, forward);
-        if (g_input.keys[SDL_SCANCODE_A])
-            moveDelta = DirectX::XMVectorSubtract(moveDelta, right);
-        if (g_input.keys[SDL_SCANCODE_D])
-            moveDelta = DirectX::XMVectorAdd(moveDelta, right);
+        float moveForward = 0.0f, moveRight = 0.0f, moveUp = 0.0f;
+
+        if (useController)
+        {
+            // Left stick: X = strafe, Y = forward/back (Y up is usually negative)
+            const float deadzone = 0.2f;
+            float lx = 0.0f, ly = 0.0f;
+            if (fabsf(g_input.controllerMoveX) > deadzone)
+                lx = g_input.controllerMoveX;
+            if (fabsf(g_input.controllerMoveY) > deadzone)
+                ly = -g_input.controllerMoveY; // invert so forward is positive
+            moveForward = ly;
+            moveRight = lx;
+        }
+        else
+        {
+            // Keyboard movement (existing logic)
+            if (g_input.keys[SDL_SCANCODE_W])
+                moveForward += 1.0f;
+            if (g_input.keys[SDL_SCANCODE_S])
+                moveForward -= 1.0f;
+            if (g_input.keys[SDL_SCANCODE_A])
+                moveRight -= 1.0f;
+            if (g_input.keys[SDL_SCANCODE_D])
+                moveRight += 1.0f;
+        }
+
+        // Up/down can always be keyboard (or you could add controller buttons)
         if (g_input.keys[SDL_SCANCODE_Q])
-            moveDelta = DirectX::XMVectorSubtract(moveDelta, up); // down
+            moveUp -= 1.0f;
         if (g_input.keys[SDL_SCANCODE_E])
-            moveDelta = DirectX::XMVectorAdd(moveDelta, up); // up
+            moveUp += 1.0f;
+
+        // Build movement vector
+        DirectX::XMVECTOR moveDelta = DirectX::XMVectorZero();
+        if (moveForward != 0.0f)
+            moveDelta = DirectX::XMVectorAdd(moveDelta, DirectX::XMVectorScale(forward, moveForward));
+        if (moveRight != 0.0f)
+            moveDelta = DirectX::XMVectorAdd(moveDelta, DirectX::XMVectorScale(right, moveRight));
+        if (moveUp != 0.0f)
+            moveDelta = DirectX::XMVectorAdd(moveDelta, DirectX::XMVectorScale(up, moveUp));
 
         // Apply movement scaled by deltaTime and speed
         if (!DirectX::XMVector3Equal(moveDelta, DirectX::XMVectorZero()))
@@ -635,10 +704,16 @@ struct FlyCamera
             moveDelta = DirectX::XMVectorScale(moveDelta, deltaTime * moveSpeed);
             DirectX::XMVECTOR pos = XMLoadFloat3(&position);
             pos = DirectX::XMVectorAdd(pos, moveDelta);
-            XMStoreFloat3(&position, pos);
+            DirectX::XMStoreFloat3(&position, pos);
         }
 
         eye = XMLoadFloat3(&g_camera.position);
+
+        // ---- Zoom (lerp fov_deg toward target based on zoomActive) ----
+        float targetFov = g_input.zoomActive ? 10.0f : baseFov;
+        const float zoomSpeed = 12.0f; // how fast the FOV changes
+        float t = fminf(zoomSpeed * deltaTime, 0.99f);
+        fov_deg += (targetFov - fov_deg) * t;
     }
 
     void UpdateViewProjMatrices(float nearPlane, float farPlane)
@@ -652,8 +727,6 @@ struct FlyCamera
             nearPlane);
     }
 } g_camera;
-
-static bool g_view_editor = true;
 
 // example for next pattern
 
@@ -985,7 +1058,7 @@ void FillDrawList()
     //  this part will be a flat array and all objects will be drawn regardless of position or overdraw because they are likely to be updated pretty much every frame (unless no bots are being simulated)
     for (int i = 0; i < MAX_BOT_OBJECTS; ++i)
     {
-        const BotObjects &bot = g_bot_objects[i];
+        const BotObject &bot = g_bot_objects[i];
         DirectX::XMFLOAT3 scaleOverride = {};
         scaleOverride.x = 1;
         scaleOverride.y = 1;
@@ -1098,7 +1171,7 @@ void DebugFireShot()
 
     for (int i = 0; i < MAX_BOT_OBJECTS; ++i)
     {
-        const BotObjects &bot = g_bot_objects[i];
+        const BotObject &bot = g_bot_objects[i];
         float radius = 0.5f;
 
         float dx = bot.pos.x - origin.x;
@@ -1135,12 +1208,12 @@ void DebugFireShot()
     {
         SDL_Log("HIT BOT %d at distance %.2f", hitIndex, closestDist);
         rayEnd = hitPoint;
-        BotObjects &bot = g_bot_objects[hitIndex];
+        BotObject &bot = g_bot_objects[hitIndex];
 
         // set up tumble when dying (only for drone like falling bots)
         if (bot.state != BotState::BOT_DEAD)
         {
-            // todo: make these magic constants adjustable (they are currently very realistic however)            
+            // todo: make these magic constants adjustable (they are currently very realistic however)
             // Random angular velocity between -12 and 12 rad/s (approx 700 deg/s)
             // NOTE: these constants result in a very well tuned result for a small quadcopter bot being shot down
             // only for different type of bot, like a larger flying object
@@ -1164,7 +1237,7 @@ void DebugFireShot()
 
 void Update()
 {
-    if (g_input.lmbDown)
+    if (g_input.lmbDown || g_input.controllerFire)
     {
         DebugFireShot();
     }
@@ -1347,7 +1420,6 @@ void Update()
 // Convert quaternion → pitch/yaw/roll (radians), order: pitch (X), yaw (Y), roll (Z)
 inline void QuaternionToEuler(DirectX::FXMVECTOR Q, float &pitch, float &yaw, float &roll)
 {
-    constexpr float PI = 3.14159265358979323846f;
     constexpr float HALF_PI = PI * 0.5f;
 
     DirectX::XMFLOAT4 q;
@@ -1416,7 +1488,7 @@ void DrawBotsEditorGUI()
 
     for (int i = 0; i < MAX_BOT_OBJECTS; ++i)
     {
-        BotObjects &bot = g_bot_objects[i];
+        BotObject &bot = g_bot_objects[i];
         ImGui::PushID(i);
 
         // Collapsible header with bot index and current position
@@ -1569,7 +1641,7 @@ void DrawEditorGUI()
     ImGui::End();
 
     ImGui::Begin("Settings");
-    ImGui::SliderFloat("fov_deg", &g_camera.fov_deg, 10.0f, 120.0f);
+    ImGui::SliderFloat("baseFov", &g_camera.baseFov, 10.0f, 120.0f);
     ImGui::SliderFloat("lookSpeed", &g_camera.lookSpeed, 1.0f, 15.0f);
     ImGui::Text("Frametime %.3f ms (%.2f FPS)",
                 1000.0f / ImGui::GetIO().Framerate,
@@ -2040,7 +2112,7 @@ int main(void)
 {
     program_state.timing.InitTimer();
 
-    if (!SDL_Init(SDL_INIT_VIDEO))
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD))
     {
         log_sdl_error("Couldn't initialise SDL");
         return 1;
@@ -2124,7 +2196,7 @@ int main(void)
 
     for (int i = 0; i < MAX_BOT_OBJECTS; ++i)
     {
-        BotObjects &bot = g_bot_objects[i];
+        BotObject &bot = g_bot_objects[i];
         if (botModelResult.success)
             bot.modelIndex = botModelResult.index;
 
@@ -2135,7 +2207,9 @@ int main(void)
 
         bot.pos = {x, y, z};
         bot.scale = {1, 1, 1};
+        float randomYaw = (rand() % 360) / (2 * PI);
         bot.rot = {0.0f, 0.0f, 0.0f, 1.0f};
+        DirectX::XMStoreFloat4(&bot.rot, EulerToQuaternion(0.0f, randomYaw, 0.0f));
 
         // Random number of patrol points
         bot.patrolPointCount = 2 + (rand() % (maxPatrolPoints - 2));
@@ -2225,16 +2299,36 @@ int main(void)
             {
                 if (sdlEvent.button.button == SDL_BUTTON_LEFT)
                     g_input.lmbDown = true;
+                else if (sdlEvent.button.button == SDL_BUTTON_RIGHT && !g_view_editor)
+                    g_input.zoomActive = true;
             }
             break;
             case SDL_EVENT_MOUSE_BUTTON_UP:
             {
                 if (sdlEvent.button.button == SDL_BUTTON_LEFT)
                     g_input.lmbDown = false;
-                if (sdlEvent.button.button == SDL_BUTTON_RIGHT && g_input.mouseCaptured)
+                else if (sdlEvent.button.button == SDL_BUTTON_RIGHT)
+                    g_input.zoomActive = false;
+            }
+            break;
+            case SDL_EVENT_GAMEPAD_ADDED:
+            {
+                SDL_JoystickID which = sdlEvent.gdevice.which; // SDL3: gdevice.which is the joystick ID
+                if (!g_gamepad)
                 {
-                    SDL_SetWindowRelativeMouseMode(program_state.window.window, false);
-                    g_input.mouseCaptured = false;
+                    g_gamepad = SDL_OpenGamepad(which);
+                    SDL_Log("Gamepad connected, ID: %d", (int)which);
+                }
+            }
+            break;
+            case SDL_EVENT_GAMEPAD_REMOVED:
+            {
+                SDL_JoystickID which = sdlEvent.gdevice.which;
+                if (g_gamepad && SDL_GetGamepadID(g_gamepad) == which)
+                {
+                    SDL_CloseGamepad(g_gamepad);
+                    g_gamepad = nullptr;
+                    SDL_Log("Gamepad removed, ID: %d", (int)which);
                 }
             }
             break;
@@ -2261,6 +2355,18 @@ int main(void)
         {
             SDL_SetWindowRelativeMouseMode(program_state.window.window, true);
             g_input.mouseCaptured = true;
+
+            if (g_gamepad)
+            {
+                // Release mouse when using controller
+                SDL_SetWindowRelativeMouseMode(program_state.window.window, false);
+                g_input.mouseCaptured = false;
+            }
+            else
+            {
+                SDL_SetWindowRelativeMouseMode(program_state.window.window, true);
+                g_input.mouseCaptured = true;
+            }
         }
 
         program_state.timing.UpdateTimer();
@@ -2269,6 +2375,27 @@ int main(void)
         {
             program_state.window.ApplyWindowMode();
             window_request.applyWindowRequest = false;
+        }
+
+        // input getting
+        if (g_gamepad)
+        {
+            // Read axes (values are in range [-32768, 32767])
+            g_input.controllerMoveX = SDL_GetGamepadAxis(g_gamepad, SDL_GAMEPAD_AXIS_LEFTX) / 32768.0f;
+            g_input.controllerMoveY = SDL_GetGamepadAxis(g_gamepad, SDL_GAMEPAD_AXIS_LEFTY) / 32768.0f;
+            g_input.controllerLookX = SDL_GetGamepadAxis(g_gamepad, SDL_GAMEPAD_AXIS_RIGHTX) / 32768.0f;
+            g_input.controllerLookY = SDL_GetGamepadAxis(g_gamepad, SDL_GAMEPAD_AXIS_RIGHTY) / 32768.0f;
+            // Fire button (e.g. right shoulder)
+            g_input.controllerFire = SDL_GetGamepadButton(g_gamepad, SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER);
+            g_input.zoomActive = SDL_GetGamepadButton(g_gamepad, SDL_GAMEPAD_BUTTON_LEFT_SHOULDER);
+        }
+        else
+        {
+            // Reset controller state when no gamepad is present
+            g_input.controllerMoveX = g_input.controllerMoveY = 0.0f;
+            g_input.controllerLookX = g_input.controllerLookY = 0.0f;
+            g_input.controllerFire = false;
+            // g_input.zoomActive = false; // TODO: put this in LMB
         }
 
         Update();

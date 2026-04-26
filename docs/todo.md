@@ -171,6 +171,7 @@ perhaps this is only in the selector, or maybe it is a guard in the actual code?
 - static object list -> can later go by static spatial partition
 - semi-dynamic objects (dynamic objects but roughly stay in one place like a door which rotates) maybe that can go in the static object list, but then i dont want to bog down that list since i just want to blast it out
 - fully dynamic object list -> cant make any assumptions about its spatial partition 
+- viewmodel list (gun, arms, helmet). perhaps even a different shader that blurs closer objects
 
 ## doors
 - somehow do a door, need to be able to hinge rotate, also requires moving collision boxes
