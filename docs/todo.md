@@ -182,3 +182,11 @@ perhaps this is only in the selector, or maybe it is a guard in the actual code?
 ## heightmap stuff
 - separate heightmap and other static objects and loaded model into separate list
 - maybe draw heightmap second to last (after all objects but before sky) to minimise overdraw?
+
+## fix clipping of viewport into wall when walking into it
+
+## revise forced transparency for sky objects. base layer of sky (not clouds) should be not transparent
+- skybox section
+    - base layer
+    - cloud layers 1 to 8
+    - other moving objects????? like distane planes????

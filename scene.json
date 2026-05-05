@@ -627,7 +627,7 @@
 			"rot":	[-0.0061149322427809238, 0.79600816965103149, -0.60522526502609253, -0.00599793391302228],
 			"scale":	[0.050002843141555786, 0.05000121146440506, 0.050000786781311035],
 			"objectType":	"Loaded Model",
-			"pipeline":	"Default",
+			"pipeline":	"Loaded Model",
 			"loaded_modelData":	{
 				"pathTo":	"assets/models/br.glb"
 			}
